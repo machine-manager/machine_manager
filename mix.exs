@@ -1,11 +1,11 @@
-defmodule Machines.Mixfile do
+defmodule MachineManager.Mixfile do
 	use Mix.Project
 
 	def project do
 		[
-			app: :machines,
+			app: :machine_manager,
 			version: "0.1.0",
-			elixir: "~> 1.5-dev",
+			elixir: "~> 1.4",
 			build_embedded: Mix.env == :prod,
 			start_permanent: Mix.env == :prod,
 			deps: deps()
@@ -17,6 +17,9 @@ defmodule Machines.Mixfile do
 	end
 
 	defp deps do
-		[]
+		[
+			{:ecto,     ">= 2.1"},
+			{:postgrex, ">= 0.13.0"},
+		]
 	end
 end
