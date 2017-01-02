@@ -7,37 +7,25 @@
  * `timestamp without time zone`
  */
 
-/* As user postgres:
-CREATE ROLE machine_manager LOGIN;
-CREATE DATABASE machine_manager;
-GRANT ALL PRIVILEGES ON DATABASE machine_manager TO machine_manager;
-ALTER DATABASE machine_manager SET bytea_output TO 'escape';
-*/
-
 SET ROLE machine_manager;
 
-DROP DOMAIN country CASCADE;
 CREATE DOMAIN country AS character(2) CHECK(
 	length(VALUE) = 2 AND
 	lower(VALUE) = VALUE
 );
 
-DROP DOMAIN ssh_port CASCADE;
 CREATE DOMAIN ssh_port AS integer CHECK(
 	VALUE > 0 AND VALUE <= 65536
 );
 
-DROP DOMAIN int4_gt0 CASCADE;
 CREATE DOMAIN int4_gt0 AS integer CHECK(
 	VALUE > 0
 );
 
-DROP DOMAIN int2_gt0 CASCADE;
 CREATE DOMAIN int2_gt0 AS integer CHECK(
 	VALUE > 0
 );
 
-DROP TABLE machines;
 CREATE TABLE machines (
 	-- Access information
 	hostname          character varying(32) NOT NULL PRIMARY KEY,
