@@ -27,23 +27,41 @@ CREATE DOMAIN ssh_port AS integer CHECK(
 	VALUE > 0 AND VALUE <= 65536
 );
 
-DROP DOMAIN ram_mb CASCADE;
-CREATE DOMAIN ram_mb AS integer CHECK(
+DROP DOMAIN int4_gt0 CASCADE;
+CREATE DOMAIN int4_gt0 AS integer CHECK(
+	VALUE > 0
+);
+
+DROP DOMAIN int2_gt0 CASCADE;
+CREATE DOMAIN int2_gt0 AS integer CHECK(
 	VALUE > 0
 );
 
 DROP TABLE machines;
 CREATE TABLE machines (
-	id                serial8 NOT NULL PRIMARY KEY,
-	hostname          character varying(32) NOT NULL,
+	-- Access information
+	hostname          character varying(32) NOT NULL PRIMARY KEY,
 	ip                inet NOT NULL,
 	ssh_port          ssh_port NOT NULL,
 	country           country,
-	ram_mb            ram_mb,
-	boot_time         timestamp with time zone NOT NULL,
+
+	-- Hardware information
+	ram_mb            int4_gt0,
+	cpu_model_name    character varying(64),
+	cpu_max_mhz       int2_gt0,
+	cpu_architecture  character varying(8),
+	cpu_count         int2_gt0,
+	core_count        int2_gt0,
+
+	-- OS information
 	kernel            bytea,
+	boot_time         timestamp with time zone,
 	pending_upgrades  character varying[],
 	needs_reboot      boolean,
+
+	-- Metadata
+	added_time        timestamp with time zone NOT NULL DEFAULT now(),
+	last_probe_time   timestamp with time zone,
 	tags              character varying[]
 );
 -- tags are like
