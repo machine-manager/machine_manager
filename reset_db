@@ -1,0 +1,5 @@
+#!/bin/sh
+
+set -eu
+
+ssh postgres@localhost "psql -d machine_manager" < schema.sql
