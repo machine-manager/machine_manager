@@ -10,3 +10,7 @@ config :machine_manager, MachineManager.Repo,
 	hostname: "localhost"
 
 config :machine_manager, ecto_repos: [MachineManager.Repo]
+
+config :logger,
+	level: :warn,
+	truncate: 4096

@@ -1,3 +1,5 @@
+alias Gears.TableFormatter
+
 defmodule MachineManager do
 	import Ecto.Query, only: [from: 2]
 
@@ -17,11 +19,16 @@ defmodule MachineManager do
 	end
 
 	def list() do
-		out = MachineManager.Repo.all(
+		rows = MachineManager.Repo.all(
 			from m in "machines",
 			select: %{hostname: m.hostname, ip: m.ip, ssh_port: m.ssh_port, tags: m.tags}
 		)
-		IO.inspect(out)
+		table = rows |> Enum.map(&sql_row_to_table_row/1)
+		IO.write(TableFormatter.format(table, padding: 2))
+	end
+
+	def sql_row_to_table_row(row) do
+		[row.hostname, inet_to_ip(row.ip), row.ssh_port, row.tags]
 	end
 
 	defp ip_to_inet(ip) do
@@ -33,6 +40,10 @@ defmodule MachineManager do
 		|> String.split(".")
 		|> Enum.map(&String.to_integer/1)
 		|> List.to_tuple
+	end
+
+	defp inet_to_ip(%Postgrex.INET{address: {a, b, c, d}}) do
+		"#{a}.#{b}.#{c}.#{d}"
 	end
 end
 
