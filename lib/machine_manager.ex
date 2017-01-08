@@ -22,27 +22,10 @@ defmodule MachineManager.CLI do
 					name:  "add",
 					about: "Add a machine",
 					options: [
-						hostname: [
-							short:    "-h",
-							long:     "--hostname",
-							required: true,
-						],
-						ip: [
-							short:    "-i",
-							long:     "--ip",
-							required: true,
-						],
-						ssh_port: [
-							short:    "-p",
-							long:     "--ssh-port",
-							required: true,
-							parser:   :integer,
-						],
-						tag: [
-							short:    "-t",
-							long:     "--tag",
-							multiple: true,
-						],
+						hostname: [short: "-h", long: "--hostname", required: true],
+						ip:       [short: "-i", long: "--ip",       required: true],
+						ssh_port: [short: "-p", long: "--ssh-port", required: true,  parser: :integer],
+						tag:      [short: "-t", long: "--tag",      required: false, multiple: true],
 					]
 				]
 			]
