@@ -24,6 +24,7 @@ defmodule MachineManager do
 			select: %{hostname: m.hostname, ip: m.ip, ssh_port: m.ssh_port, tags: m.tags}
 		)
 		table = rows |> Enum.map(&sql_row_to_table_row/1)
+		table = [["HOSTNAME", "IP", "SSH PORT", "TAGS"] | table]
 		IO.write(TableFormatter.format(table, padding: 2))
 	end
 
