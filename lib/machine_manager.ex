@@ -1,18 +1,53 @@
-defmodule Machines do
-	def machines do
-		[
-			%{host: "lab",     roles: [], cloud: :virtualbox       },
-			%{host: "sbuild",  roles: [], cloud: :virtualbox       },
-			%{host: "torrent", roles: [], cloud: :virtualbox       },
-			%{host: "sandlin", roles: [], cloud: :virtualbox       },
-			%{host: "do2",     roles: [], cloud: :digitalocean     },
-			%{host: "bhsvps1", roles: [], cloud: :ovh_vm           },
-			%{host: "ksca2",   roles: [], cloud: :ovh_dedicated    },
-			%{host: "paris2",  roles: [], cloud: :online_dedicated },
-			%{host: "osaka1",  roles: [], cloud: :ablenet          },
-			%{host: "scale4",  roles: [], cloud: :scaleway         },
-			%{host: "scale5",  roles: [], cloud: :scaleway         },
-			%{host: "scale6",  roles: [], cloud: :scaleway         },
-		]
+defmodule MachineManager do
+	def transfer(_machine, _file) do
+		# rsync to /root/.cache/machine_manager/#{basename file}
+	end
+
+	def run_script(machine, script) do
+		transfer(machine, script)
+		# ssh and run
+	end
+end
+
+defmodule MachineManager.CLI do
+	def main(opts) do
+		spec = Optimus.new!(
+			name:               "machine_manager",
+			description:        "Machine Manager",
+			about:              "Manages metadata about machines and probes them",
+			allow_unknown_args: false,
+			parse_double_dash:  true,
+			subcommands: [
+				add: [
+					name:  "add",
+					about: "Add a machine",
+					options: [
+						hostname: [
+							short:    "-h",
+							long:     "--hostname",
+							required: true,
+						],
+						ip: [
+							short:    "-i",
+							long:     "--ip",
+							required: true,
+						],
+						ssh_port: [
+							short:    "-p",
+							long:     "--ssh-port",
+							required: true,
+							parser:   :integer,
+						],
+						tag: [
+							short:    "-t",
+							long:     "--tag",
+							multiple: true,
+						],
+					]
+				]
+			]
+		)
+		options = Optimus.parse!(spec, opts)
+		IO.inspect(options)
 	end
 end
