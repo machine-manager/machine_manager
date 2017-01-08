@@ -22,7 +22,7 @@ defmodule MachineManager.Mixfile do
 
 	defp deps do
 		[
-			{:gears,    ">= 0.7.0"},
+			{:gears,    ">= 0.8.1"},
 			{:ecto,     ">= 2.1"},
 			{:postgrex, ">= 0.13.0"},
 			{:optimus,  ">= 0.1.0"},

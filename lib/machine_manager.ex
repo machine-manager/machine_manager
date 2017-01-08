@@ -21,16 +21,52 @@ defmodule MachineManager do
 	def list() do
 		rows = MachineManager.Repo.all(
 			from m in "machines",
-			select: %{hostname: m.hostname, ip: m.ip, ssh_port: m.ssh_port, tags: m.tags}
+			select: %{
+				hostname:         m.hostname,
+				ip:               m.ip,
+				ssh_port:         m.ssh_port,
+				tags:             m.tags,
+				last_probe_time:  m.last_probe_time,
+				boot_time:        m.boot_time,
+				country:          m.country,
+				pending_upgrades: m.pending_upgrades,
+				ram_mb:           m.ram_mb,
+				core_count:       m.core_count,
+			}
 		)
-		table = rows |> Enum.map(&sql_row_to_table_row/1)
-		table = [["HOSTNAME", "IP", "SSH PORT", "TAGS"] | table]
-		IO.write(TableFormatter.format(table, padding: 2))
+		header = ["HOSTNAME", "IP", "SSH PORT", "TAGS", "LAST PROBED", "BOOT TIME", "COUNTRY", "PENDING UPGRADES", "RAM", "CORES"]
+					|> Enum.map(&underlined/1)
+		table  = [header | Enum.map(rows, &sql_row_to_table_row/1)]
+		out    = TableFormatter.format(table, padding: 2, width_fn: &(&1 |> strip_ansi |> String.length))
+		IO.write(out)
+	end
+
+	defp underlined(s) do
+		"#{IO.ANSI.underline()}#{s}#{IO.ANSI.no_underline()}"
+	end
+
+	defp strip_ansi(s) do
+		# Based on https://github.com/chalk/ansi-regex/blob/dce3806b159260354de1a77c1db543a967f7218f/index.js
+		s |> String.replace(~r/[\x{001b}\x{009b}][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/, "")
 	end
 
 	def sql_row_to_table_row(row) do
-		[row.hostname, inet_to_ip(row.ip), row.ssh_port, row.tags]
+		[
+			row.hostname,
+			inet_to_ip(row.ip),
+			row.ssh_port,
+			row.tags |> Enum.join(", "),
+			row.last_probe_time,
+			row.boot_time,
+			row.country,
+			row.pending_upgrades,
+			row.ram_mb,
+			row.core_count
+		] |> Enum.map(&maybe_inspect/1)
 	end
+
+	defp maybe_inspect(value) when is_binary(value), do: value
+	defp maybe_inspect(value),                       do: inspect(value)
 
 	defp ip_to_inet(ip) do
 		%Postgrex.INET{address: ip_to_tuple(ip)}
