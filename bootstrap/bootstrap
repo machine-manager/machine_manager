@@ -1,0 +1,31 @@
+#!/bin/bash
+
+# Prepare a system so that converge escripts can be run on it.
+# Install erlang, but from our custom-packages repository, so first
+# install custom-packages-client and the spiped_key, along with
+# the custom-packages apt key and a suitable apt/sources.list.
+
+set -eu -o pipefail
+
+CUSTOM_PACKAGES_CLIENT_DEB_PATH=$(/bin/ls -1 /var/custom-packages/custom-packages-client_*_all.deb | sort | tail -n 1)
+CUSTOM_PACKAGES_CLIENT_DEB_NAME=$(basename "$CUSTOM_PACKAGES_CLIENT_DEB_PATH")
+CUSTOM_PACKAGES_APT_KEY=/var/custom-packages/keyFile
+CUSTOM_PACKAGES_CLIENT_SPIPED_KEY=~/code/erlang/role_custom_packages_server/files/etc/custom-packages-server/spiped_key
+CUSTOM_PACKAGES_PASSWORD=$(cat ~/code/erlang/role_custom_packages_server/files/etc/custom-packages-server/unencrypted_password)
+USER_AT_HOST="$1"
+
+ssh "$USER_AT_HOST" "mkdir -p ~/.machine_manager/bootstrap/ /etc/custom-packages-client/"
+rsync "$CUSTOM_PACKAGES_CLIENT_SPIPED_KEY" "$USER_AT_HOST:/etc/custom-packages-client/"
+rsync "$CUSTOM_PACKAGES_CLIENT_DEB_PATH"   "$USER_AT_HOST:.machine_manager/bootstrap/"
+cat "$CUSTOM_PACKAGES_APT_KEY" | ssh "$USER_AT_HOST" "chattr -i /etc/apt/trusted.gpg && apt-key add -"
+ssh "$USER_AT_HOST" "
+	apt-get update &&
+	apt-get install -y --reinstall ~/.machine_manager/bootstrap/$CUSTOM_PACKAGES_CLIENT_DEB_NAME &&
+	chown root:custom-packages-client /etc/custom-packages-client/spiped_key &&
+	(service custom-packages-client restart || service custom-packages-client start) &&
+	sleep 1 &&
+	chattr -i /etc/apt/sources.list &&
+	sed -i '1s,^,deb [lang=\"none\"] http://packages:${CUSTOM_PACKAGES_PASSWORD}@127.0.0.1:28000/ .\/,' /etc/apt/sources.list &&
+	apt-get update &&
+	apt-get install -y --no-install-recommends erlang-base-hipe erlang-crypto curl
+	"
