@@ -1,9 +1,9 @@
 #!/bin/bash
 
 # Prepare a system so that converge escripts can be run on it.  To do this,
-# install erlang, but from our custom-packages repository, so first
-# install custom-packages-client and the spiped_key, along with
-# the custom-packages apt key and a suitable apt/sources.list.
+# install erlang + curl + ar, but get erlang from our custom-packages repository,
+# so first install custom-packages-client and the spiped_key, along with the
+# custom-packages apt key and a suitable apt/sources.list.
 
 set -eu -o pipefail
 
@@ -18,13 +18,27 @@ rsync "$CUSTOM_PACKAGES_CLIENT_SPIPED_KEY_FILE" "$USER_AT_HOST:/etc/custom-packa
 rsync "$CUSTOM_PACKAGES_CLIENT_DEB_PATH"        "$USER_AT_HOST:.machine_manager/bootstrap/custom-packages-client.deb"
 cat "$CUSTOM_PACKAGES_APT_KEY_FILE" | ssh "$USER_AT_HOST" "chattr -i /etc/apt/trusted.gpg && apt-key add -"
 ssh "$USER_AT_HOST" "
+	# Stop and mask the service to prevent it from starting before we install
+	# spiped_key with the correct owner
+	echo Stopping service... && (systemctl stop custom-packages-client.service || true) &&
+	systemctl mask custom-packages-client.service &&
+
+	# Remove custom-packages apt source in case we are re-bootstrapping
+	cat /etc/apt/sources.list | fgrep -v 'http://packages:' > /tmp/sources.list &&
+	mv /tmp/sources.list /etc/apt/sources.list &&
+	chmod a+r /etc/apt/sources.list &&
+
+	# Install custom-packages-client
 	apt-get update &&
 	apt-get install -y --reinstall ~/.machine_manager/bootstrap/custom-packages-client.deb &&
 	chown root:custom-packages-client /etc/custom-packages-client/spiped_key &&
+	systemctl unmask custom-packages-client.service &&
 	echo Stopping service... && (systemctl stop custom-packages-client.service || true) &&
 	echo Starting service... && systemctl start custom-packages-client.service &&
+
+	# Now actually install erlang
 	chattr -i /etc/apt/sources.list &&
 	sed -i '1s,^,deb [lang=\"none\"] http://packages:${CUSTOM_PACKAGES_PASSWORD}@127.0.0.1:28000/ .\/,' /etc/apt/sources.list &&
 	apt-get update &&
-	apt-get install -y --no-install-recommends erlang-base-hipe erlang-crypto curl
+	apt-get install -y --no-install-recommends --upgrade erlang-base-hipe erlang-crypto curl binutils
 	"
