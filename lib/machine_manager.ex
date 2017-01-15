@@ -35,10 +35,14 @@ defmodule MachineManager do
 			}
 		)
 		header = ["HOSTNAME", "IP", "SSH PORT", "TAGS", "LAST PROBED", "BOOT TIME", "COUNTRY", "PENDING UPGRADES", "RAM", "CORES"]
-					|> Enum.map(&underlined/1)
+					|> Enum.map(&bolded/1)
 		table  = [header | Enum.map(rows, &sql_row_to_table_row/1)]
 		out    = TableFormatter.format(table, padding: 2, width_fn: &(&1 |> strip_ansi |> String.length))
 		IO.write(out)
+	end
+
+	defp bolded(s) do
+		"#{IO.ANSI.bright()}#{s}#{IO.ANSI.normal()}"
 	end
 
 	defp underlined(s) do
