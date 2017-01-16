@@ -35,20 +35,6 @@ defmodule MachineManager do
 		IO.write(out)
 	end
 
-	def probe() do
-		
-	end
-
-	def add(hostname, ip, ssh_port, tags) do
-		MachineManager.Repo.insert_all("machines", [
-			[hostname: hostname, ip: ip_to_inet(ip), ssh_port: ssh_port, tags: tags]
-		])
-	end
-
-	def rm(hostname) do
-		MachineManager.Repo.delete_all(from m in "machines", where: m.hostname == ^hostname)
-	end
-
 	defp bolded(s) do
 		"#{IO.ANSI.bright()}#{s}#{IO.ANSI.normal()}"
 	end
@@ -71,6 +57,42 @@ defmodule MachineManager do
 			row.ram_mb,
 			row.core_count
 		] |> Enum.map(&maybe_inspect/1)
+	end
+
+	def ssh_config() do
+		rows = MachineManager.Repo.all(
+			from m in "machines",
+			select: %{
+				hostname:         m.hostname,
+				ip:               m.ip,
+				ssh_port:         m.ssh_port,
+			}
+		)
+		for row <- rows do
+			:ok = IO.write(sql_row_to_ssh_config_entry(row) <> "\n")
+		end
+	end
+
+	defp sql_row_to_ssh_config_entry(row) do
+		"""
+		Host #{row.hostname}
+		  Hostname #{inet_to_ip(row.ip)}
+		  Port #{row.ssh_port}
+		"""
+	end
+
+	def probe() do
+		
+	end
+
+	def add(hostname, ip, ssh_port, tags) do
+		MachineManager.Repo.insert_all("machines", [
+			[hostname: hostname, ip: ip_to_inet(ip), ssh_port: ssh_port, tags: tags]
+		])
+	end
+
+	def rm(hostname) do
+		MachineManager.Repo.delete_all(from m in "machines", where: m.hostname == ^hostname)
 	end
 
 	defp maybe_inspect(value) when is_binary(value), do: value
@@ -105,6 +127,10 @@ defmodule MachineManager.CLI do
 					name:  "ls",
 					about: "List all machines",
 				],
+				ssh_config: [
+					name:  "ssh_config",
+					about: "Output an SSH config with all machines to stdout",
+				],
 				probe: [
 					name:  "probe",
 					about: "Probe all machines",
@@ -130,10 +156,11 @@ defmodule MachineManager.CLI do
 		)
 		{[subcommand], %{options: options}} = Optimus.parse!(spec, argv)
 		case subcommand do
-			:ls    -> MachineManager.list()
-			:probe -> MachineManager.probe()
-			:add   -> MachineManager.add(options.hostname, options.ip, options.ssh_port, options.tag)
-			:rm    -> MachineManager.rm(options.hostname)
+			:ls         -> MachineManager.list()
+			:ssh_config -> MachineManager.ssh_config()
+			:probe      -> MachineManager.probe()
+			:add        -> MachineManager.add(options.hostname, options.ip, options.ssh_port, options.tag)
+			:rm         -> MachineManager.rm(options.hostname)
 		end
 	end
 end
