@@ -1,13 +1,16 @@
 #!/bin/bash
 
+db_user=machine_manager
+db_name=machine_manager
+
 set -eu -o pipefail
 
 reset_db="\
-DROP DATABASE IF EXISTS          machine_manager;
-CREATE DATABASE                  machine_manager;
-GRANT ALL PRIVILEGES ON DATABASE machine_manager TO machine_manager;
-ALTER DATABASE                   machine_manager SET bytea_output TO 'escape';
+DROP DATABASE IF EXISTS          $db_name;
+CREATE DATABASE                  $db_name;
+GRANT ALL PRIVILEGES ON DATABASE $db_name TO $db_user;
+ALTER DATABASE                   $db_name SET bytea_output TO 'escape';
 "
 
 echo "$reset_db" | ssh postgres@localhost "psql -v ON_ERROR_STOP=1"
-ssh postgres@localhost "psql -v ON_ERROR_STOP=1 -d machine_manager" < schema.sql
+ssh postgres@localhost "psql -v ON_ERROR_STOP=1 -d $db_name" < schema.sql

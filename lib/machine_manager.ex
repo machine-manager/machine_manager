@@ -12,12 +12,6 @@ defmodule MachineManager do
 		# ssh and run
 	end
 
-	def add(hostname, ip, ssh_port, tags) do
-		MachineManager.Repo.insert_all("machines", [
-			[hostname: hostname, ip: ip_to_inet(ip), ssh_port: ssh_port, tags: tags]
-		])
-	end
-
 	def list() do
 		rows = MachineManager.Repo.all(
 			from m in "machines",
@@ -41,12 +35,22 @@ defmodule MachineManager do
 		IO.write(out)
 	end
 
-	defp bolded(s) do
-		"#{IO.ANSI.bright()}#{s}#{IO.ANSI.normal()}"
+	def probe() do
+		
 	end
 
-	defp underlined(s) do
-		"#{IO.ANSI.underline()}#{s}#{IO.ANSI.no_underline()}"
+	def add(hostname, ip, ssh_port, tags) do
+		MachineManager.Repo.insert_all("machines", [
+			[hostname: hostname, ip: ip_to_inet(ip), ssh_port: ssh_port, tags: tags]
+		])
+	end
+
+	def rm(hostname) do
+		MachineManager.Repo.delete_all(from m in "machines", where: m.hostname == ^hostname)
+	end
+
+	defp bolded(s) do
+		"#{IO.ANSI.bright()}#{s}#{IO.ANSI.normal()}"
 	end
 
 	defp strip_ansi(s) do
@@ -97,6 +101,14 @@ defmodule MachineManager.CLI do
 			allow_unknown_args: false,
 			parse_double_dash:  true,
 			subcommands: [
+				ls: [
+					name:  "ls",
+					about: "List all machines",
+				],
+				probe: [
+					name:  "probe",
+					about: "Probe all machines",
+				],
 				add: [
 					name:  "add",
 					about: "Add a machine",
@@ -105,22 +117,23 @@ defmodule MachineManager.CLI do
 						ip:       [short: "-i", long: "--ip",       required: true],
 						ssh_port: [short: "-p", long: "--ssh-port", required: true,  parser: :integer],
 						tag:      [short: "-t", long: "--tag",      required: false, multiple: true],
-					]
+					],
 				],
-				list: [
-					name:  "list",
-					about: "List all machines",
+				rm: [
+					name:  "rm",
+					about: "Remove a machine",
+					options: [
+						hostname: [short: "-h", long: "--hostname", required: true],
+					],
 				],
-				probe: [
-					name:  "probe",
-					about: "Probe all machines",
-				]
-			]
+			],
 		)
 		{[subcommand], %{options: options}} = Optimus.parse!(spec, argv)
 		case subcommand do
-			:add  -> MachineManager.add(options.hostname, options.ip, options.ssh_port, options.tag)
-			:list -> MachineManager.list()
+			:ls    -> MachineManager.list()
+			:probe -> MachineManager.probe()
+			:add   -> MachineManager.add(options.hostname, options.ip, options.ssh_port, options.tag)
+			:rm    -> MachineManager.rm(options.hostname)
 		end
 	end
 end
