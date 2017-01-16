@@ -7,3 +7,4 @@ erl_crash.dump
 *.ez
 /mix.lock
 /machine_manager
+/add_data
