@@ -8,7 +8,21 @@ db_name=machine_manager
 backup_file=~/.config/machine_manager/backup.sql
 
 mkdir -p "$(dirname "$backup_file")"
-ssh "$ssh_user_host" "pg_dump --data-only machine_manager" > "$backup_file"
+mv "$backup_file.2" "$backup_file.3" 2> /dev/null || true
+mv "$backup_file.1" "$backup_file.2" 2> /dev/null || true
+mv "$backup_file"   "$backup_file.1" 2> /dev/null || true
+
+# For the backup, create a table with a subset of the machines table, containing
+# just the columns with data that can't be probed.  This way, big schema changes
+# will typically not require manual modification of backup.sql.
+create_backup_subset="\
+DROP TABLE IF EXISTS machines_backup_subset;
+CREATE TABLE         machines_backup_subset AS SELECT hostname, ip, ssh_port, tags, added_time FROM machines;
+"
+
+echo "$create_backup_subset"  | ssh "$ssh_user_host" "psql -v ON_ERROR_STOP=1 -d $db_name"
+ssh "$ssh_user_host" "pg_dump --data-only --table machines_backup_subset machine_manager" > "$backup_file"
+sed -i -r 's,^COPY machines_backup_subset ,COPY machines ,g' "$backup_file"
 
 reset_db="\
 DROP DATABASE IF EXISTS          $db_name;
@@ -19,3 +33,4 @@ ALTER DATABASE                   $db_name SET bytea_output TO 'escape';
 
 echo "$reset_db"              | ssh "$ssh_user_host" "psql -v ON_ERROR_STOP=1"
 cat schema.sql "$backup_file" | ssh "$ssh_user_host" "psql -v ON_ERROR_STOP=1 -d $db_name"
+echo "Backup restored.  You should probe all machines now."
