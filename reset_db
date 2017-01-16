@@ -22,7 +22,7 @@ CREATE TABLE         machines_backup_subset AS SELECT hostname, ip, ssh_port, ta
 
 echo "$create_backup_subset"  | ssh "$ssh_user_host" "psql -v ON_ERROR_STOP=1 -d $db_name"
 ssh "$ssh_user_host" "pg_dump --data-only --table machines_backup_subset machine_manager" > "$backup_file"
-sed -i -r 's,^COPY machines_backup_subset ,COPY machines ,g' "$backup_file"
+sed -i -r 's,^COPY machines_backup_subset ,COPY machines ,' "$backup_file"
 
 reset_db="\
 DROP DATABASE IF EXISTS          $db_name;
