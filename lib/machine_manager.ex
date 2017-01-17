@@ -63,9 +63,9 @@ defmodule MachineManager do
 		rows = MachineManager.Repo.all(
 			from m in "machines",
 			select: %{
-				hostname:         m.hostname,
-				ip:               m.ip,
-				ssh_port:         m.ssh_port,
+				hostname: m.hostname,
+				ip:       m.ip,
+				ssh_port: m.ssh_port,
 			}
 		)
 		for row <- rows do
