@@ -148,19 +148,19 @@ defmodule MachineManager.CLI do
 				rm: [
 					name:  "rm",
 					about: "Remove a machine",
-					options: [
-						hostname: [short: "-h", long: "--hostname", required: true],
+					args: [
+						hostname: [required: true],
 					],
 				],
 			],
 		)
-		{[subcommand], %{options: options}} = Optimus.parse!(spec, argv)
+		{[subcommand], %{args: args, options: options}} = Optimus.parse!(spec, argv)
 		case subcommand do
 			:ls         -> MachineManager.list()
 			:ssh_config -> MachineManager.ssh_config()
 			:probe      -> MachineManager.probe()
 			:add        -> MachineManager.add(options.hostname, options.ip, options.ssh_port, options.tag)
-			:rm         -> MachineManager.rm(options.hostname)
+			:rm         -> MachineManager.rm(args.hostname)
 		end
 	end
 end
