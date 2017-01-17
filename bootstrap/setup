@@ -1,0 +1,45 @@
+#!/bin/bash
+
+wait_for_dpkg_lock() {
+	while fuser /var/lib/dpkg/lock > /dev/null 2>&1; do
+		echo 'Waiting for dpkg lock...'
+		sleep 1
+	done
+}
+
+# Stop and mask the service to prevent it from starting before we install
+# spiped_key with the correct owner
+echo Stopping service... && (systemctl stop custom-packages-client.service || true) &&
+systemctl mask custom-packages-client.service &&
+
+# Remove custom-packages apt source in case we are re-bootstrapping
+cat /etc/apt/sources.list | fgrep -v 'http://packages:' > /tmp/sources.list &&
+mv /tmp/sources.list /etc/apt/sources.list &&
+chmod a+r /etc/apt/sources.list &&
+
+# Install custom-packages-client
+wait_for_dpkg_lock &&
+apt-get update &&
+wait_for_dpkg_lock &&
+apt-get install -y --reinstall ~/.machine_manager/bootstrap/custom-packages-client.deb &&
+chown root:custom-packages-client /etc/custom-packages-client/spiped_key &&
+systemctl unmask custom-packages-client.service &&
+echo Stopping service... && (systemctl stop custom-packages-client.service || true) &&
+echo Starting service... && systemctl start custom-packages-client.service &&
+
+# Wait a bit for custom-packages-client to start
+sleep 2 &&
+
+# Make sure custom-packages-client is actually working
+(curl -s 'http://127.0.0.1:28000/' | fgrep -q '401 Authorization Required') &&
+
+# Add custom-packages to sources.list
+chattr -i /etc/apt/sources.list &&
+sed -i '1s,^,deb [lang=\"none\"] http://packages:CUSTOM_PACKAGES_PASSWORD@127.0.0.1:28000/ ./\n,' /etc/apt/sources.list &&
+
+wait_for_dpkg_lock &&
+apt-get update &&
+# Make sure erlang-base-hipe >= 19 is available
+(apt-cache show erlang-base-hipe | fgrep -q 'Version: 1:19.') &&
+wait_for_dpkg_lock &&
+apt-get install -y --no-install-recommends --upgrade erlang-base-hipe erlang-crypto curl binutils
