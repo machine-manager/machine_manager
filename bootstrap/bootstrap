@@ -21,5 +21,5 @@ rsync "$SELF/setup"                             "$USER_AT_HOST:.machine_manager/
 cat "$CUSTOM_PACKAGES_APT_KEY_FILE" | ssh "$USER_AT_HOST" "
 	chattr -i /etc/apt/trusted.gpg &&
 	apt-key add - &&
-	sed -i 's,CUSTOM_PACKAGES_PASSWORD,$CUSTOM_PACKAGES_PASSWORD,' ~/.machine_manager/bootstrap/setup &&
-	chmod +x ~/.machine_manager/bootstrap/setup && ~/.machine_manager/bootstrap/setup"
+	chmod +x ~/.machine_manager/bootstrap/setup &&
+	CUSTOM_PACKAGES_PASSWORD=$CUSTOM_PACKAGES_PASSWORD ~/.machine_manager/bootstrap/setup"
