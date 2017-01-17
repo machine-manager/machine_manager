@@ -5,7 +5,7 @@ defmodule MachineManager.TooManyRowsError do
 end
 
 defmodule MachineManager.Core do
-	import Ecto.Query, only: [from: 2, select: 2, update: 2]
+	import Ecto.Query, only: [from: 2, select: 2]
 
 	def transfer(_machine, _file) do
 		# rsync to /root/.cache/machine_manager/#{basename file}
@@ -77,14 +77,23 @@ defmodule MachineManager.Core do
 				assert_one_row(rows)
 				existing_tags = rows |> hd |> Access.get(:tags) |> MapSet.new
 				updated_tags  = MapSet.union(existing_tags, new_tags |> MapSet.new)
-				tags_list     = updated_tags |> MapSet.to_list
-				MachineManager.Repo.update_all(machine(hostname), [set: [tags: tags_list]])
+				MachineManager.Repo.update_all(
+					machine(hostname), [set: [tags: updated_tags |> MapSet.to_list]])
 			end
 		end)
 	end
 
-	def untag(hostname, tags) do
-
+	def untag(hostname, remove_tags) do
+		MachineManager.Repo.transaction(fn ->
+			rows = MachineManager.Repo.all(machine(hostname) |> select([:tags]))
+			if rows |> length > 0 do
+				assert_one_row(rows)
+				existing_tags = rows |> hd |> Access.get(:tags) |> MapSet.new
+				updated_tags  = MapSet.difference(existing_tags, remove_tags |> MapSet.new)
+				MachineManager.Repo.update_all(
+					machine(hostname), [set: [tags: updated_tags |> MapSet.to_list]])
+			end
+		end)
 	end
 
 	defp machine(hostname) do
