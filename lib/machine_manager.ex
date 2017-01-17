@@ -1,6 +1,6 @@
 alias Gears.TableFormatter
 
-defmodule MachineManager do
+defmodule MachineManager.Core do
 	import Ecto.Query, only: [from: 2]
 
 	def transfer(_machine, _file) do
@@ -13,7 +13,7 @@ defmodule MachineManager do
 	end
 
 	def list() do
-		rows = MachineManager.Repo.all(
+		MachineManager.Repo.all(
 			from m in "machines",
 			select: %{
 				hostname:         m.hostname,
@@ -28,35 +28,6 @@ defmodule MachineManager do
 				core_count:       m.core_count,
 			}
 		)
-		header = ["HOSTNAME", "IP", "SSH PORT", "TAGS", "LAST PROBED", "BOOT TIME", "COUNTRY", "PENDING UPGRADES", "RAM", "CORES"]
-					|> Enum.map(&bolded/1)
-		table  = [header | Enum.map(rows, &sql_row_to_table_row/1)]
-		out    = TableFormatter.format(table, padding: 2, width_fn: &(&1 |> strip_ansi |> String.length))
-		IO.write(out)
-	end
-
-	defp bolded(s) do
-		"#{IO.ANSI.bright()}#{s}#{IO.ANSI.normal()}"
-	end
-
-	defp strip_ansi(s) do
-		# Based on https://github.com/chalk/ansi-regex/blob/dce3806b159260354de1a77c1db543a967f7218f/index.js
-		s |> String.replace(~r/[\x{001b}\x{009b}][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/, "")
-	end
-
-	def sql_row_to_table_row(row) do
-		[
-			row.hostname,
-			inet_to_ip(row.ip),
-			row.ssh_port,
-			row.tags |> Enum.join(", "),
-			row.last_probe_time,
-			row.boot_time,
-			row.country,
-			row.pending_upgrades,
-			row.ram_mb,
-			row.core_count
-		] |> Enum.map(&maybe_inspect/1)
 	end
 
 	def ssh_config() do
@@ -95,9 +66,6 @@ defmodule MachineManager do
 		MachineManager.Repo.delete_all(from m in "machines", where: m.hostname == ^hostname)
 	end
 
-	defp maybe_inspect(value) when is_binary(value), do: value
-	defp maybe_inspect(value),                       do: inspect(value)
-
 	defp ip_to_inet(ip) do
 		%Postgrex.INET{address: ip_to_tuple(ip)}
 	end
@@ -109,12 +77,14 @@ defmodule MachineManager do
 		|> List.to_tuple
 	end
 
-	defp inet_to_ip(%Postgrex.INET{address: {a, b, c, d}}) do
+	def inet_to_ip(%Postgrex.INET{address: {a, b, c, d}}) do
 		"#{a}.#{b}.#{c}.#{d}"
 	end
 end
 
 defmodule MachineManager.CLI do
+	alias MachineManager.Core
+
 	def main(argv) do
 		spec = Optimus.new!(
 			name:               "machine_manager",
@@ -156,11 +126,51 @@ defmodule MachineManager.CLI do
 		)
 		{[subcommand], %{args: args, options: options}} = Optimus.parse!(spec, argv)
 		case subcommand do
-			:ls         -> MachineManager.list()
-			:ssh_config -> MachineManager.ssh_config()
-			:probe      -> MachineManager.probe()
-			:add        -> MachineManager.add(options.hostname, options.ip, options.ssh_port, options.tag)
-			:rm         -> MachineManager.rm(args.hostname)
+			:ls         -> list()
+			:ssh_config -> Core.ssh_config()
+			:probe      -> probe()
+			:add        -> Core.add(options.hostname, options.ip, options.ssh_port, options.tag)
+			:rm         -> Core.rm(args.hostname)
 		end
 	end
+
+	def list() do
+		rows   = Core.list()
+		header = ["HOSTNAME", "IP", "SSH PORT", "TAGS", "LAST PROBED", "BOOT TIME", "COUNTRY", "PENDING UPGRADES", "RAM", "CORES"]
+					|> Enum.map(&bolded/1)
+		table  = [header | Enum.map(rows, &sql_row_to_table_row/1)]
+		out    = TableFormatter.format(table, padding: 2, width_fn: &(&1 |> strip_ansi |> String.length))
+		:ok = IO.write(out)
+	end
+
+	def probe() do
+		Core.probe()
+	end
+
+	defp bolded(s) do
+		"#{IO.ANSI.bright()}#{s}#{IO.ANSI.normal()}"
+	end
+
+	defp strip_ansi(s) do
+		# Based on https://github.com/chalk/ansi-regex/blob/dce3806b159260354de1a77c1db543a967f7218f/index.js
+		s |> String.replace(~r/[\x{001b}\x{009b}][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/, "")
+	end
+
+	def sql_row_to_table_row(row) do
+		[
+			row.hostname,
+			Core.inet_to_ip(row.ip),
+			row.ssh_port,
+			row.tags |> Enum.join(", "),
+			row.last_probe_time,
+			row.boot_time,
+			row.country,
+			row.pending_upgrades,
+			row.ram_mb,
+			row.core_count
+		] |> Enum.map(&maybe_inspect/1)
+	end
+
+	defp maybe_inspect(value) when is_binary(value), do: value
+	defp maybe_inspect(value),                       do: inspect(value)
 end
