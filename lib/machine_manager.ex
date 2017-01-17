@@ -74,8 +74,7 @@ defmodule MachineManager.Core do
 		MachineManager.Repo.transaction(fn ->
 			rows = MachineManager.Repo.all(machine(hostname) |> select([:tags]))
 			if rows |> length > 0 do
-				assert_one_row(rows)
-				existing_tags = rows |> hd |> Access.get(:tags) |> MapSet.new
+				existing_tags = one_row(rows) |> Access.get(:tags) |> MapSet.new
 				updated_tags  = MapSet.union(existing_tags, new_tags |> MapSet.new)
 				MachineManager.Repo.update_all(
 					machine(hostname), [set: [tags: updated_tags |> MapSet.to_list]])
@@ -87,8 +86,7 @@ defmodule MachineManager.Core do
 		MachineManager.Repo.transaction(fn ->
 			rows = MachineManager.Repo.all(machine(hostname) |> select([:tags]))
 			if rows |> length > 0 do
-				assert_one_row(rows)
-				existing_tags = rows |> hd |> Access.get(:tags) |> MapSet.new
+				existing_tags = one_row(rows) |> Access.get(:tags) |> MapSet.new
 				updated_tags  = MapSet.difference(existing_tags, remove_tags |> MapSet.new)
 				MachineManager.Repo.update_all(
 					machine(hostname), [set: [tags: updated_tags |> MapSet.to_list]])
@@ -100,11 +98,12 @@ defmodule MachineManager.Core do
 		from m in "machines", where: m.hostname == ^hostname
 	end
 
-	defp assert_one_row(rows) do
+	defp one_row(rows) do
 		count = rows |> length
 		if count != 1 do
 			raise MachineManager.TooManyRowsError, message: "Expected just one row, got #{count} rows"
 		end
+		rows |> hd
 	end
 
 	defp ip_to_inet(ip) do
