@@ -57,6 +57,8 @@ defmodule MachineManager.Core do
 	end
 
 	def probe(hostnames) do
+		# TODO: make a map of task pid -> hostname so that we know which task is which
+		# in block_on_tasks below
 		tasks = Enum.map(hostnames, fn hostname ->
 			Task.async(fn ->
 				{hostname, probe_one(hostname)}
