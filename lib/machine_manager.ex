@@ -5,7 +5,7 @@ defmodule MachineManager.TooManyRowsError do
 end
 
 defmodule MachineManager.Core do
-	import Ecto.Query, only: [from: 2, select: 2]
+	import Ecto.Query, only: [from: 2, select: 3]
 
 	def transfer(_machine, _file) do
 		# rsync to /root/.cache/machine_manager/#{basename file}
@@ -70,24 +70,30 @@ defmodule MachineManager.Core do
 		MachineManager.Repo.delete_all(machine(hostname))
 	end
 
+	@doc """
+	Add tags in MapSet `new_tags` to machine with hostname `hostname`.
+	"""
 	def tag(hostname, new_tags) do
 		MachineManager.Repo.transaction(fn ->
-			rows = MachineManager.Repo.all(machine(hostname) |> select([:tags]))
+			rows = MachineManager.Repo.all(machine(hostname) |> select([m], m.tags))
 			if rows |> length > 0 do
-				existing_tags = one_row(rows) |> Access.get(:tags) |> MapSet.new
-				updated_tags  = MapSet.union(existing_tags, new_tags |> MapSet.new)
+				existing_tags = one_row(rows) |> MapSet.new
+				updated_tags  = MapSet.union(existing_tags, new_tags)
 				MachineManager.Repo.update_all(
 					machine(hostname), [set: [tags: updated_tags |> MapSet.to_list]])
 			end
 		end)
 	end
 
+	@doc """
+	Remove tags in MapSet `remove_tags` from machine with hostname `hostname`.
+	"""
 	def untag(hostname, remove_tags) do
 		MachineManager.Repo.transaction(fn ->
-			rows = MachineManager.Repo.all(machine(hostname) |> select([:tags]))
+			rows = MachineManager.Repo.all(machine(hostname) |> select([m], m.tags))
 			if rows |> length > 0 do
-				existing_tags = one_row(rows) |> Access.get(:tags) |> MapSet.new
-				updated_tags  = MapSet.difference(existing_tags, remove_tags |> MapSet.new)
+				existing_tags = one_row(rows) |> MapSet.new
+				updated_tags  = MapSet.difference(existing_tags, remove_tags)
 				MachineManager.Repo.update_all(
 					machine(hostname), [set: [tags: updated_tags |> MapSet.to_list]])
 			end
@@ -99,11 +105,11 @@ defmodule MachineManager.Core do
 	end
 
 	defp one_row(rows) do
-		count = rows |> length
-		if count != 1 do
-			raise MachineManager.TooManyRowsError, message: "Expected just one row, got #{count} rows"
+		case rows do
+			[row] -> row
+			_     -> raise MachineManager.TooManyRowsError,
+							message: "Expected just one row, got #{rows |> length} rows"
 		end
-		rows |> hd
 	end
 
 	defp ip_to_inet(ip) do
@@ -187,8 +193,8 @@ defmodule MachineManager.CLI do
 			:probe      -> probe()
 			:add        -> Core.add(options.hostname, options.ip, options.ssh_port, options.tag)
 			:rm         -> Core.rm(args.hostname)
-			:tag        -> Core.tag(args.hostname, args.tags |> String.split(","))
-			:untag      -> Core.untag(args.hostname, args.tags |> String.split(","))
+			:tag        -> Core.tag(args.hostname,   args.tags |> String.split(",") |> MapSet.new)
+			:untag      -> Core.untag(args.hostname, args.tags |> String.split(",") |> MapSet.new)
 		end
 	end
 
