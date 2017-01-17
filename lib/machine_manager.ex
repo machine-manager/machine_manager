@@ -57,9 +57,30 @@ defmodule MachineManager.Core do
 	end
 
 	def probe(hostnames) do
-		# TODO: https://hexdocs.pm/elixir/Task.html#yield_many/2
-		for hostname <- hostnames do
-			IO.puts("#{hostname}: #{inspect probe_one(hostname)}")
+		tasks = Enum.map(hostnames, fn hostname ->
+			Task.async(fn ->
+				{hostname, probe_one(hostname)}
+			end)
+		end)
+		block_on_tasks(tasks)
+	end
+
+	defp block_on_tasks(tasks) do
+		waiting_tasks = for {task, result} <- Task.yield_many(tasks, 2000) do
+			case result do
+				{:ok, {hostname, data}} ->
+					IO.puts("#{hostname}: #{inspect data}")
+					nil
+				{:exit, reason} ->
+					IO.puts("FAILED (which?): #{inspect reason}")
+					nil
+				nil ->
+					IO.puts("Still waiting on some task")
+					task
+			end
+		end |> Enum.filter(&(&1 != nil))
+		if waiting_tasks != [] do
+			block_on_tasks(waiting_tasks)
 		end
 	end
 
