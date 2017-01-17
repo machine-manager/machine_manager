@@ -56,8 +56,31 @@ defmodule MachineManager.Core do
 		"""
 	end
 
-	def probe() do
-		
+	def probe(hostnames) do
+		# TODO: https://hexdocs.pm/elixir/Task.html#yield_many/2
+		for hostname <- hostnames do
+			IO.puts("#{hostname}: #{inspect probe_one(hostname)}")
+		end
+	end
+
+	def probe_one(hostname) do
+		row = MachineManager.Repo.all(machine(hostname) |> select([m], %{ip: m.ip, ssh_port: m.ssh_port})) |> one_row
+		command = """
+		apt-get update > /dev/null 2>&1;
+		apt-get install -y --upgrade machine_probe > /dev/null 2>&1;
+		machine_probe
+		"""
+		{output, 0} = ssh(inet_to_ip(row.ip), row.ssh_port, command)
+		_ = [:ram_mb]
+		:erlang.binary_to_term(output, [:safe])
+	end
+
+	@doc """
+	Runs `command` on machine at `ip` and `ssh_port`, returns `{output, exit_code}`.
+	Output includes both stdout and stderr.
+	"""
+	def ssh(ip, ssh_port, command) do
+		System.cmd("ssh", ["-q", "-p", "#{ssh_port}", "root@#{ip}", command], stderr_to_stdout: true)
 	end
 
 	def add(hostname, ip, ssh_port, tags) do
@@ -149,7 +172,10 @@ defmodule MachineManager.CLI do
 				],
 				probe: [
 					name:  "probe",
-					about: "Probe all machines",
+					about: "Probe machines",
+					args: [
+						hostnames: [required: true, help: "Comma-separated list of hostnames"],
+					],
 				],
 				add: [
 					name:  "add",
@@ -173,7 +199,7 @@ defmodule MachineManager.CLI do
 					about: "Add tags to a machine",
 					args: [
 						hostname: [required: true],
-						tags:     [required: true, multiple: true, help: "Comma-separated list of tags to add"],
+						tags:     [required: true, help: "Comma-separated list of tags to add"],
 					],
 				],
 				untag: [
@@ -181,7 +207,7 @@ defmodule MachineManager.CLI do
 					about: "Remove tag from a machine",
 					args: [
 						hostname: [required: true],
-						tags:     [required: true, multiple: true, help: "Comma-separated list of tags to remove"],
+						tags:     [required: true, help: "Comma-separated list of tags to remove"],
 					],
 				],
 			],
@@ -190,7 +216,7 @@ defmodule MachineManager.CLI do
 		case subcommand do
 			:ls         -> list()
 			:ssh_config -> Core.ssh_config()
-			:probe      -> probe()
+			:probe      -> Core.probe(args.hostnames |> String.split(","))
 			:add        -> Core.add(options.hostname, options.ip, options.ssh_port, options.tag)
 			:rm         -> Core.rm(args.hostname)
 			:tag        -> Core.tag(args.hostname,   args.tags |> String.split(",") |> MapSet.new)
@@ -205,10 +231,6 @@ defmodule MachineManager.CLI do
 		table  = [header | Enum.map(rows, &sql_row_to_table_row/1)]
 		out    = TableFormatter.format(table, padding: 2, width_fn: &(&1 |> strip_ansi |> String.length))
 		:ok = IO.write(out)
-	end
-
-	def probe() do
-		Core.probe()
 	end
 
 	defp bolded(s) do
