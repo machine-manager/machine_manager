@@ -1,7 +1,11 @@
 alias Gears.TableFormatter
 
+defmodule MachineManager.TooManyRowsError do
+	defexception [:message]
+end
+
 defmodule MachineManager.Core do
-	import Ecto.Query, only: [from: 2]
+	import Ecto.Query, only: [from: 2, select: 2, update: 2]
 
 	def transfer(_machine, _file) do
 		# rsync to /root/.cache/machine_manager/#{basename file}
@@ -63,7 +67,35 @@ defmodule MachineManager.Core do
 	end
 
 	def rm(hostname) do
-		MachineManager.Repo.delete_all(from m in "machines", where: m.hostname == ^hostname)
+		MachineManager.Repo.delete_all(machine(hostname))
+	end
+
+	def tag(hostname, new_tags) do
+		MachineManager.Repo.transaction(fn ->
+			rows = MachineManager.Repo.all(machine(hostname) |> select([:tags]))
+			if rows |> length > 0 do
+				assert_one_row(rows)
+				existing_tags = rows |> hd |> Access.get(:tags) |> MapSet.new
+				updated_tags  = MapSet.union(existing_tags, new_tags |> MapSet.new)
+				tags_list     = updated_tags |> MapSet.to_list
+				MachineManager.Repo.update_all(machine(hostname), [set: [tags: tags_list]])
+			end
+		end)
+	end
+
+	def untag(hostname, tags) do
+
+	end
+
+	defp machine(hostname) do
+		from m in "machines", where: m.hostname == ^hostname
+	end
+
+	defp assert_one_row(rows) do
+		count = rows |> length
+		if count != 1 do
+			raise MachineManager.TooManyRowsError, message: "Expected just one row, got #{count} rows"
+		end
 	end
 
 	defp ip_to_inet(ip) do
@@ -122,6 +154,22 @@ defmodule MachineManager.CLI do
 						hostname: [required: true],
 					],
 				],
+				tag: [
+					name:  "tag",
+					about: "Add tags to a machine",
+					args: [
+						hostname: [required: true],
+						tags:     [required: true, multiple: true, help: "Comma-separated list of tags to add"],
+					],
+				],
+				untag: [
+					name:  "untag",
+					about: "Remove tag from a machine",
+					args: [
+						hostname: [required: true],
+						tags:     [required: true, multiple: true, help: "Comma-separated list of tags to remove"],
+					],
+				],
 			],
 		)
 		{[subcommand], %{args: args, options: options}} = Optimus.parse!(spec, argv)
@@ -131,6 +179,8 @@ defmodule MachineManager.CLI do
 			:probe      -> probe()
 			:add        -> Core.add(options.hostname, options.ip, options.ssh_port, options.tag)
 			:rm         -> Core.rm(args.hostname)
+			:tag        -> Core.tag(args.hostname, args.tags |> String.split(","))
+			:untag      -> Core.untag(args.hostname, args.tags |> String.split(","))
 		end
 	end
 
