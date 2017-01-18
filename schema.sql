@@ -36,7 +36,6 @@ CREATE TABLE machines (
 	-- Hardware information
 	ram_mb            int4_gt0,
 	cpu_model_name    character varying(64),
-	cpu_max_mhz       int2_gt0,
 	cpu_architecture  character varying(8),
 	core_count        int2_gt0,
 	thread_count      int2_gt0,

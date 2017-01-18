@@ -86,18 +86,24 @@ defmodule MachineManager.Core do
 		end
 	end
 
+	def _atoms do
+		# Make sure these atoms are in the atom table
+		[:ram_mb, :cpu_model_name, :core_count, :thread_count, :country, :kernel, :boot_time_ms, :pending_upgrades]
+	end
+
 	def probe_one(hostname) do
 		row = MachineManager.Repo.all(machine(hostname) |> select([m], %{ip: m.ip, ssh_port: m.ssh_port})) |> one_row
+		# Note: we use an echo at the very end because of
+		# https://github.com/elixir-lang/elixir/issues/5673
 		command = """
 		# machine_probe expects that we already ran an apt-get update when it
 		# determines which packages can be upgraded.
 		apt-get update > /dev/null 2>&1;
 		apt-get install -y --upgrade machine_probe > /dev/null 2>&1;
-		machine_probe
+		machine_probe && echo
 		"""
 		{output, 0} = ssh(inet_to_ip(row.ip), row.ssh_port, command)
-		_ = [:ram_mb]
-		:erlang.binary_to_term(output, [:safe])
+		Poison.decode!(output, keys: :atoms!)
 	end
 
 	@doc """
@@ -105,7 +111,7 @@ defmodule MachineManager.Core do
 	Output includes both stdout and stderr.
 	"""
 	def ssh(ip, ssh_port, command) do
-		System.cmd("ssh", ["-q", "-p", "#{ssh_port}", "root@#{ip}", command], stderr_to_stdout: true)
+		System.cmd("ssh", ["-q", "-p", "#{ssh_port}", "root@#{ip}", command])
 	end
 
 	def add(hostname, ip, ssh_port, tags) do
