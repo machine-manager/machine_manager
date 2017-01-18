@@ -89,6 +89,8 @@ defmodule MachineManager.Core do
 	def probe_one(hostname) do
 		row = MachineManager.Repo.all(machine(hostname) |> select([m], %{ip: m.ip, ssh_port: m.ssh_port})) |> one_row
 		command = """
+		# machine_probe expects that we already ran an apt-get update when it
+		# determines which packages can be upgraded.
 		apt-get update > /dev/null 2>&1;
 		apt-get install -y --upgrade machine_probe > /dev/null 2>&1;
 		machine_probe
