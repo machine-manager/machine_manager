@@ -79,7 +79,7 @@ defmodule MachineManager.Core do
 				nil ->
 					{hostname, task}
 			end
-		end |> Enum.filter(&(&1 != nil)) |> Map.new
+		end |> Enum.reject(&is_nil/1) |> Map.new
 		if waiting_task_map != %{} do
 			IO.puts("Still waiting on: #{waiting_task_map |> Map.keys |> Enum.join(" ")}")
 			block_on_tasks(waiting_task_map)
