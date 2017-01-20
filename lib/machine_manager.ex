@@ -180,7 +180,7 @@ defmodule MachineManager.Core do
 		case rows do
 			[row] -> row
 			_     -> raise MachineManager.TooManyRowsError,
-							message: "Expected just one row, got #{rows |> length} rows"
+			           message: "Expected just one row, got #{rows |> length} rows"
 		end
 	end
 
