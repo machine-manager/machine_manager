@@ -20,18 +20,10 @@ defmodule MachineManager.Core do
 	def list() do
 		Repo.all(
 			from m in "machines",
-			select: %{
-				hostname:         m.hostname,
-				ip:               m.ip,
-				ssh_port:         m.ssh_port,
-				tags:             m.tags,
-				last_probe_time:  m.last_probe_time,
-				boot_time:        m.boot_time,
-				country:          m.country,
-				ram_mb:           m.ram_mb,
-				core_count:       m.core_count,
-				pending_upgrades: m.pending_upgrades,
-			}
+			select: [
+				:hostname, :ip, :ssh_port, :tags, :last_probe_time, :boot_time,
+				:country, :ram_mb, :core_count, :pending_upgrades
+			]
 		)
 	end
 
