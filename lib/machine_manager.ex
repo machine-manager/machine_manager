@@ -57,36 +57,36 @@ defmodule MachineManager.Core do
 	end
 
 	def probe(hostnames) do
-		# TODO: make a map of task pid -> hostname so that we know which task is which
-		# in block_on_tasks below
-		tasks = Enum.map(hostnames, fn hostname ->
-			Task.async(fn ->
-				{hostname, probe_one(hostname)}
-			end)
-		end)
-		block_on_tasks(tasks)
+		task_map = hostnames |> Enum.map(fn hostname ->
+			{hostname, Task.async(fn ->
+				probe_one(hostname)
+			end)}
+		end) |> Map.new
+		block_on_tasks(task_map)
 	end
 
-	defp block_on_tasks(tasks) do
-		waiting_tasks = for {task, result} <- Task.yield_many(tasks, 2000) do
+	defp block_on_tasks(task_map) do
+		pid_to_hostname  = task_map |> Enum.map(fn {hostname, task} -> {task.pid, hostname} end) |> Map.new
+		waiting_task_map = for {task, result} <- Task.yield_many(task_map |> Map.values, 2000) do
+			hostname = pid_to_hostname[task.pid] || raise RuntimeError, message: "hostname == nil for #{inspect task}"
 			case result do
-				{:ok, {hostname, data}} ->
-					IO.puts("#{hostname}: #{inspect data}")
+				{:ok, probe_out} ->
+					IO.puts("PROBED #{hostname}: #{inspect probe_out}")
 					nil
 				{:exit, reason} ->
-					IO.puts("FAILED (which?): #{inspect reason}")
+					IO.puts("FAILED #{hostname}: #{inspect reason}")
 					nil
 				nil ->
-					IO.puts("Still waiting on some task")
-					task
+					{hostname, task}
 			end
-		end |> Enum.filter(&(&1 != nil))
-		if waiting_tasks != [] do
-			block_on_tasks(waiting_tasks)
+		end |> Enum.filter(&(&1 != nil)) |> Map.new
+		if waiting_task_map != %{} do
+			IO.puts("Still waiting on: #{waiting_task_map |> Map.keys |> Enum.join(" ")}")
+			block_on_tasks(waiting_task_map)
 		end
 	end
 
-	def _atoms do
+	def _atoms() do
 		# Make sure these atoms are in the atom table
 		[:ram_mb, :cpu_model_name, :core_count, :thread_count, :country, :kernel, :boot_time_ms, :pending_upgrades]
 	end
