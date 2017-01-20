@@ -138,17 +138,8 @@ defmodule MachineManager.Core do
 	Add tags in MapSet `new_tags` to machine with hostname `hostname`.
 	"""
 	def tag(hostname, new_tags) do
-		Repo.transaction(fn ->
-			rows =
-				machine(hostname)
-				|> select([m], m.tags)
-				|> Repo.all
-			if rows |> length > 0 do
-				existing_tags = one_row(rows) |> MapSet.new
-				updated_tags  = MapSet.union(existing_tags, new_tags)
-				machine(hostname)
-				|> Repo.update_all(set: [tags: updated_tags |> Enum.sort])
-			end
+		update_tags(hostname, fn existing_tags ->
+			MapSet.union(existing_tags, new_tags)
 		end)
 	end
 
@@ -156,6 +147,12 @@ defmodule MachineManager.Core do
 	Remove tags in MapSet `remove_tags` from machine with hostname `hostname`.
 	"""
 	def untag(hostname, remove_tags) do
+		update_tags(hostname, fn existing_tags ->
+			MapSet.difference(existing_tags, remove_tags)
+		end)
+	end
+
+	defp update_tags(hostname, fun) do
 		Repo.transaction(fn ->
 			rows =
 				machine(hostname)
@@ -163,7 +160,7 @@ defmodule MachineManager.Core do
 				|> Repo.all
 			if rows |> length > 0 do
 				existing_tags = one_row(rows) |> MapSet.new
-				updated_tags  = MapSet.difference(existing_tags, remove_tags)
+				updated_tags  = fun.(existing_tags)
 				machine(hostname)
 				|> Repo.update_all(set: [tags: updated_tags |> Enum.sort])
 			end
