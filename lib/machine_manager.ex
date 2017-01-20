@@ -139,8 +139,8 @@ defmodule MachineManager.Core do
 			if rows |> length > 0 do
 				existing_tags = one_row(rows) |> MapSet.new
 				updated_tags  = MapSet.union(existing_tags, new_tags)
-				Repo.update_all(
-					machine(hostname), [set: [tags: updated_tags |> MapSet.to_list]])
+				machine(hostname)
+				|> Repo.update_all(set: [tags: updated_tags |> Enum.sort])
 			end
 		end)
 	end
@@ -154,8 +154,8 @@ defmodule MachineManager.Core do
 			if rows |> length > 0 do
 				existing_tags = one_row(rows) |> MapSet.new
 				updated_tags  = MapSet.difference(existing_tags, remove_tags)
-				Repo.update_all(
-					machine(hostname), [set: [tags: updated_tags |> MapSet.to_list]])
+				machine(hostname)
+				|> Repo.update_all(set: [tags: updated_tags |> Enum.sort])
 			end
 		end)
 	end
