@@ -5,7 +5,8 @@ defmodule MachineManager.TooManyRowsError do
 end
 
 defmodule MachineManager.Core do
-	import Ecto.Query, only: [from: 2, select: 3]
+	alias MachineManager.Repo
+	import Ecto.Query
 
 	def transfer(_machine, _file) do
 		# rsync to /root/.cache/machine_manager/#{basename file}
@@ -17,7 +18,7 @@ defmodule MachineManager.Core do
 	end
 
 	def list() do
-		MachineManager.Repo.all(
+		Repo.all(
 			from m in "machines",
 			select: %{
 				hostname:         m.hostname,
@@ -35,7 +36,7 @@ defmodule MachineManager.Core do
 	end
 
 	def ssh_config() do
-		rows = MachineManager.Repo.all(
+		rows = Repo.all(
 			from m in "machines",
 			select: %{
 				hostname: m.hostname,
@@ -88,7 +89,7 @@ defmodule MachineManager.Core do
 	end
 
 	defp write_probe_data_to_db(hostname, data) do
-		MachineManager.Repo.update_all(machine(hostname), [set: [
+		Repo.update_all(machine(hostname), [set: [
 			ram_mb:           data.ram_mb,
 			cpu_model_name:   data.cpu_model_name,
 			core_count:       data.core_count,
@@ -106,7 +107,7 @@ defmodule MachineManager.Core do
 	end
 
 	def probe_one(hostname) do
-		row = MachineManager.Repo.all(machine(hostname) |> select([m], %{ip: m.ip, ssh_port: m.ssh_port})) |> one_row
+		row = Repo.all(machine(hostname) |> select([m], %{ip: m.ip, ssh_port: m.ssh_port})) |> one_row
 		# Note: we use an echo at the very end because of
 		# https://github.com/elixir-lang/elixir/issues/5673
 		command = """
@@ -129,25 +130,25 @@ defmodule MachineManager.Core do
 	end
 
 	def add(hostname, ip, ssh_port, tags) do
-		MachineManager.Repo.insert_all("machines", [
+		Repo.insert_all("machines", [
 			[hostname: hostname, ip: ip_to_inet(ip), ssh_port: ssh_port, tags: tags]
 		])
 	end
 
 	def rm(hostname) do
-		MachineManager.Repo.delete_all(machine(hostname))
+		Repo.delete_all(machine(hostname))
 	end
 
 	@doc """
 	Add tags in MapSet `new_tags` to machine with hostname `hostname`.
 	"""
 	def tag(hostname, new_tags) do
-		MachineManager.Repo.transaction(fn ->
-			rows = MachineManager.Repo.all(machine(hostname) |> select([m], m.tags))
+		Repo.transaction(fn ->
+			rows = Repo.all(machine(hostname) |> select([m], m.tags))
 			if rows |> length > 0 do
 				existing_tags = one_row(rows) |> MapSet.new
 				updated_tags  = MapSet.union(existing_tags, new_tags)
-				MachineManager.Repo.update_all(
+				Repo.update_all(
 					machine(hostname), [set: [tags: updated_tags |> MapSet.to_list]])
 			end
 		end)
@@ -157,19 +158,20 @@ defmodule MachineManager.Core do
 	Remove tags in MapSet `remove_tags` from machine with hostname `hostname`.
 	"""
 	def untag(hostname, remove_tags) do
-		MachineManager.Repo.transaction(fn ->
-			rows = MachineManager.Repo.all(machine(hostname) |> select([m], m.tags))
+		Repo.transaction(fn ->
+			rows = Repo.all(machine(hostname) |> select([m], m.tags))
 			if rows |> length > 0 do
 				existing_tags = one_row(rows) |> MapSet.new
 				updated_tags  = MapSet.difference(existing_tags, remove_tags)
-				MachineManager.Repo.update_all(
+				Repo.update_all(
 					machine(hostname), [set: [tags: updated_tags |> MapSet.to_list]])
 			end
 		end)
 	end
 
 	defp machine(hostname) do
-		from m in "machines", where: m.hostname == ^hostname
+		from("machines")
+		|> where([m], m.hostname == ^hostname)
 	end
 
 	defp one_row(rows) do
