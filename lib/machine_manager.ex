@@ -172,7 +172,7 @@ defmodule MachineManager.Core do
 	end
 
 	defp machine(hostname) do
-		from("machines")
+		all_machines()
 		|> where([m], m.hostname == ^hostname)
 	end
 
