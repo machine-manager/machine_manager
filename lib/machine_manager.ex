@@ -18,20 +18,18 @@ defmodule MachineManager.Core do
 	end
 
 	def list() do
-		Repo.all(
-			from "machines",
-			select: [
-				:hostname, :ip, :ssh_port, :tags, :last_probe_time, :boot_time,
-				:country, :ram_mb, :core_count, :pending_upgrades
-			]
-		)
+		cols = [:hostname, :ip, :ssh_port, :tags, :last_probe_time, :boot_time,
+		        :country, :ram_mb, :core_count, :pending_upgrades]
+		all_machines()
+		|> select(^cols)
+		|> Repo.all
 	end
 
 	def ssh_config() do
-		rows = Repo.all(
-			from "machines",
-			select: [:hostname, :ip, :ssh_port]
-		)
+		rows =
+			all_machines()
+			|> select([:hostname, :ip, :ssh_port])
+			|> Repo.all
 		for row <- rows do
 			:ok = IO.write(sql_row_to_ssh_config_entry(row) <> "\n")
 		end
@@ -77,7 +75,8 @@ defmodule MachineManager.Core do
 	end
 
 	defp write_probe_data_to_db(hostname, data) do
-		Repo.update_all(machine(hostname), [set: [
+		machine(hostname)
+		|> Repo.update_all(set: [
 			ram_mb:           data.ram_mb,
 			cpu_model_name:   data.cpu_model_name,
 			core_count:       data.core_count,
@@ -86,7 +85,7 @@ defmodule MachineManager.Core do
 			kernel:           data.kernel,
 			boot_time:        data.boot_time_ms |> DateTime.from_unix!(:millisecond),
 			pending_upgrades: data.pending_upgrades,
-		]])
+		])
 	end
 
 	def _atoms() do
@@ -95,7 +94,11 @@ defmodule MachineManager.Core do
 	end
 
 	def probe_one(hostname) do
-		row = Repo.all(machine(hostname) |> select([m], %{ip: m.ip, ssh_port: m.ssh_port})) |> one_row
+		row =
+			machine(hostname)
+			|> select([:ip, :ssh_port])
+			|> Repo.all
+			|> one_row
 		# Note: we use an echo at the very end because of
 		# https://github.com/elixir-lang/elixir/issues/5673
 		command = """
@@ -127,7 +130,8 @@ defmodule MachineManager.Core do
 	end
 
 	def rm(hostname) do
-		Repo.delete_all(machine(hostname))
+		machine(hostname)
+		|> Repo.delete_all
 	end
 
 	@doc """
@@ -135,7 +139,10 @@ defmodule MachineManager.Core do
 	"""
 	def tag(hostname, new_tags) do
 		Repo.transaction(fn ->
-			rows = Repo.all(machine(hostname) |> select([m], m.tags))
+			rows =
+				machine(hostname)
+				|> select([m], m.tags)
+				|> Repo.all
 			if rows |> length > 0 do
 				existing_tags = one_row(rows) |> MapSet.new
 				updated_tags  = MapSet.union(existing_tags, new_tags)
@@ -150,7 +157,10 @@ defmodule MachineManager.Core do
 	"""
 	def untag(hostname, remove_tags) do
 		Repo.transaction(fn ->
-			rows = Repo.all(machine(hostname) |> select([m], m.tags))
+			rows =
+				machine(hostname)
+				|> select([m], m.tags)
+				|> Repo.all
 			if rows |> length > 0 do
 				existing_tags = one_row(rows) |> MapSet.new
 				updated_tags  = MapSet.difference(existing_tags, remove_tags)
@@ -158,6 +168,10 @@ defmodule MachineManager.Core do
 				|> Repo.update_all(set: [tags: updated_tags |> Enum.sort])
 			end
 		end)
+	end
+
+	defp all_machines() do
+		from("machines")
 	end
 
 	defp machine(hostname) do
