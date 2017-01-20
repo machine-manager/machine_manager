@@ -99,15 +99,12 @@ defmodule MachineManager.Core do
 			|> select([:ip, :ssh_port])
 			|> Repo.all
 			|> one_row
-		# machine_probe expects that we already ran an apt-get update when
+		# machine_probe expects that we already ran an `apt-get update` when
 		# it determines which packages can be upgraded.
-		#
-		# we use an echo at the very end because of
-		# https://github.com/elixir-lang/elixir/issues/5673
 		command = """
 		apt-get update > /dev/null 2>&1;
 		apt-get install -y --upgrade machine_probe > /dev/null 2>&1;
-		machine_probe && echo
+		machine_probe
 		"""
 		{output, 0} = ssh(inet_to_ip(row.ip), row.ssh_port, command)
 		Poison.decode!(output, keys: :atoms!)
