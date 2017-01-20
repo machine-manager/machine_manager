@@ -99,11 +99,12 @@ defmodule MachineManager.Core do
 			|> select([:ip, :ssh_port])
 			|> Repo.all
 			|> one_row
-		# Note: we use an echo at the very end because of
+		# machine_probe expects that we already ran an apt-get update when
+		# it determines which packages can be upgraded.
+		#
+		# we use an echo at the very end because of
 		# https://github.com/elixir-lang/elixir/issues/5673
 		command = """
-		# machine_probe expects that we already ran an apt-get update when it
-		# determines which packages can be upgraded.
 		apt-get update > /dev/null 2>&1;
 		apt-get install -y --upgrade machine_probe > /dev/null 2>&1;
 		machine_probe && echo
@@ -173,7 +174,7 @@ defmodule MachineManager.Core do
 
 	defp machine(hostname) do
 		all_machines()
-		|> where([m], m.hostname == ^hostname)
+		|> where([hostname: ^hostname])
 	end
 
 	defp one_row(rows) do
