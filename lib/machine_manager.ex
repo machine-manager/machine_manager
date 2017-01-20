@@ -19,7 +19,7 @@ defmodule MachineManager.Core do
 
 	def list() do
 		Repo.all(
-			from m in "machines",
+			from "machines",
 			select: [
 				:hostname, :ip, :ssh_port, :tags, :last_probe_time, :boot_time,
 				:country, :ram_mb, :core_count, :pending_upgrades
@@ -29,12 +29,8 @@ defmodule MachineManager.Core do
 
 	def ssh_config() do
 		rows = Repo.all(
-			from m in "machines",
-			select: %{
-				hostname: m.hostname,
-				ip:       m.ip,
-				ssh_port: m.ssh_port,
-			}
+			from "machines",
+			select: [:hostname, :ip, :ssh_port]
 		)
 		for row <- rows do
 			:ok = IO.write(sql_row_to_ssh_config_entry(row) <> "\n")
@@ -122,9 +118,12 @@ defmodule MachineManager.Core do
 	end
 
 	def add(hostname, ip, ssh_port, tags) do
-		Repo.insert_all("machines", [
-			[hostname: hostname, ip: ip_to_inet(ip), ssh_port: ssh_port, tags: tags]
-		])
+		Repo.insert_all("machines", [[
+			hostname: hostname,
+			ip:       ip_to_inet(ip),
+			ssh_port: ssh_port,
+			tags:     tags
+		]])
 	end
 
 	def rm(hostname) do
