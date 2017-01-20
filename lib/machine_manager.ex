@@ -27,9 +27,9 @@ defmodule MachineManager.Core do
 				last_probe_time:  m.last_probe_time,
 				boot_time:        m.boot_time,
 				country:          m.country,
-				pending_upgrades: m.pending_upgrades,
 				ram_mb:           m.ram_mb,
 				core_count:       m.core_count,
+				pending_upgrades: m.pending_upgrades,
 			}
 		)
 	end
@@ -72,6 +72,7 @@ defmodule MachineManager.Core do
 			case result do
 				{:ok, probe_out} ->
 					IO.puts("PROBED #{hostname}: #{inspect probe_out}")
+					write_probe_data_to_db(hostname, probe_out)
 					nil
 				{:exit, reason} ->
 					IO.puts("FAILED #{hostname}: #{inspect reason}")
@@ -84,6 +85,19 @@ defmodule MachineManager.Core do
 			IO.puts("Still waiting on: #{waiting_task_map |> Map.keys |> Enum.join(" ")}")
 			block_on_tasks(waiting_task_map)
 		end
+	end
+
+	defp write_probe_data_to_db(hostname, data) do
+		MachineManager.Repo.update_all(machine(hostname), [set: [
+			ram_mb:           data.ram_mb,
+			cpu_model_name:   data.cpu_model_name,
+			core_count:       data.core_count,
+			thread_count:     data.thread_count,
+			country:          data.country,
+			kernel:           data.kernel,
+			boot_time:        data.boot_time_ms |> DateTime.from_unix!(:millisecond),
+			pending_upgrades: data.pending_upgrades,
+		]])
 	end
 
 	def _atoms() do
@@ -257,7 +271,7 @@ defmodule MachineManager.CLI do
 
 	def list() do
 		rows   = Core.list()
-		header = ["HOSTNAME", "IP", "SSH PORT", "TAGS", "LAST PROBED", "BOOT TIME", "COUNTRY", "PENDING UPGRADES", "RAM", "CORES"]
+		header = ["HOSTNAME", "IP", "SSH PORT", "TAGS", "LAST PROBED", "BOOT TIME", "COUNTRY", "RAM", "CORES", "PENDING UPGRADES"]
 					|> Enum.map(&bolded/1)
 		table  = [header | Enum.map(rows, &sql_row_to_table_row/1)]
 		out    = TableFormatter.format(table, padding: 2, width_fn: &(&1 |> strip_ansi |> String.length))
@@ -278,14 +292,27 @@ defmodule MachineManager.CLI do
 			row.hostname,
 			Core.inet_to_ip(row.ip),
 			row.ssh_port,
-			row.tags |> Enum.join(", "),
+			row.tags |> Enum.join(" "),
 			row.last_probe_time,
-			row.boot_time,
+			if row.boot_time != nil do
+				row.boot_time |> erlang_date_to_datetime |> DateTime.to_iso8601
+			end,
 			row.country,
-			row.pending_upgrades,
 			row.ram_mb,
-			row.core_count
+			row.core_count,
+			if row.pending_upgrades != nil do
+				row.pending_upgrades |> Enum.join(" ")
+			end,
 		] |> Enum.map(&maybe_inspect/1)
+	end
+
+	# https://github.com/elixir-ecto/ecto/issues/1920
+	def erlang_date_to_datetime({{year, month, day}, {hour, min, sec, usec}}) do
+		%DateTime{
+			year: year, month: month, day: day, hour: hour, minute: min,
+			second: sec, microsecond: {usec, 6}, zone_abbr: "UTC", time_zone: "Etc/UTC",
+			utc_offset: 0, std_offset: 0
+		}
 	end
 
 	defp maybe_inspect(value) when is_binary(value), do: value
