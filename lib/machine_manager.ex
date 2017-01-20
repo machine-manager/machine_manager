@@ -4,8 +4,26 @@ defmodule MachineManager.TooManyRowsError do
 	defexception [:message]
 end
 
+defmodule MachineManager.SQL do
+	def cols(cols) do
+		cols
+		|> Enum.map(&to_string/1)
+		|> Enum.join(", ")
+	end
+
+	def as_maps(%Postgrex.Result{columns: columns, rows: rows}) do
+		# Let's just hope PostgreSQL isn't trying to overflow our atom table
+		atom_columns = columns |> Enum.map(&String.to_atom/1)
+		rows
+		|> Enum.map(fn row ->
+			Enum.zip(atom_columns, row) |> Map.new
+		end)
+	end
+end
+
 defmodule MachineManager.Core do
-	import Ecto.Query, only: [from: 2, select: 3]
+	alias MachineManager.SQL
+	import Ecto.Query, only: [select: 3]
 
 	def transfer(_machine, _file) do
 		# rsync to /root/.cache/machine_manager/#{basename file}
@@ -16,33 +34,16 @@ defmodule MachineManager.Core do
 		# ssh and run
 	end
 
-	def list() do
-		MachineManager.Repo.all(
-			from m in "machines",
-			select: %{
-				hostname:         m.hostname,
-				ip:               m.ip,
-				ssh_port:         m.ssh_port,
-				tags:             m.tags,
-				last_probe_time:  m.last_probe_time,
-				boot_time:        m.boot_time,
-				country:          m.country,
-				ram_mb:           m.ram_mb,
-				core_count:       m.core_count,
-				pending_upgrades: m.pending_upgrades,
-			}
-		)
+	def list(db) do
+		cols = [
+			:hostname, :ip, :ssh_port, :tags, :last_probe_time, :boot_time,
+			:country, :ram_mb, :core_count, :pending_upgrades
+		]
+		SQL.as_maps(Postgrex.query!(db, "SELECT #{SQL.cols(cols)} FROM machines ORDER BY hostname", []))
 	end
 
-	def ssh_config() do
-		rows = MachineManager.Repo.all(
-			from m in "machines",
-			select: %{
-				hostname: m.hostname,
-				ip:       m.ip,
-				ssh_port: m.ssh_port,
-			}
-		)
+	def ssh_config(db) do
+		rows = SQL.as_maps(Postgrex.query!(db, "SELECT #{SQL.cols([:hostname, :ip, :ssh_port])} FROM machines ORDER BY hostname", []))
 		for row <- rows do
 			:ok = IO.write(sql_row_to_ssh_config_entry(row) <> "\n")
 		end
@@ -56,23 +57,23 @@ defmodule MachineManager.Core do
 		"""
 	end
 
-	def probe(hostnames) do
+	def probe(db, hostnames) do
 		task_map = hostnames |> Enum.map(fn hostname ->
 			{hostname, Task.async(fn ->
-				probe_one(hostname)
+				probe_one(db, hostname)
 			end)}
 		end) |> Map.new
-		block_on_tasks(task_map)
+		block_on_tasks(db, task_map)
 	end
 
-	defp block_on_tasks(task_map) do
+	defp block_on_tasks(db, task_map) do
 		pid_to_hostname  = task_map |> Enum.map(fn {hostname, task} -> {task.pid, hostname} end) |> Map.new
 		waiting_task_map = for {task, result} <- Task.yield_many(task_map |> Map.values, 2000) do
 			hostname = pid_to_hostname[task.pid] || raise RuntimeError, message: "hostname == nil for #{inspect task}"
 			case result do
 				{:ok, probe_out} ->
 					IO.puts("PROBED #{hostname}: #{inspect probe_out}")
-					write_probe_data_to_db(hostname, probe_out)
+					write_probe_data_to_db(db, hostname, probe_out)
 					nil
 				{:exit, reason} ->
 					IO.puts("FAILED #{hostname}: #{inspect reason}")
@@ -83,11 +84,14 @@ defmodule MachineManager.Core do
 		end |> Enum.reject(&is_nil/1) |> Map.new
 		if waiting_task_map != %{} do
 			IO.puts("Still waiting on: #{waiting_task_map |> Map.keys |> Enum.join(" ")}")
-			block_on_tasks(waiting_task_map)
+			block_on_tasks(db, waiting_task_map)
 		end
 	end
 
-	defp write_probe_data_to_db(hostname, data) do
+	# DELETEME
+	defp machine(x), do: x
+
+	defp write_probe_data_to_db(db, hostname, data) do
 		MachineManager.Repo.update_all(machine(hostname), [set: [
 			ram_mb:           data.ram_mb,
 			cpu_model_name:   data.cpu_model_name,
@@ -105,7 +109,7 @@ defmodule MachineManager.Core do
 		[:ram_mb, :cpu_model_name, :core_count, :thread_count, :country, :kernel, :boot_time_ms, :pending_upgrades]
 	end
 
-	def probe_one(hostname) do
+	def probe_one(db, hostname) do
 		row = MachineManager.Repo.all(machine(hostname) |> select([m], %{ip: m.ip, ssh_port: m.ssh_port})) |> one_row
 		# Note: we use an echo at the very end because of
 		# https://github.com/elixir-lang/elixir/issues/5673
@@ -128,20 +132,20 @@ defmodule MachineManager.Core do
 		System.cmd("ssh", ["-q", "-p", "#{ssh_port}", "root@#{ip}", command])
 	end
 
-	def add(hostname, ip, ssh_port, tags) do
+	def add(db, hostname, ip, ssh_port, tags) do
 		MachineManager.Repo.insert_all("machines", [
 			[hostname: hostname, ip: ip_to_inet(ip), ssh_port: ssh_port, tags: tags]
 		])
 	end
 
-	def rm(hostname) do
+	def rm(db, hostname) do
 		MachineManager.Repo.delete_all(machine(hostname))
 	end
 
 	@doc """
 	Add tags in MapSet `new_tags` to machine with hostname `hostname`.
 	"""
-	def tag(hostname, new_tags) do
+	def tag(db, hostname, new_tags) do
 		MachineManager.Repo.transaction(fn ->
 			rows = MachineManager.Repo.all(machine(hostname) |> select([m], m.tags))
 			if rows |> length > 0 do
@@ -156,7 +160,7 @@ defmodule MachineManager.Core do
 	@doc """
 	Remove tags in MapSet `remove_tags` from machine with hostname `hostname`.
 	"""
-	def untag(hostname, remove_tags) do
+	def untag(db, hostname, remove_tags) do
 		MachineManager.Repo.transaction(fn ->
 			rows = MachineManager.Repo.all(machine(hostname) |> select([m], m.tags))
 			if rows |> length > 0 do
@@ -166,10 +170,6 @@ defmodule MachineManager.Core do
 					machine(hostname), [set: [tags: updated_tags |> MapSet.to_list]])
 			end
 		end)
-	end
-
-	defp machine(hostname) do
-		from m in "machines", where: m.hostname == ^hostname
 	end
 
 	defp one_row(rows) do
@@ -258,19 +258,31 @@ defmodule MachineManager.CLI do
 			],
 		)
 		{[subcommand], %{args: args, options: options}} = Optimus.parse!(spec, argv)
+		db = get_db()
 		case subcommand do
-			:ls         -> list()
-			:ssh_config -> Core.ssh_config()
-			:probe      -> Core.probe(args.hostnames |> String.split(","))
-			:add        -> Core.add(options.hostname, options.ip, options.ssh_port, options.tag)
-			:rm         -> Core.rm(args.hostname)
-			:tag        -> Core.tag(args.hostname,   args.tags |> String.split(",") |> MapSet.new)
-			:untag      -> Core.untag(args.hostname, args.tags |> String.split(",") |> MapSet.new)
+			:ls         -> list(db)
+			:ssh_config -> Core.ssh_config(db)
+			:probe      -> Core.probe(db, args.hostnames |> String.split(","))
+			:add        -> Core.add(db, options.hostname, options.ip, options.ssh_port, options.tag)
+			:rm         -> Core.rm(db, args.hostname)
+			:tag        -> Core.tag(db, args.hostname,   args.tags |> String.split(",") |> MapSet.new)
+			:untag      -> Core.untag(db, args.hostname, args.tags |> String.split(",") |> MapSet.new)
 		end
 	end
 
-	def list() do
-		rows   = Core.list()
+	def get_db() do
+		config = Application.get_env(:machine_manager, MachineManager.Repo)
+		{:ok, db} = Postgrex.start_link(
+			hostname: config[:hostname],
+			username: config[:username],
+			password: config[:password],
+			database: config[:database],
+		)
+		db
+	end
+
+	def list(db) do
+		rows   = Core.list(db)
 		header = ["HOSTNAME", "IP", "SSH PORT", "TAGS", "LAST PROBED", "BOOT TIME", "COUNTRY", "RAM", "CORES", "PENDING UPGRADES"]
 					|> Enum.map(&bolded/1)
 		table  = [header | Enum.map(rows, &sql_row_to_table_row/1)]
@@ -295,7 +307,7 @@ defmodule MachineManager.CLI do
 			row.tags |> Enum.join(" "),
 			row.last_probe_time,
 			if row.boot_time != nil do
-				row.boot_time |> erlang_date_to_datetime |> DateTime.to_iso8601
+				row.boot_time |> DateTime.to_iso8601
 			end,
 			row.country,
 			row.ram_mb,
@@ -304,15 +316,6 @@ defmodule MachineManager.CLI do
 				row.pending_upgrades |> Enum.join(" ")
 			end,
 		] |> Enum.map(&maybe_inspect/1)
-	end
-
-	# https://github.com/elixir-ecto/ecto/issues/1920
-	def erlang_date_to_datetime({{year, month, day}, {hour, min, sec, usec}}) do
-		%DateTime{
-			year: year, month: month, day: day, hour: hour, minute: min,
-			second: sec, microsecond: {usec, 6}, zone_abbr: "UTC", time_zone: "Etc/UTC",
-			utc_offset: 0, std_offset: 0
-		}
 	end
 
 	defp maybe_inspect(value) when is_binary(value), do: value
