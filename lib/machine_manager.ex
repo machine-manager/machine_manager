@@ -305,7 +305,11 @@ defmodule MachineManager.CLI do
 			row.tags |> Enum.join(" "),
 			row.last_probe_time,
 			if row.boot_time != nil do
-				row.boot_time |> erlang_date_to_datetime |> DateTime.to_iso8601
+				row.boot_time
+				|> erlang_date_to_datetime
+				|> DateTime.to_iso8601
+				|> String.split(".")
+				|> hd
 			end,
 			row.country,
 			row.ram_mb,
