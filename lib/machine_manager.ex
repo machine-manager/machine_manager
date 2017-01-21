@@ -275,11 +275,32 @@ defmodule MachineManager.CLI do
 
 	def list() do
 		rows   = Core.list()
-		header = ["HOSTNAME", "IP", "SSH PORT", "TAGS", "LAST PROBED", "BOOT TIME", "COUNTRY", "RAM", "CORES", "PENDING UPGRADES"]
-					|> Enum.map(&bolded/1)
+		header = ["HOSTNAME", "IP", "SSH", "TAGS", "LAST PROBED", "BOOT TIME", "国", "RAM", "CORES", "PENDING UPGRADES"]
+					|> Enum.map(&maybe_bolded/1)
 		table  = [header | Enum.map(rows, &sql_row_to_table_row/1)]
-		out    = TableFormatter.format(table, padding: 2, width_fn: &(&1 |> strip_ansi |> String.length))
+		out    = TableFormatter.format(table, padding: 2, width_fn: &(&1 |> strip_ansi |> half_width_length))
 		:ok = IO.write(out)
+	end
+
+	defp maybe_bolded(s) do
+		case s =~ ~r/^\p{Han}+$/u do
+			false -> bolded(s)
+			true  -> s
+		end
+	end
+
+	defp half_width_length(s) do
+		s
+		|> String.graphemes
+		|> Enum.map(fn grapheme ->
+			# Not a complete implementation, but good enough for our purposes; see
+			# https://github.com/Qqwy/elixir-unicode/issues/2#issuecomment-252511607
+			case grapheme =~ ~r/^\p{Han}$/u do
+				true  -> 2
+				false -> 1
+			end
+		end)
+		|> Enum.sum
 	end
 
 	defp bolded(s) do
