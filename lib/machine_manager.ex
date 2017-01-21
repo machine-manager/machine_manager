@@ -87,6 +87,7 @@ defmodule MachineManager.Core do
 			kernel:           data.kernel,
 			boot_time:        data.boot_time_ms |> DateTime.from_unix!(:millisecond),
 			pending_upgrades: data.pending_upgrades,
+			last_probe_time:  DateTime.utc_now(),
 		])
 	end
 
@@ -303,14 +304,8 @@ defmodule MachineManager.CLI do
 			Core.inet_to_ip(row.ip),
 			row.ssh_port,
 			row.tags |> Enum.join(" "),
-			row.last_probe_time,
-			if row.boot_time != nil do
-				row.boot_time
-				|> erlang_date_to_datetime
-				|> DateTime.to_iso8601
-				|> String.split(".")
-				|> hd
-			end,
+			pretty_datetime(row.last_probe_time),
+			pretty_datetime(row.boot_time),
 			row.country,
 			row.ram_mb,
 			row.core_count,
@@ -325,6 +320,16 @@ defmodule MachineManager.CLI do
 				_                           -> inspect(value)
 			end
 		end)
+	end
+
+	def pretty_datetime(erlang_date) do
+		if erlang_date != nil do
+			erlang_date
+			|> erlang_date_to_datetime
+			|> DateTime.to_iso8601
+			|> String.split(".")
+			|> hd
+		end
 	end
 
 	# https://github.com/elixir-ecto/ecto/issues/1920
