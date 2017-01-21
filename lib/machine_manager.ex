@@ -18,8 +18,10 @@ defmodule MachineManager.Core do
 	end
 
 	def list() do
-		cols = [:hostname, :ip, :ssh_port, :tags, :last_probe_time, :boot_time,
-		        :country, :ram_mb, :core_count, :pending_upgrades]
+		cols = [
+			:hostname, :ip, :ssh_port, :tags, :last_probe_time, :boot_time, :country,
+			:ram_mb, :core_count, :thread_count, :kernel, :pending_upgrades
+		]
 		all_machines()
 		|> order_by(asc: :hostname)
 		|> select(^cols)
@@ -276,7 +278,7 @@ defmodule MachineManager.CLI do
 
 	def list() do
 		rows   = Core.list()
-		header = ["HOSTNAME", "IP", "SSH", "TAGS", "LAST PROBED", "BOOT TIME", "国", "RAM", "CORES", "PENDING UPGRADES"]
+		header = ["HOSTNAME", "IP", "SSH", "TAGS", "国", "RAM", "核", "糸", "PROBE TIME", "BOOT TIME", "KERNEL", "PENDING UPGRADES"]
 					|> Enum.map(&maybe_bolded/1)
 		table  = [header | Enum.map(rows, &sql_row_to_table_row/1)]
 		out    = TableFormatter.format(table, padding: 2, width_fn: fn s ->
@@ -301,14 +303,18 @@ defmodule MachineManager.CLI do
 	def sql_row_to_table_row(row) do
 		[
 			row.hostname,
-			Core.inet_to_ip(row.ip),
+			Core.inet_to_ip(maybe_scramble_ip(row.ip)),
 			row.ssh_port,
 			row.tags |> Enum.join(" "),
-			pretty_datetime(row.last_probe_time),
-			pretty_datetime(row.boot_time),
 			row.country,
 			row.ram_mb,
 			row.core_count,
+			row.thread_count,
+			pretty_datetime(row.last_probe_time),
+			pretty_datetime(row.boot_time),
+			if row.kernel != nil do
+				row.kernel |> String.replace_prefix("Linux ", "🐧  ")
+			end,
 			if row.pending_upgrades != nil do
 				row.pending_upgrades |> Enum.join(" ")
 			end,
@@ -320,6 +326,25 @@ defmodule MachineManager.CLI do
 				_                           -> inspect(value)
 			end
 		end)
+	end
+
+	defp maybe_scramble_ip(inet) do
+		# For demos
+		case System.get_env("MACHINE_MANAGER_SCRAMBLE_IP") == "1" do
+			true  -> scramble_ip(inet)
+			false -> inet
+		end
+	end
+
+	@random :rand.uniform(253)
+	defp scramble_ip(%Postgrex.INET{address: {a, b, c, d}}) do
+		use Bitwise
+		address = cond do
+			{a, b} == {192, 168} -> {a, b, c, d ^^^ @random}
+			{a}    == {127}      -> {a, b, c, d}
+			true                 -> {a, b, c ^^^ @random, d ^^^ @random}
+		end
+		%Postgrex.INET{address: address}
 	end
 
 	def pretty_datetime(erlang_date) do
