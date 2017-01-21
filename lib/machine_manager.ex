@@ -313,7 +313,14 @@ defmodule MachineManager.CLI do
 			if row.pending_upgrades != nil do
 				row.pending_upgrades |> Enum.join(" ")
 			end,
-		] |> Enum.map(&maybe_inspect/1)
+		]
+		|> Enum.map(fn value ->
+			case value do
+				value when is_binary(value) -> value
+				nil                         -> "?"
+				_                           -> inspect(value)
+			end
+		end)
 	end
 
 	# https://github.com/elixir-ecto/ecto/issues/1920
@@ -324,7 +331,4 @@ defmodule MachineManager.CLI do
 			utc_offset: 0, std_offset: 0
 		}
 	end
-
-	defp maybe_inspect(value) when is_binary(value), do: value
-	defp maybe_inspect(value),                       do: inspect(value)
 end
