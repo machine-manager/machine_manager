@@ -21,6 +21,7 @@ defmodule MachineManager.Core do
 		cols = [:hostname, :ip, :ssh_port, :tags, :last_probe_time, :boot_time,
 		        :country, :ram_mb, :core_count, :pending_upgrades]
 		all_machines()
+		|> order_by(asc: :hostname)
 		|> select(^cols)
 		|> Repo.all
 	end
@@ -28,6 +29,7 @@ defmodule MachineManager.Core do
 	def ssh_config() do
 		rows =
 			all_machines()
+			|> order_by(asc: :hostname)
 			|> select([:hostname, :ip, :ssh_port])
 			|> Repo.all
 		for row <- rows do
