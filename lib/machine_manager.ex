@@ -1,4 +1,4 @@
-alias Gears.TableFormatter
+alias Gears.{TableFormatter, StringUtil}
 
 defmodule MachineManager.TooManyRowsError do
 	defexception [:message]
@@ -278,7 +278,11 @@ defmodule MachineManager.CLI do
 		header = ["HOSTNAME", "IP", "SSH", "TAGS", "LAST PROBED", "BOOT TIME", "国", "RAM", "CORES", "PENDING UPGRADES"]
 					|> Enum.map(&maybe_bolded/1)
 		table  = [header | Enum.map(rows, &sql_row_to_table_row/1)]
-		out    = TableFormatter.format(table, padding: 2, width_fn: &(&1 |> strip_ansi |> half_width_length))
+		out    = TableFormatter.format(table, padding: 2, width_fn: fn s ->
+		           s
+		           |> StringUtil.strip_ansi
+		           |> StringUtil.half_width_length
+	            end)
 		:ok = IO.write(out)
 	end
 
@@ -289,27 +293,8 @@ defmodule MachineManager.CLI do
 		end
 	end
 
-	defp half_width_length(s) do
-		s
-		|> String.graphemes
-		|> Enum.map(fn grapheme ->
-			# Not a complete implementation, but good enough for our purposes; see
-			# https://github.com/Qqwy/elixir-unicode/issues/2#issuecomment-252511607
-			case grapheme =~ ~r/^\p{Han}$/u do
-				true  -> 2
-				false -> 1
-			end
-		end)
-		|> Enum.sum
-	end
-
 	defp bolded(s) do
 		"#{IO.ANSI.bright()}#{s}#{IO.ANSI.normal()}"
-	end
-
-	defp strip_ansi(s) do
-		# Based on https://github.com/chalk/ansi-regex/blob/dce3806b159260354de1a77c1db543a967f7218f/index.js
-		s |> String.replace(~r/[\x{001b}\x{009b}][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/, "")
 	end
 
 	def sql_row_to_table_row(row) do
