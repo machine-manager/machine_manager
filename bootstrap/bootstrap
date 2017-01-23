@@ -14,7 +14,12 @@ CUSTOM_PACKAGES_CLIENT_SPIPED_KEY_FILE=~/code/erlang/role_custom_packages_server
 CUSTOM_PACKAGES_PASSWORD=$(cat ~/code/erlang/role_custom_packages_server/files/etc/custom-packages-server/unencrypted_password)
 USER_AT_HOST="$1"
 
-ssh "$USER_AT_HOST" "mkdir -p ~/.machine_manager/bootstrap/ /etc/custom-packages-client/"
+# We install rsync because the machine may not have it yet.
+ssh "$USER_AT_HOST" "\
+apt-get update -q &&
+env DEBIAN_FRONTEND=noninteractive apt-get --quiet --assume-yes install rsync &&
+mkdir -p ~/.machine_manager/bootstrap/ /etc/custom-packages-client/
+"
 rsync "$CUSTOM_PACKAGES_CLIENT_SPIPED_KEY_FILE" "$USER_AT_HOST:/etc/custom-packages-client/spiped_key"
 rsync "$CUSTOM_PACKAGES_CLIENT_DEB_PATH"        "$USER_AT_HOST:.machine_manager/bootstrap/custom-packages-client.deb"
 rsync "$SELF/setup"                             "$USER_AT_HOST:.machine_manager/bootstrap/setup"
