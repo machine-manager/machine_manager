@@ -30,9 +30,6 @@ echo Starting service... && systemctl start custom-packages-client.service &&
 # Wait a bit for custom-packages-client to start
 sleep 2 &&
 
-# Make sure custom-packages-client is actually working
-(curl -s 'http://127.0.0.1:28000/' | fgrep -q '401 Authorization Required') &&
-
 # Add custom-packages to sources.list
 chattr -i /etc/apt/sources.list &&
 sed -i "1s,^,deb [lang=\"none\"] http://packages:${CUSTOM_PACKAGES_PASSWORD}@127.0.0.1:28000/ ./\n," /etc/apt/sources.list &&
