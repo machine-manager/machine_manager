@@ -14,6 +14,7 @@ systemctl mask custom-packages-client.service &&
 
 # Remove custom-packages apt source in case we are re-bootstrapping
 cat /etc/apt/sources.list | fgrep -v 'http://packages:' > /tmp/sources.list &&
+chattr -i /etc/apt/sources.list &&
 mv /tmp/sources.list /etc/apt/sources.list &&
 chmod a+r /etc/apt/sources.list &&
 
