@@ -4,8 +4,12 @@ defmodule MachineManager.TooManyRowsError do
 	defexception [:message]
 end
 
+defmodule MachineManager.ProbeError do
+	defexception [:message]
+end
+
 defmodule MachineManager.Core do
-	alias MachineManager.Repo
+	alias MachineManager.{Repo, TooManyRowsError, ProbeError}
 	import Ecto.Query
 
 	def transfer(_machine, _file) do
@@ -111,8 +115,11 @@ defmodule MachineManager.Core do
 		apt-get install -y --upgrade machine_probe > /dev/null 2>&1;
 		machine_probe
 		"""
-		{output, 0} = ssh(inet_to_ip(row.ip), row.ssh_port, command)
-		Poison.decode!(output, keys: :atoms!)
+		{output, exit_code} = ssh(inet_to_ip(row.ip), row.ssh_port, command)
+		case exit_code do
+			0     -> Poison.decode!(output, keys: :atoms!)
+			other -> raise ProbeError, message: "Probe of #{hostname} failed with exit code #{other}; output: #{inspect output}"
+		end
 	end
 
 	@doc """
@@ -182,7 +189,7 @@ defmodule MachineManager.Core do
 	defp one_row(rows) do
 		case rows do
 			[row] -> row
-			_     -> raise MachineManager.TooManyRowsError,
+			_     -> raise TooManyRowsError,
 			           message: "Expected just one row, got #{rows |> length} rows"
 		end
 	end
