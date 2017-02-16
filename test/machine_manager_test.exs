@@ -17,4 +17,10 @@ defmodule MachineManager.ScriptWriterTest do
 		assert ScriptWriter.roles_for_tags(["unrelated", "role:hello"])               == ["hello"]
 		assert ScriptWriter.roles_for_tags(["unrelated", "role:hello", "role:world"]) == ["hello", "world"]
 	end
+
+	test "module_for_role" do
+		assert ScriptWriter.module_for_role("hello")             == Hello
+		assert ScriptWriter.module_for_role("hello_world")       == HelloWorld
+		assert ScriptWriter.module_for_role("hello_world_again") == HelloWorldAgain
+	end
 end

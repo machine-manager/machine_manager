@@ -211,10 +211,25 @@ defmodule MachineManager.Core do
 end
 
 defmodule MachineManager.ScriptWriter do
+	@doc """
+	Extract a list of roles from a list of tags.
+	"""
 	def roles_for_tags(tags) do
 		tags
 		|> Enum.filter(fn tag -> tag |> String.starts_with?("role:") end)
 		|> Enum.map(fn tag -> tag |> String.replace_prefix("role:", "") end)
+	end
+
+	@doc """
+	For a given role, return the module that contains the `role()` function.
+	"""
+	def module_for_role(role) do
+		role
+		|> String.split("_")
+		|> Enum.map(&String.capitalize/1)
+		|> Enum.join
+		|> (fn s -> "Elixir.#{s}" end).()
+		|> String.to_atom
 	end
 end
 
