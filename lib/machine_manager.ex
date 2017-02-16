@@ -210,6 +210,14 @@ defmodule MachineManager.Core do
 	end
 end
 
+defmodule MachineManager.ScriptWriter do
+	def roles_for_tags(tags) do
+		tags
+		|> Enum.filter(fn tag -> tag |> String.starts_with?("role:") end)
+		|> Enum.map(fn tag -> tag |> String.replace_prefix("role:", "") end)
+	end
+end
+
 defmodule MachineManager.CLI do
 	alias MachineManager.Core
 
