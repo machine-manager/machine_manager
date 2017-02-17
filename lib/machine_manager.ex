@@ -216,7 +216,7 @@ defmodule MachineManager.ScriptWriter do
 	def script_for_roles(roles, output_filename) do
 		dependencies = [{:converge,    ">= 0.1.0"},
 		                {:base_system, ">= 0.1.0"}] ++ \
-		               (roles |> Enum.map(fn role -> {"role_#{role}", ">= 0.1.0"} end))
+		               (roles |> Enum.map(fn role -> {"role_#{role}" |> String.to_atom, ">= 0.1.0", app: false} end))
 		role_modules = roles |> Enum.map(&module_for_role/1)
 		temp_dir     = FileUtil.temp_dir("multi_role_script")
 		app_name     = "multi_role_script"
@@ -239,6 +239,11 @@ defmodule MachineManager.ScriptWriter do
 				end
 			end
 			""")
+		{_, 0} = System.cmd("mix", ["deps.get"],      cd: temp_dir)
+		{_, 0} = System.cmd("mix", ["compile"],       cd: temp_dir, env: [{"MIX_ENV", "prod"}])
+		{_, 0} = System.cmd("mix", ["escript.build"], cd: temp_dir, env: [{"MIX_ENV", "prod"}])
+		File.copy!(Path.join(temp_dir, app_name), output_filename)
+		nil
 	end
 
 	@doc """
