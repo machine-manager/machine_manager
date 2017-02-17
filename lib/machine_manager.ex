@@ -242,7 +242,7 @@ defmodule MachineManager.ScriptWriter do
 		{_, 0} = System.cmd("mix", ["deps.get"],      cd: temp_dir)
 		{_, 0} = System.cmd("mix", ["compile"],       cd: temp_dir, env: [{"MIX_ENV", "prod"}])
 		{_, 0} = System.cmd("mix", ["escript.build"], cd: temp_dir, env: [{"MIX_ENV", "prod"}])
-		File.copy!(Path.join(temp_dir, app_name), output_filename)
+		File.cp!(Path.join(temp_dir, app_name), output_filename)
 		nil
 	end
 
