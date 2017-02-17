@@ -1,4 +1,4 @@
-alias Gears.{TableFormatter, StringUtil}
+alias Gears.{TableFormatter, StringUtil, FileUtil}
 
 defmodule MachineManager.TooManyRowsError do
 	defexception [:message]
@@ -211,6 +211,36 @@ defmodule MachineManager.Core do
 end
 
 defmodule MachineManager.ScriptWriter do
+	# We want to make a script for each combination of roles, not tags,
+	# to avoid compiling a script for each tag combination.
+	def script_for_roles(roles, output_filename) do
+		dependencies       = [{:converge,    ">= 0.1.0"},
+		                      {:base_system, ">= 0.1.0"}] ++ \
+		                     (roles |> Enum.map(fn role -> {"role_#{role}", ">= 0.1.0"} end))
+		role_modules       = roles |> Enum.map(&module_for_role/1)
+		temp_dir           = FileUtil.temp_dir("multi_role_script")
+		app_name           = "multi_role_script"
+		module             = MultiRoleScript
+		lib                = Path.join([temp_dir, "lib", "#{app_name}.ex"])
+		Mixmaker.create_project(temp_dir, app_name, module,
+		                        dependencies, [main_module: module])
+		File.write!(lib,
+			"""
+			defmodule #{inspect module} do
+				def main(tags) do
+					role_modules       = #{inspect role_modules}
+					descriptors        = role_modules |> Enum.map(fn mod -> apply(mod, :role, [tags]) end)
+					desired_packages   = descriptors  |> Enum.flat_map(fn desc -> desc.desired_packages end)
+					post_install_units = descriptors  |> Enum.flat_map(fn desc -> desc.post_install_unit end)
+					BaseSystem.Configure.configure(
+						extra_desired_packages: desired_packages,
+						post_install_units:     post_install_units,
+					)
+				end
+			end
+			""")
+	end
+
 	@doc """
 	Extract a list of roles from a list of tags.
 	"""
