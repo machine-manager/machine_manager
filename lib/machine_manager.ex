@@ -214,14 +214,14 @@ defmodule MachineManager.ScriptWriter do
 	# We want to make a script for each combination of roles, not tags,
 	# to avoid compiling a script for each tag combination.
 	def script_for_roles(roles, output_filename) do
-		dependencies       = [{:converge,    ">= 0.1.0"},
-		                      {:base_system, ">= 0.1.0"}] ++ \
-		                     (roles |> Enum.map(fn role -> {"role_#{role}", ">= 0.1.0"} end))
-		role_modules       = roles |> Enum.map(&module_for_role/1)
-		temp_dir           = FileUtil.temp_dir("multi_role_script")
-		app_name           = "multi_role_script"
-		module             = MultiRoleScript
-		lib                = Path.join([temp_dir, "lib", "#{app_name}.ex"])
+		dependencies = [{:converge,    ">= 0.1.0"},
+		                {:base_system, ">= 0.1.0"}] ++ \
+		               (roles |> Enum.map(fn role -> {"role_#{role}", ">= 0.1.0"} end))
+		role_modules = roles |> Enum.map(&module_for_role/1)
+		temp_dir     = FileUtil.temp_dir("multi_role_script")
+		app_name     = "multi_role_script"
+		module       = MultiRoleScript
+		lib          = Path.join([temp_dir, "lib", "#{app_name}.ex"])
 		Mixmaker.create_project(temp_dir, app_name, module,
 		                        dependencies, [main_module: module])
 		File.write!(lib,
