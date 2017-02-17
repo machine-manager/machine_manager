@@ -110,7 +110,11 @@ defmodule MachineManager.Core do
 			|> one_row
 		# machine_probe expects that we already ran an `apt-get update` when
 		# it determines which packages can be upgraded.
+		#
+		# wait-for-dpkg-lock is included in the machine_probe package, but if
+		# it's not installed, we continue anyway.
 		command = """
+		wait-for-dpkg-lock || true;
 		apt-get update > /dev/null 2>&1;
 		apt-get install -y --upgrade machine_probe > /dev/null 2>&1;
 		machine_probe
