@@ -234,11 +234,19 @@ defmodule MachineManager.ScriptWriter do
 				def main(tags) do
 					role_modules       = #{inspect role_modules}
 					descriptors        = role_modules |> Enum.map(fn mod -> apply(mod, :role, [tags]) end)
-					desired_packages   = descriptors  |> Enum.flat_map(fn desc -> desc.desired_packages  || [] end)
-					post_install_units = descriptors  |> Enum.flat_map(fn desc -> desc.post_install_unit || [] end)
+					desired_packages   = descriptors  |> Enum.flat_map(fn desc -> desc.desired_packages   || [] end)
+					undesired_packages = descriptors  |> Enum.flat_map(fn desc -> desc.undesired_packages || [] end)
+					apt_keys           = descriptors  |> Enum.flat_map(fn desc -> desc.apt_keys           || [] end)
+					apt_sources        = descriptors  |> Enum.flat_map(fn desc -> desc.apt_sources        || [] end)
+					pre_install_units  = descriptors  |> Enum.map(fn desc -> desc.pre_install_unit end)  |> Enum.reject(&is_nil/1)
+					post_install_units = descriptors  |> Enum.map(fn desc -> desc.post_install_unit end) |> Enum.reject(&is_nil/1)
 					BaseSystem.Configure.configure(
-						extra_desired_packages: desired_packages,
-						post_install_units:     post_install_units,
+						extra_desired_packages:   desired_packages,
+						extra_undesired_packages: undesired_packages,
+						extra_apt_keys:           apt_keys,
+						extra_apt_sources:        apt_sources,
+						extra_pre_install_units:  pre_install_units,
+						extra_post_install_units: post_install_units,
 					)
 				end
 			end
