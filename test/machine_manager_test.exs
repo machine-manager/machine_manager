@@ -19,8 +19,8 @@ defmodule MachineManager.ScriptWriterTest do
 	end
 
 	test "module_for_role" do
-		assert ScriptWriter.module_for_role("hello")             == Hello
-		assert ScriptWriter.module_for_role("hello_world")       == HelloWorld
-		assert ScriptWriter.module_for_role("hello_world_again") == HelloWorldAgain
+		assert ScriptWriter.module_for_role("hello")             == RoleHello
+		assert ScriptWriter.module_for_role("hello_world")       == RoleHelloWorld
+		assert ScriptWriter.module_for_role("hello_world_again") == RoleHelloWorldAgain
 	end
 end

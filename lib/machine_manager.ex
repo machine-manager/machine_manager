@@ -181,6 +181,14 @@ defmodule MachineManager.Core do
 		end)
 	end
 
+	def get_tags_for_machine(hostname) do
+		rows =
+			machine(hostname)
+			|> select([m], m.tags)
+			|> Repo.all
+		one_row(rows) |> MapSet.new
+	end
+
 	defp all_machines() do
 		from("machines")
 	end
@@ -216,11 +224,11 @@ end
 defmodule MachineManager.ScriptWriter do
 	# We want to make a script for each combination of roles, not tags,
 	# to avoid compiling a script for each tag combination.
-	@spec script_for_roles([String.t], String.t) :: nil
-	def script_for_roles(roles, output_filename) do
+	@spec write_script_for_roles([String.t], String.t) :: nil
+	def write_script_for_roles(roles, output_filename) do
 		dependencies = [{:converge,    ">= 0.1.0"},
 		                {:base_system, ">= 0.1.0"}] ++ \
-		               (roles |> Enum.map(fn role -> {"role_#{role}" |> String.to_atom, ">= 0.1.0", app: false} end))
+		               (roles |> Enum.map(fn role -> {"role_#{role}" |> String.to_atom, ">= 0.1.0"} end))
 		role_modules = roles |> Enum.map(&module_for_role/1)
 		temp_dir     = FileUtil.temp_dir("multi_role_script")
 		app_name     = "multi_role_script"
@@ -230,30 +238,33 @@ defmodule MachineManager.ScriptWriter do
 		                        dependencies, [main_module: module])
 		File.write!(lib,
 			"""
-			defmodule BadRoleDescriptorError do
-				defstruct message: nil
+			defmodule MultiRoleScript.BadRoleDescriptorError do
+				defexception [:message]
 			end
 
 			defmodule #{inspect module} do
+				alias MultiRoleScript.BadRoleDescriptorError
+
 				def main(tags) do
-					role_modules       = #{inspect role_modules}
-					descriptors        = role_modules |> Enum.map(fn mod -> apply(mod, :role, [tags]) end)
+					role_modules = get_all_role_modules(tags, #{inspect role_modules} |> MapSet.new)
+					descriptors  = role_modules |> Enum.map(fn mod -> apply(mod, :role, [tags]) end)
+
 					# Sanity check
 					for desc <- descriptors do
-						if desc.pre_install_units != nil do
+						if desc[:pre_install_units] != nil do
 							raise BadRoleDescriptorError, message: "Descriptor \#{inspect desc} should have key pre_install_unit, not pre_install_units"
 						end
-						if desc.post_install_units != nil do
+						if desc[:post_install_units] != nil do
 							raise BadRoleDescriptorError, message: "Descriptor \#{inspect desc} should have key post_install_unit, not post_install_units"
 						end
 					end
-					desired_packages   = descriptors  |> Enum.flat_map(fn desc -> desc.desired_packages   || [] end)
-					undesired_packages = descriptors  |> Enum.flat_map(fn desc -> desc.undesired_packages || [] end)
-					apt_keys           = descriptors  |> Enum.flat_map(fn desc -> desc.apt_keys           || [] end)
-					apt_sources        = descriptors  |> Enum.flat_map(fn desc -> desc.apt_sources        || [] end)
-					sysctl_parameters  = descriptors  |> Enum.map(fn desc -> desc.sysctl_parameters || %{} end) |> Enum.reduce(%{}, fn(m, acc) -> Map.merge(acc, m) end)
-					pre_install_units  = descriptors  |> Enum.map(fn desc -> desc.pre_install_unit end)         |> Enum.reject(&is_nil/1)
-					post_install_units = descriptors  |> Enum.map(fn desc -> desc.post_install_unit end)        |> Enum.reject(&is_nil/1)
+					desired_packages   = descriptors |> Enum.flat_map(fn desc -> desc[:desired_packages]   || [] end)
+					undesired_packages = descriptors |> Enum.flat_map(fn desc -> desc[:undesired_packages] || [] end)
+					apt_keys           = descriptors |> Enum.flat_map(fn desc -> desc[:apt_keys]           || [] end)
+					apt_sources        = descriptors |> Enum.flat_map(fn desc -> desc[:apt_sources]        || [] end)
+					sysctl_parameters  = descriptors |> Enum.map(fn desc -> desc[:sysctl_parameters] || %{} end) |> Enum.reduce(%{}, fn(m, acc) -> Map.merge(acc, m) end)
+					pre_install_units  = descriptors |> Enum.map(fn desc -> desc[:pre_install_unit] end)         |> Enum.reject(&is_nil/1)
+					post_install_units = descriptors |> Enum.map(fn desc -> desc[:post_install_unit] end)        |> Enum.reject(&is_nil/1)
 					BaseSystem.Configure.configure(
 						tags,
 						extra_desired_packages:   desired_packages,
@@ -264,6 +275,17 @@ defmodule MachineManager.ScriptWriter do
 						extra_post_install_units: post_install_units,
 						extra_sysctl_parameters:  sysctl_parameters,
 					)
+				end
+
+				defp get_all_role_modules(tags, role_modules) do
+					descriptors  = role_modules |> Enum.map(fn mod -> apply(mod, :role, [tags]) end)
+					more_modules = descriptors |> Enum.flat_map(fn desc -> desc[:implied_roles] || [] end) |> MapSet.new
+					# If we already know about every module we just discovered, we're done;
+					# otherwise, recurse with our new list of modules.
+					case MapSet.difference(more_modules, role_modules) |> MapSet.size do
+						0 -> role_modules
+						_ -> get_all_role_modules(tags, MapSet.union(role_modules, more_modules))
+					end
 				end
 			end
 			""")
@@ -293,13 +315,13 @@ defmodule MachineManager.ScriptWriter do
 		|> String.split("_")
 		|> Enum.map(&String.capitalize/1)
 		|> Enum.join
-		|> (fn s -> "Elixir.#{s}" end).()
+		|> (fn s -> "Elixir.Role#{s}" end).()
 		|> String.to_atom
 	end
 end
 
 defmodule MachineManager.CLI do
-	alias MachineManager.Core
+	alias MachineManager.{Core, ScriptWriter}
 
 	def main(argv) do
 		spec = Optimus.new!(
@@ -316,6 +338,14 @@ defmodule MachineManager.CLI do
 				ssh_config: [
 					name:  "ssh_config",
 					about: "Output an SSH config with all machines to stdout",
+				],
+				script: [
+					name:  "script",
+					about: "Write a configuration script suitable for a particular machine.  Note that tags must be passed in to the script as arguments.",
+					args: [
+						hostname:    [required: true],
+						output_file: [required: true],
+					],
 				],
 				probe: [
 					name:  "probe",
@@ -362,6 +392,7 @@ defmodule MachineManager.CLI do
 		{[subcommand], %{args: args, options: options}} = Optimus.parse!(spec, argv)
 		case subcommand do
 			:ls         -> list()
+			:script     -> write_script_for_machine(args.hostname, args.output_file)
 			:ssh_config -> Core.ssh_config()
 			:probe      -> Core.probe(args.hostnames |> String.split(","))
 			:add        -> Core.add(options.hostname, options.ip, options.ssh_port, options.tag)
@@ -459,5 +490,11 @@ defmodule MachineManager.CLI do
 			second: sec, microsecond: {usec, 6}, zone_abbr: "UTC", time_zone: "Etc/UTC",
 			utc_offset: 0, std_offset: 0
 		}
+	end
+
+	def write_script_for_machine(hostname, output_file) do
+		tags  = Core.get_tags_for_machine(hostname)
+		roles = ScriptWriter.roles_for_tags(tags)
+		ScriptWriter.write_script_for_roles(roles, output_file)
 	end
 end
