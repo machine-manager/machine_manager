@@ -239,8 +239,9 @@ defmodule MachineManager.ScriptWriter do
 					undesired_packages = descriptors  |> Enum.flat_map(fn desc -> desc.undesired_packages || [] end)
 					apt_keys           = descriptors  |> Enum.flat_map(fn desc -> desc.apt_keys           || [] end)
 					apt_sources        = descriptors  |> Enum.flat_map(fn desc -> desc.apt_sources        || [] end)
-					pre_install_units  = descriptors  |> Enum.map(fn desc -> desc.pre_install_unit end)  |> Enum.reject(&is_nil/1)
-					post_install_units = descriptors  |> Enum.map(fn desc -> desc.post_install_unit end) |> Enum.reject(&is_nil/1)
+					sysctl_parameters  = descriptors  |> Enum.map(fn desc -> desc.sysctl_parameters || %{} end) |> Enum.reduce(%{}, fn(m, acc) -> Map.merge(acc, m) end)
+					pre_install_units  = descriptors  |> Enum.map(fn desc -> desc.pre_install_unit end)         |> Enum.reject(&is_nil/1)
+					post_install_units = descriptors  |> Enum.map(fn desc -> desc.post_install_unit end)        |> Enum.reject(&is_nil/1)
 					BaseSystem.Configure.configure(
 						extra_desired_packages:   desired_packages,
 						extra_undesired_packages: undesired_packages,
@@ -248,6 +249,7 @@ defmodule MachineManager.ScriptWriter do
 						extra_apt_sources:        apt_sources,
 						extra_pre_install_units:  pre_install_units,
 						extra_post_install_units: post_install_units,
+						extra_sysctl_parameters:  sysctl_parameters,
 					)
 				end
 			end
