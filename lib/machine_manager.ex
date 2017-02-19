@@ -193,8 +193,7 @@ defmodule MachineManager.Core do
 	defp one_row(rows) do
 		case rows do
 			[row] -> row
-			_     -> raise TooManyRowsError,
-			           message: "Expected just one row, got #{rows |> length} rows"
+			_     -> raise TooManyRowsError, message: "Expected just one row, got #{rows |> length} rows"
 		end
 	end
 
