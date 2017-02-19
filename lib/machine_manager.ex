@@ -231,10 +231,23 @@ defmodule MachineManager.ScriptWriter do
 		                        dependencies, [main_module: module])
 		File.write!(lib,
 			"""
+			defmodule BadRoleDescriptorError do
+				defstruct message: nil
+			end
+
 			defmodule #{inspect module} do
 				def main(tags) do
 					role_modules       = #{inspect role_modules}
 					descriptors        = role_modules |> Enum.map(fn mod -> apply(mod, :role, [tags]) end)
+					# Sanity check
+					for desc <- descriptors do
+						if desc.pre_install_units != nil do
+							raise BadRoleDescriptorError, message: "Descriptor \#{inspect desc} should have key pre_install_unit, not pre_install_units"
+						end
+						if desc.post_install_units != nil do
+							raise BadRoleDescriptorError, message: "Descriptor \#{inspect desc} should have key post_install_unit, not post_install_units"
+						end
+					end
 					desired_packages   = descriptors  |> Enum.flat_map(fn desc -> desc.desired_packages   || [] end)
 					undesired_packages = descriptors  |> Enum.flat_map(fn desc -> desc.undesired_packages || [] end)
 					apt_keys           = descriptors  |> Enum.flat_map(fn desc -> desc.apt_keys           || [] end)
@@ -243,6 +256,7 @@ defmodule MachineManager.ScriptWriter do
 					pre_install_units  = descriptors  |> Enum.map(fn desc -> desc.pre_install_unit end)         |> Enum.reject(&is_nil/1)
 					post_install_units = descriptors  |> Enum.map(fn desc -> desc.post_install_unit end)        |> Enum.reject(&is_nil/1)
 					BaseSystem.Configure.configure(
+						tags,
 						extra_desired_packages:   desired_packages,
 						extra_undesired_packages: undesired_packages,
 						extra_apt_keys:           apt_keys,
