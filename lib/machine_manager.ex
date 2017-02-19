@@ -217,6 +217,7 @@ end
 defmodule MachineManager.ScriptWriter do
 	# We want to make a script for each combination of roles, not tags,
 	# to avoid compiling a script for each tag combination.
+	@spec script_for_roles([String.t], String.t) :: nil
 	def script_for_roles(roles, output_filename) do
 		dependencies = [{:converge,    ">= 0.1.0"},
 		                {:base_system, ">= 0.1.0"}] ++ \
@@ -261,6 +262,7 @@ defmodule MachineManager.ScriptWriter do
 	@doc """
 	Extract a list of roles from a list of tags.
 	"""
+	@spec roles_for_tags([String.t]) :: [String.t]
 	def roles_for_tags(tags) do
 		tags
 		|> Enum.filter(fn tag -> tag |> String.starts_with?("role:") end)
@@ -270,6 +272,7 @@ defmodule MachineManager.ScriptWriter do
 	@doc """
 	For a given role, return the module that contains the `role()` function.
 	"""
+	@spec module_for_role(String.t) :: module
 	def module_for_role(role) do
 		role
 		|> String.split("_")
