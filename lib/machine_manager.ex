@@ -228,7 +228,7 @@ defmodule MachineManager.ScriptWriter do
 	def write_script_for_roles(roles, output_filename) do
 		dependencies = [{:converge,    ">= 0.1.0"},
 		                {:base_system, ">= 0.1.0"}] ++ \
-		               (roles |> Enum.map(fn role -> {"role_#{role}" |> String.to_atom, ">= 0.1.0"} end))
+		               (roles |> Enum.map(fn role -> {"role_#{role}" |> String.to_atom, ">= 0.0.0"} end))
 		role_modules = roles |> Enum.map(&module_for_role/1)
 		temp_dir     = FileUtil.temp_dir("multi_role_script")
 		app_name     = "multi_role_script"
