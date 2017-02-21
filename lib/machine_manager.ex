@@ -405,7 +405,7 @@ defmodule MachineManager.CLI do
 			row.thread_count,
 			pretty_datetime(row.last_probe_time),
 			pretty_datetime(row.boot_time),
-			(if row.kernel           != nil, do: row.kernel |> String.replace_prefix("Linux ", "🐧  ")),
+			(if row.kernel           != nil, do: row.kernel |> String.replace_prefix("Linux ", "🐧  ") |> colorize),
 			(if row.pending_upgrades != nil, do: row.pending_upgrades |> Enum.join(" ")),
 		]
 		|> Enum.map(fn value ->
