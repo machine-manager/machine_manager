@@ -14,7 +14,3 @@ config :machine_manager, ecto_repos: [MachineManager.Repo]
 config :logger,
 	level: :warn,
 	truncate: 4096
-
-# For bunt
-config :elixir,
-	ansi_enabled: true

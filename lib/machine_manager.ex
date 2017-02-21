@@ -421,19 +421,36 @@ defmodule MachineManager.CLI do
 		end)
 	end
 
+	@spec colorize_tag(String.t) :: String.t
 	defp colorize_tag(tag) do
-		black     = :color232
 		bg_colors = [
-			:color255_background, :color249_background, :color226_background, :color225_background,
-			:color213_background, :color207_background, :color196_background, :color154_background,
-			:color195_background, :color147_background, :color136_background, :color87_background,
-			:color75_background,  :color37_background,  :color41_background,  :color223_background,
-			:color214_background
+			{196, 218, 255},
+			{255, 196, 196},
+			{255, 201, 242},
+			{219, 201, 255},
+			{198, 208, 255},
+			{198, 235, 255},
+			{198, 255, 246},
+			{198, 255, 201},
+			{224, 255, 198},
+			{255, 255, 198},
+			{255, 228, 198},
+			{255, 255, 255},
+			{234, 234, 234},
+			{214, 214, 214},
+			{224, 193, 143},
 		]
 		hash      = :erlang.crc32(tag)
 		idx       = rem(hash, bg_colors |> length)
 		bg_color  = Enum.fetch!(bg_colors, idx)
-		Bunt.format([black, bg_color, tag])
+		with_bgcolor(tag, bg_color)
+	end
+
+	# Requires a terminal with true color support: https://gist.github.com/XVilka/8346728
+	@spec with_bgcolor(String.t, {integer, integer, integer}) :: String.t
+	defp with_bgcolor(text, {red, green, blue}) do
+		bg = 48 # note: fg = 38
+		"\e[#{bg};2;#{red};#{green};#{blue}m#{text}\e[0m"
 	end
 
 	defp maybe_scramble_ip(inet) do

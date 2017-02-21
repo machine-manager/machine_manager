@@ -28,7 +28,6 @@ defmodule MachineManager.Mixfile do
 			{:postgrex, ">= 0.13.0"},
 			{:optimus,  ">= 0.1.0"},
 			{:poison,   ">= 3.1.0"},
-			{:bunt,     ">= 0.2.0"},
 		]
 	end
 end
