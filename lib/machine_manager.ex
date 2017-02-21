@@ -398,19 +398,15 @@ defmodule MachineManager.CLI do
 			row.hostname,
 			Core.inet_to_ip(maybe_scramble_ip(row.ip)),
 			row.ssh_port,
-			row.tags |> Enum.sort_by(fn tag -> -tag_frequency[tag] end) |> Enum.map(&colorize_tag/1) |> Enum.join(" "),
-			row.country,
+			row.tags |> Enum.sort_by(fn tag -> -tag_frequency[tag] end) |> Enum.map(&colorize/1) |> Enum.join(" "),
+			(if row.country != nil, do: row.country |> colorize),
 			row.ram_mb,
 			row.core_count,
 			row.thread_count,
 			pretty_datetime(row.last_probe_time),
 			pretty_datetime(row.boot_time),
-			if row.kernel != nil do
-				row.kernel |> String.replace_prefix("Linux ", "🐧  ")
-			end,
-			if row.pending_upgrades != nil do
-				row.pending_upgrades |> Enum.join(" ")
-			end,
+			(if row.kernel           != nil, do: row.kernel |> String.replace_prefix("Linux ", "🐧  ")),
+			(if row.pending_upgrades != nil, do: row.pending_upgrades |> Enum.join(" ")),
 		]
 		|> Enum.map(fn value ->
 			case value do
@@ -421,8 +417,10 @@ defmodule MachineManager.CLI do
 		end)
 	end
 
-	@spec colorize_tag(String.t) :: String.t
-	defp colorize_tag(tag) do
+	# Colorize the background color of a string in a manner that results in the
+	# same background color for identical strings.
+	@spec colorize(String.t) :: String.t
+	defp colorize(string) do
 		bg_colors = [
 			{196, 218, 255},
 			{255, 196, 196},
@@ -440,10 +438,10 @@ defmodule MachineManager.CLI do
 			{214, 214, 214},
 			{224, 193, 143},
 		]
-		hash      = :erlang.crc32(tag)
+		hash      = :erlang.crc32(string)
 		idx       = rem(hash, bg_colors |> length)
 		bg_color  = Enum.fetch!(bg_colors, idx)
-		with_bgcolor(tag, bg_color)
+		with_bgcolor(string, bg_color)
 	end
 
 	# Requires a terminal with true color support: https://gist.github.com/XVilka/8346728
