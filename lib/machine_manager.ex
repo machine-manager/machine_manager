@@ -238,54 +238,9 @@ defmodule MachineManager.ScriptWriter do
 		                        dependencies, [main_module: module])
 		File.write!(lib,
 			"""
-			defmodule MultiRoleScript.BadRoleDescriptorError do
-				defexception [:message]
-			end
-
 			defmodule #{inspect module} do
-				alias MultiRoleScript.BadRoleDescriptorError
-
 				def main(tags) do
-					role_modules = get_all_role_modules(tags, #{inspect role_modules} |> MapSet.new)
-					descriptors  = role_modules |> Enum.map(fn mod -> apply(mod, :role, [tags]) end)
-
-					# Sanity check
-					for desc <- descriptors do
-						if desc[:pre_install_units] != nil do
-							raise BadRoleDescriptorError, message: "Descriptor \#{inspect desc} should have key pre_install_unit, not pre_install_units"
-						end
-						if desc[:post_install_units] != nil do
-							raise BadRoleDescriptorError, message: "Descriptor \#{inspect desc} should have key post_install_unit, not post_install_units"
-						end
-					end
-					desired_packages   = descriptors |> Enum.flat_map(fn desc -> desc[:desired_packages]   || [] end)
-					undesired_packages = descriptors |> Enum.flat_map(fn desc -> desc[:undesired_packages] || [] end)
-					apt_keys           = descriptors |> Enum.flat_map(fn desc -> desc[:apt_keys]           || [] end)
-					apt_sources        = descriptors |> Enum.flat_map(fn desc -> desc[:apt_sources]        || [] end)
-					sysctl_parameters  = descriptors |> Enum.map(fn desc -> desc[:sysctl_parameters] || %{} end) |> Enum.reduce(%{}, fn(m, acc) -> Map.merge(acc, m) end)
-					pre_install_units  = descriptors |> Enum.map(fn desc -> desc[:pre_install_unit] end)         |> Enum.reject(&is_nil/1)
-					post_install_units = descriptors |> Enum.map(fn desc -> desc[:post_install_unit] end)        |> Enum.reject(&is_nil/1)
-					BaseSystem.Configure.configure(
-						tags,
-						extra_desired_packages:   desired_packages,
-						extra_undesired_packages: undesired_packages,
-						extra_apt_keys:           apt_keys,
-						extra_apt_sources:        apt_sources,
-						extra_pre_install_units:  pre_install_units,
-						extra_post_install_units: post_install_units,
-						extra_sysctl_parameters:  sysctl_parameters,
-					)
-				end
-
-				defp get_all_role_modules(tags, role_modules) do
-					descriptors  = role_modules |> Enum.map(fn mod -> apply(mod, :role, [tags]) end)
-					more_modules = descriptors |> Enum.flat_map(fn desc -> desc[:implied_roles] || [] end) |> MapSet.new
-					# If we already know about every module we just discovered, we're done;
-					# otherwise, recurse with our new list of modules.
-					case MapSet.difference(more_modules, role_modules) |> MapSet.size do
-						0 -> role_modules
-						_ -> get_all_role_modules(tags, MapSet.union(role_modules, more_modules))
-					end
+					BaseSystem.Configure.configure_with_roles(tags, #{inspect role_modules})
 				end
 			end
 			""")
