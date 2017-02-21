@@ -422,16 +422,18 @@ defmodule MachineManager.CLI do
 	end
 
 	defp colorize_tag(tag) do
-		# Colors that look OK on a light yellow background
-		colors = [
-			:darkblue, :mediumblue, :darkgreen, :darkslategray, :darkcyan, :deepskyblue,
-			:dimgray, :steelblue, :darkred, :darkmagenta, :chocolate, :fuchsia,
-			:orangered, :darkorange
+		black     = :color232
+		bg_colors = [
+			:color255_background, :color249_background, :color226_background, :color225_background,
+			:color213_background, :color207_background, :color196_background, :color154_background,
+			:color195_background, :color147_background, :color136_background, :color87_background,
+			:color75_background,  :color37_background,  :color41_background,  :color223_background,
+			:color214_background
 		]
-		hash     = :erlang.crc32(tag)
-		idx      = rem(hash, colors |> length)
-		color    = Enum.fetch!(colors, idx)
-		Bunt.format([color, tag])
+		hash      = :erlang.crc32(tag)
+		idx       = rem(hash, bg_colors |> length)
+		bg_color  = Enum.fetch!(bg_colors, idx)
+		Bunt.format([black, bg_color, tag])
 	end
 
 	defp maybe_scramble_ip(inet) do
