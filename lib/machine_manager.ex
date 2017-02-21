@@ -386,7 +386,7 @@ defmodule MachineManager.CLI do
 			row.hostname,
 			Core.inet_to_ip(maybe_scramble_ip(row.ip)),
 			row.ssh_port,
-			row.tags |> Enum.join(" "),
+			row.tags |> Enum.map(&colorize_tag/1) |> Enum.join(" "),
 			row.country,
 			row.ram_mb,
 			row.core_count,
@@ -407,6 +407,19 @@ defmodule MachineManager.CLI do
 				_                           -> inspect(value)
 			end
 		end)
+	end
+
+	defp colorize_tag(tag) do
+		# Colors that look OK on a light yellow background
+		colors = [
+			:darkblue, :mediumblue, :darkgreen, :darkslategray, :darkcyan, :deepskyblue,
+			:dimgray, :steelblue, :darkred, :darkmagenta, :chocolate, :fuchsia,
+			:orangered, :darkorange
+		]
+		hash     = :erlang.crc32(tag)
+		idx      = rem(hash, colors |> length)
+		color    = Enum.fetch!(colors, idx)
+		Bunt.format([color, tag])
 	end
 
 	defp maybe_scramble_ip(inet) do
