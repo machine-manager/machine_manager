@@ -358,16 +358,19 @@ defmodule MachineManager.CLI do
 	end
 
 	def list() do
-		rows   = Core.list()
-		header = ["HOSTNAME", "IP", "SSH", "TAGS", "国", "RAM", "核", "糸", "PROBE TIME", "BOOT TIME", "KERNEL", "PENDING UPGRADES"]
-					|> Enum.map(&maybe_bolded/1)
-		table  = [header | Enum.map(rows, &sql_row_to_table_row/1)]
-		out    = TableFormatter.format(table, padding: 2, width_fn: fn s ->
-		           s
-		           |> StringUtil.strip_ansi
-		           |> StringUtil.half_width_length
-	            end)
+		rows          = Core.list()
+		header        = ["HOSTNAME", "IP", "SSH", "TAGS", "国", "RAM", "核", "糸", "PROBE TIME", "BOOT TIME", "KERNEL", "PENDING UPGRADES"]
+                      |> Enum.map(&maybe_bolded/1)
+		tag_frequency = make_tag_frequency(rows)
+		table         = [header | Enum.map(rows, fn row -> sql_row_to_table_row(row, tag_frequency) end)]
+		out           = TableFormatter.format(table, padding: 2, width_fn: &width_fn/1)
 		:ok = IO.write(out)
+	end
+
+	defp width_fn(s) do
+		s
+		|> StringUtil.strip_ansi
+		|> StringUtil.half_width_length
 	end
 
 	defp maybe_bolded(s) do
@@ -381,12 +384,21 @@ defmodule MachineManager.CLI do
 		"#{IO.ANSI.bright()}#{s}#{IO.ANSI.normal()}"
 	end
 
-	def sql_row_to_table_row(row) do
+	defp make_tag_frequency(rows) do
+		tags =
+			rows
+			|> Enum.flat_map(fn row -> row.tags end)
+		Enum.reduce(tags, %{}, fn(tag, map) ->
+			Map.update(map, tag, 1, &(&1 + 1))
+		end)
+	end
+
+	def sql_row_to_table_row(row, tag_frequency) do
 		[
 			row.hostname,
 			Core.inet_to_ip(maybe_scramble_ip(row.ip)),
 			row.ssh_port,
-			row.tags |> Enum.map(&colorize_tag/1) |> Enum.join(" "),
+			row.tags |> Enum.sort_by(fn tag -> -tag_frequency[tag] end) |> Enum.map(&colorize_tag/1) |> Enum.join(" "),
 			row.country,
 			row.ram_mb,
 			row.core_count,
