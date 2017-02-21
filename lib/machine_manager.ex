@@ -431,7 +431,7 @@ defmodule MachineManager.CLI do
 			{198, 255, 246},
 			{198, 255, 201},
 			{224, 255, 198},
-			{255, 255, 198},
+			# [no light yellow because we use a light yellow terminal background]
 			{255, 228, 198},
 			{255, 255, 255},
 			{234, 234, 234},
