@@ -393,7 +393,7 @@ defmodule MachineManager.CLI do
 						# Compute our own hash to avoid including the bold ANSI codes
 						# in the computation.
 						hash = :erlang.crc32(tag)
-						tag |> bold_first_part |> colorize(hash)
+						tag |> bold_first_part_if_multiple_parts |> colorize(hash)
 					end)
 				|> Enum.join(" "),
 			(if row.country != nil, do: row.country |> colorize),
@@ -463,10 +463,10 @@ defmodule MachineManager.CLI do
 		"\e[#{bg};2;#{red};#{green};#{blue}m#{text}\e[0m"
 	end
 
-	defp bold_first_part(tag) do
+	defp bold_first_part_if_multiple_parts(tag) do
 		case tag |> String.split(":", parts: 2) do
 			[first, rest] -> "#{bolded(first)}:#{rest}"
-			[first]       -> bolded(first)
+			[first]       -> first
 		end
 	end
 
