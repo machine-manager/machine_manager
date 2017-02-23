@@ -373,17 +373,6 @@ defmodule MachineManager.CLI do
 		|> StringUtil.half_width_length
 	end
 
-	defp maybe_bolded(s) do
-		case s =~ ~r/^\p{Han}+$/u do
-			false -> bolded(s)
-			true  -> s
-		end
-	end
-
-	defp bolded(s) do
-		"#{IO.ANSI.bright()}#{s}#{IO.ANSI.normal()}"
-	end
-
 	defp make_tag_frequency(rows) do
 		tags =
 			rows
@@ -398,7 +387,15 @@ defmodule MachineManager.CLI do
 			row.hostname,
 			Core.inet_to_ip(maybe_scramble_ip(row.ip)),
 			row.ssh_port,
-			row.tags |> Enum.sort_by(fn tag -> -tag_frequency[tag] end) |> Enum.map(&colorize/1) |> Enum.join(" "),
+			row.tags
+				|> Enum.sort_by(fn tag -> -tag_frequency[tag] end)
+				|> Enum.map(fn tag ->
+						# Compute our own hash to avoid including the bold ANSI codes
+						# in the computation.
+						hash = :erlang.crc32(tag)
+						tag |> bold_first_part |> colorize(hash)
+					end)
+				|> Enum.join(" "),
 			(if row.country != nil, do: row.country |> colorize),
 			row.ram_mb,
 			row.core_count,
@@ -419,8 +416,8 @@ defmodule MachineManager.CLI do
 
 	# Colorize the background color of a string in a manner that results in the
 	# same background color for identical strings.
-	@spec colorize(String.t) :: String.t
-	defp colorize(string) do
+	@spec colorize(String.t, integer) :: String.t
+	defp colorize(string, hash \\ nil) do
 		bg_colors = [
 			{196, 218, 255},
 			{255, 196, 196},
@@ -438,7 +435,10 @@ defmodule MachineManager.CLI do
 			{214, 214, 214},
 			{224, 193, 143},
 		]
-		hash      = :erlang.crc32(string)
+		hash = case hash do
+			nil   -> :erlang.crc32(string)
+			other -> other
+		end
 		idx       = rem(hash, bg_colors |> length)
 		bg_color  = Enum.fetch!(bg_colors, idx)
 		with_bgcolor(string, bg_color)
@@ -449,6 +449,24 @@ defmodule MachineManager.CLI do
 	defp with_bgcolor(text, {red, green, blue}) do
 		bg = 48 # note: fg = 38
 		"\e[#{bg};2;#{red};#{green};#{blue}m#{text}\e[0m"
+	end
+
+	defp bold_first_part(tag) do
+		case tag |> String.split(":", parts: 2) do
+			[first, rest] -> "#{bolded(first)}:#{rest}"
+			[first]       -> bolded(first)
+		end
+	end
+
+	defp maybe_bolded(s) do
+		case s =~ ~r/^\p{Han}+$/u do
+			false -> bolded(s)
+			true  -> s
+		end
+	end
+
+	defp bolded(s) do
+		"#{IO.ANSI.bright()}#{s}#{IO.ANSI.normal()}"
 	end
 
 	defp maybe_scramble_ip(inet) do
