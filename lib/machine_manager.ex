@@ -400,8 +400,8 @@ defmodule MachineManager.CLI do
 			row.ram_mb,
 			row.core_count,
 			row.thread_count,
-			pretty_datetime(row.last_probe_time),
-			pretty_datetime(row.boot_time),
+			(if row.last_probe_time  != nil, do: pretty_datetime(row.last_probe_time) |> colorize_time),
+			(if row.boot_time        != nil, do: pretty_datetime(row.boot_time)       |> colorize_time),
 			(if row.kernel           != nil, do: row.kernel |> String.replace_prefix("Linux ", "🐧  ") |> colorize),
 			(if row.pending_upgrades != nil, do: row.pending_upgrades |> Enum.join(" ")),
 		]
@@ -412,6 +412,11 @@ defmodule MachineManager.CLI do
 				_                           -> inspect(value)
 			end
 		end)
+	end
+
+	defp colorize_time(iso_time) do
+		[date, time] = iso_time |> String.split("T", parts: 2)
+		"#{date}#{with_fgcolor("T", {160, 160, 160})}#{time}"
 	end
 
 	# Colorize the background color of a string in a manner that results in the
@@ -445,9 +450,16 @@ defmodule MachineManager.CLI do
 	end
 
 	# Requires a terminal with true color support: https://gist.github.com/XVilka/8346728
+	@spec with_fgcolor(String.t, {integer, integer, integer}) :: String.t
+	defp with_fgcolor(text, {red, green, blue}) do
+		fg = 38
+		"\e[#{fg};2;#{red};#{green};#{blue}m#{text}\e[0m"
+	end
+
+	# Requires a terminal with true color support: https://gist.github.com/XVilka/8346728
 	@spec with_bgcolor(String.t, {integer, integer, integer}) :: String.t
 	defp with_bgcolor(text, {red, green, blue}) do
-		bg = 48 # note: fg = 38
+		bg = 48
 		"\e[#{bg};2;#{red};#{green};#{blue}m#{text}\e[0m"
 	end
 
@@ -489,13 +501,11 @@ defmodule MachineManager.CLI do
 	end
 
 	def pretty_datetime(erlang_date) do
-		if erlang_date != nil do
-			erlang_date
-			|> erlang_date_to_datetime
-			|> DateTime.to_iso8601
-			|> String.split(".")
-			|> hd
-		end
+		erlang_date
+		|> erlang_date_to_datetime
+		|> DateTime.to_iso8601
+		|> String.split(".")
+		|> hd
 	end
 
 	# https://github.com/elixir-ecto/ecto/issues/1920
