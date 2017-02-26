@@ -312,8 +312,10 @@ defmodule MachineManager.CLI do
 				add: [
 					name:  "add",
 					about: "Add a machine",
+					args: [
+						hostname: [required: true],
+					],
 					options: [
-						hostname: [short: "-h", long: "--hostname", required: true],
 						ip:       [short: "-i", long: "--ip",       required: true],
 						ssh_port: [short: "-p", long: "--ssh-port", required: true,  parser: :integer],
 						tag:      [short: "-t", long: "--tag",      required: false, multiple: true],
@@ -350,7 +352,7 @@ defmodule MachineManager.CLI do
 			:script     -> write_script_for_machine(args.hostname, args.output_file)
 			:ssh_config -> Core.ssh_config()
 			:probe      -> Core.probe(args.hostnames |> String.split(","))
-			:add        -> Core.add(options.hostname, options.ip, options.ssh_port, options.tag)
+			:add        -> Core.add(args.hostname, options.ip, options.ssh_port, options.tag)
 			:rm         -> Core.rm(args.hostname)
 			:tag        -> Core.tag(args.hostname,   args.tags |> String.split(",") |> MapSet.new)
 			:untag      -> Core.untag(args.hostname, args.tags |> String.split(",") |> MapSet.new)
