@@ -108,9 +108,9 @@ defmodule MachineManager.Core do
 			|> one_row
 		roles        = ScriptWriter.roles_for_tags(row.tags)
 		script_cache = Path.expand("~/.cache/machine_manager/script_cache")
-		File.mkdir_p!(script_cache)
 		basename     = roles |> Enum.sort |> Enum.join(",")
 		output_file  = Path.join(script_cache, basename)
+		File.mkdir_p!(script_cache)
 		ScriptWriter.write_script_for_roles(roles, output_file)
 		transfer_file(output_file, "root", hostname, ".cache/machine_manager/script",
 		              before_rsync: "mkdir -p .cache/machine_manager")
