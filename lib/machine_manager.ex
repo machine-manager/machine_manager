@@ -209,15 +209,15 @@ defmodule MachineManager.Core do
 	end
 
 	@doc """
-	Runs `command` on machine at `ip` and `ssh_port` with user `user`, outputs
+	Runs `command` on machine at `ip` and `ssh_port` with user `user`; outputs
 	command's stdout and stderr to stdout in this terminal.  Returns `exit_code`.
 	"""
 	@spec ssh_no_capture(String.t, String.t, integer, String.t) :: integer
 	def ssh_no_capture(user, ip, ssh_port, command) do
 		%Porcelain.Result{status: exit_code} = \
 			Porcelain.exec("ssh", ["-q", "-p", "#{ssh_port}", "#{user}@#{ip}", command],
-								out: {:file, Process.group_leader},
-								err: {:file, Process.group_leader})
+			               out: {:file, Process.group_leader},
+			               err: {:file, Process.group_leader})
 		exit_code
 	end
 
