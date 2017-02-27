@@ -97,16 +97,21 @@ defmodule MachineManager.Core do
 	end
 
 	def configure(hostname) do
-		tags         = get_tags_for_machine(hostname)
+		row =
+			machine(hostname)
+			|> select([:ip, :ssh_port, :tags])
+			|> Repo.all
+			|> one_row
+		tags         = row.tags |> MapSet.new
 		roles        = ScriptWriter.roles_for_tags(tags)
-		script_cache = Path.expand("~/.cache/machine_manager/scripts")
+		script_cache = Path.expand("~/.cache/machine_manager/script_cache")
 		File.mkdir_p!(script_cache)
 		basename     = roles |> Enum.sort |> Enum.join(",")
 		output_file  = Path.join(script_cache, basename)
 		ScriptWriter.write_script_for_roles(roles, output_file)
 		transfer_file(output_file, "root", hostname, ".cache/machine_manager/script",
 		              before_rsync: "mkdir -p .cache/machine_manager")
-		# ssh in and run script
+		ssh_no_capture("root", inet_to_ip(row.ip), row.ssh_port, ".cache/machine_manager/script")
 	end
 
 	defp transfer_file(source, user, hostname, dest, opts) do
@@ -187,7 +192,7 @@ defmodule MachineManager.Core do
 		apt-get install -y --upgrade machine_probe > /dev/null 2>&1;
 		machine_probe
 		"""
-		{output, exit_code} = ssh(inet_to_ip(row.ip), row.ssh_port, command)
+		{output, exit_code} = ssh("root", inet_to_ip(row.ip), row.ssh_port, command)
 		case exit_code do
 			0     -> Poison.decode!(output, keys: :atoms!)
 			other -> raise ProbeError, message: "Probe of #{hostname} failed with exit code #{other}; output: #{inspect output}"
@@ -195,11 +200,22 @@ defmodule MachineManager.Core do
 	end
 
 	@doc """
-	Runs `command` on machine at `ip` and `ssh_port`, returns `{output, exit_code}`.
-	Output includes both stdout and stderr.
+	Runs `command` on machine at `ip` and `ssh_port` with user `user`, returns
+	`{output, exit_code}`.  Output includes both stdout and stderr.
 	"""
-	def ssh(ip, ssh_port, command) do
-		System.cmd("ssh", ["-q", "-p", "#{ssh_port}", "root@#{ip}", command])
+	def ssh(user, ip, ssh_port, command) do
+		System.cmd("ssh", ["-q", "-p", "#{ssh_port}", "#{user}@#{ip}", command])
+	end
+
+	@doc """
+	Runs `command` on machine at `ip` and `ssh_port` with user `user`, outputs
+	command's stdout and stderr to stdout in this terminal.
+	"""
+	def ssh_no_capture(user, ip, ssh_port, command) do
+		%Porcelain.Result{status: 0} = \
+			Porcelain.exec("ssh", ["-q", "-p", "#{ssh_port}", "#{user}@#{ip}", command],
+								out: {:file, Process.group_leader},
+								err: {:file, Process.group_leader})
 	end
 
 	def add(hostname, ip, ssh_port, tags) do
