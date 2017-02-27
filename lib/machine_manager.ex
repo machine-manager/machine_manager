@@ -104,10 +104,19 @@ defmodule MachineManager.Core do
 		basename     = roles |> Enum.sort |> Enum.join(",")
 		output_file  = Path.join(script_cache, basename)
 		ScriptWriter.write_script_for_roles(roles, output_file)
-
-		# rsync script to root@hostname:.cache/machine_manager/script
-		#   do not use -a option
+		transfer_file(output_file, "root", hostname, ".cache/machine_manager/script",
+		              before_rsync: "mkdir -p .cache/machine_manager")
 		# ssh in and run script
+	end
+
+	defp transfer_file(source, user, hostname, dest, opts) do
+		before_rsync = opts[:before_rsync]
+		args = case before_rsync do
+			nil -> []
+			_   -> ["--rsync-path", "#{before_rsync} && rsync"]
+		end ++ \
+		["--protect-args", "--executability", source, "#{user}@#{hostname}:#{dest}"]
+		{"", 0} = System.cmd("rsync", args)
 	end
 
 	def probe(hostnames) do
