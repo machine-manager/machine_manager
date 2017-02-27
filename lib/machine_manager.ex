@@ -62,8 +62,12 @@ defmodule MachineManager.ProbeError do
 	defexception [:message]
 end
 
+defmodule MachineManager.BadDataError do
+	defexception [:message]
+end
+
 defmodule MachineManager.Core do
-	alias MachineManager.{ScriptWriter, Repo, TooManyRowsError, ProbeError}
+	alias MachineManager.{ScriptWriter, Repo, TooManyRowsError, ProbeError, BadDataError}
 	import Ecto.Query
 
 	def list() do
@@ -102,8 +106,7 @@ defmodule MachineManager.Core do
 			|> select([:ip, :ssh_port, :tags])
 			|> Repo.all
 			|> one_row
-		tags         = row.tags |> MapSet.new
-		roles        = ScriptWriter.roles_for_tags(tags)
+		roles        = ScriptWriter.roles_for_tags(row.tags)
 		script_cache = Path.expand("~/.cache/machine_manager/script_cache")
 		File.mkdir_p!(script_cache)
 		basename     = roles |> Enum.sort |> Enum.join(",")
@@ -111,7 +114,16 @@ defmodule MachineManager.Core do
 		ScriptWriter.write_script_for_roles(roles, output_file)
 		transfer_file(output_file, "root", hostname, ".cache/machine_manager/script",
 		              before_rsync: "mkdir -p .cache/machine_manager")
-		0 = ssh_no_capture("root", inet_to_ip(row.ip), row.ssh_port, ".cache/machine_manager/script")
+		arguments    = [".cache/machine_manager/script"] ++ row.tags
+		for arg <- arguments do
+			if arg |> String.contains?(" ") do
+				raise BadDataError, message:
+					"""
+					Argument list #{inspect arguments} contains an argument with a space: #{inspect arg}
+					"""
+			end
+		end
+		0 = ssh_no_capture("root", inet_to_ip(row.ip), row.ssh_port, arguments |> Enum.join(" "))
 	end
 
 	defp transfer_file(source, user, hostname, dest, opts) do
@@ -279,7 +291,7 @@ defmodule MachineManager.Core do
 			machine(hostname)
 			|> select([m], m.tags)
 			|> Repo.all
-		one_row(rows) |> MapSet.new
+		one_row(rows)
 	end
 
 	defp all_machines() do
