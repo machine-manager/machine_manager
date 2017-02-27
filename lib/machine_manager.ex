@@ -1,5 +1,59 @@
 alias Gears.{TableFormatter, StringUtil, FileUtil}
 
+defmodule MachineManager.ScriptWriter do
+	# We want to make a script for each combination of roles, not tags,
+	# to avoid compiling a script for each tag combination.
+	@spec write_script_for_roles([String.t], String.t) :: nil
+	def write_script_for_roles(roles, output_filename) do
+		dependencies = [{:converge,    ">= 0.1.0"},
+		                {:base_system, ">= 0.1.0"}] ++ \
+		               (roles |> Enum.map(fn role -> {"role_#{role}" |> String.to_atom, ">= 0.0.0"} end))
+		role_modules = roles |> Enum.map(&module_for_role/1)
+		temp_dir     = FileUtil.temp_dir("multi_role_script")
+		app_name     = "multi_role_script"
+		module       = MultiRoleScript
+		lib          = Path.join([temp_dir, "lib", "#{app_name}.ex"])
+		Mixmaker.create_project(temp_dir, app_name, module,
+		                        dependencies, [main_module: module])
+		File.write!(lib,
+			"""
+			defmodule #{inspect module} do
+				def main(tags) do
+					BaseSystem.Configure.configure_with_roles(tags, #{inspect role_modules})
+				end
+			end
+			""")
+		{_, 0} = System.cmd("mix", ["deps.get"],      cd: temp_dir)
+		{_, 0} = System.cmd("mix", ["compile"],       cd: temp_dir, env: [{"MIX_ENV", "prod"}])
+		{_, 0} = System.cmd("mix", ["escript.build"], cd: temp_dir, env: [{"MIX_ENV", "prod"}])
+		File.cp!(Path.join(temp_dir, app_name), output_filename)
+		nil
+	end
+
+	@doc """
+	Extract a list of roles from a list of tags.
+	"""
+	@spec roles_for_tags([String.t]) :: [String.t]
+	def roles_for_tags(tags) do
+		tags
+		|> Enum.filter(fn tag -> tag |> String.starts_with?("role:") end)
+		|> Enum.map(fn tag -> tag |> String.replace_prefix("role:", "") end)
+	end
+
+	@doc """
+	For a given role, return the module that contains the `role()` function.
+	"""
+	@spec module_for_role(String.t) :: module
+	def module_for_role(role) do
+		role
+		|> String.split("_")
+		|> Enum.map(&String.capitalize/1)
+		|> Enum.join
+		|> (fn s -> "Elixir.Role#{s}" end).()
+		|> String.to_atom
+	end
+end
+
 defmodule MachineManager.TooManyRowsError do
 	defexception [:message]
 end
@@ -9,17 +63,8 @@ defmodule MachineManager.ProbeError do
 end
 
 defmodule MachineManager.Core do
-	alias MachineManager.{Repo, TooManyRowsError, ProbeError}
+	alias MachineManager.{ScriptWriter, Repo, TooManyRowsError, ProbeError}
 	import Ecto.Query
-
-	def transfer(_machine, _file) do
-		# rsync to /root/.cache/machine_manager/#{basename file}
-	end
-
-	def run_script(machine, script) do
-		transfer(machine, script)
-		# ssh and run
-	end
 
 	def list() do
 		cols = [
@@ -49,6 +94,20 @@ defmodule MachineManager.Core do
 		  Hostname #{inet_to_ip(row.ip)}
 		  Port #{row.ssh_port}
 		"""
+	end
+
+	def configure(hostname) do
+		tags         = get_tags_for_machine(hostname)
+		roles        = ScriptWriter.roles_for_tags(tags)
+		script_cache = Path.expand("~/.cache/machine_manager/scripts")
+		File.mkdir_p!(script_cache)
+		basename     = roles |> Enum.sort |> Enum.join(",")
+		output_file  = Path.join(script_cache, basename)
+		ScriptWriter.write_script_for_roles(roles, output_file)
+
+		# rsync script to root@hostname:.cache/machine_manager/script
+		#   do not use -a option
+		# ssh in and run script
 	end
 
 	def probe(hostnames) do
@@ -181,6 +240,12 @@ defmodule MachineManager.Core do
 		end)
 	end
 
+	def write_script_for_machine(hostname, output_file) do
+		tags  = get_tags_for_machine(hostname)
+		roles = ScriptWriter.roles_for_tags(tags)
+		ScriptWriter.write_script_for_roles(roles, output_file)
+	end
+
 	def get_tags_for_machine(hostname) do
 		rows =
 			machine(hostname)
@@ -221,62 +286,8 @@ defmodule MachineManager.Core do
 	end
 end
 
-defmodule MachineManager.ScriptWriter do
-	# We want to make a script for each combination of roles, not tags,
-	# to avoid compiling a script for each tag combination.
-	@spec write_script_for_roles([String.t], String.t) :: nil
-	def write_script_for_roles(roles, output_filename) do
-		dependencies = [{:converge,    ">= 0.1.0"},
-		                {:base_system, ">= 0.1.0"}] ++ \
-		               (roles |> Enum.map(fn role -> {"role_#{role}" |> String.to_atom, ">= 0.0.0"} end))
-		role_modules = roles |> Enum.map(&module_for_role/1)
-		temp_dir     = FileUtil.temp_dir("multi_role_script")
-		app_name     = "multi_role_script"
-		module       = MultiRoleScript
-		lib          = Path.join([temp_dir, "lib", "#{app_name}.ex"])
-		Mixmaker.create_project(temp_dir, app_name, module,
-		                        dependencies, [main_module: module])
-		File.write!(lib,
-			"""
-			defmodule #{inspect module} do
-				def main(tags) do
-					BaseSystem.Configure.configure_with_roles(tags, #{inspect role_modules})
-				end
-			end
-			""")
-		{_, 0} = System.cmd("mix", ["deps.get"],      cd: temp_dir)
-		{_, 0} = System.cmd("mix", ["compile"],       cd: temp_dir, env: [{"MIX_ENV", "prod"}])
-		{_, 0} = System.cmd("mix", ["escript.build"], cd: temp_dir, env: [{"MIX_ENV", "prod"}])
-		File.cp!(Path.join(temp_dir, app_name), output_filename)
-		nil
-	end
-
-	@doc """
-	Extract a list of roles from a list of tags.
-	"""
-	@spec roles_for_tags([String.t]) :: [String.t]
-	def roles_for_tags(tags) do
-		tags
-		|> Enum.filter(fn tag -> tag |> String.starts_with?("role:") end)
-		|> Enum.map(fn tag -> tag |> String.replace_prefix("role:", "") end)
-	end
-
-	@doc """
-	For a given role, return the module that contains the `role()` function.
-	"""
-	@spec module_for_role(String.t) :: module
-	def module_for_role(role) do
-		role
-		|> String.split("_")
-		|> Enum.map(&String.capitalize/1)
-		|> Enum.join
-		|> (fn s -> "Elixir.Role#{s}" end).()
-		|> String.to_atom
-	end
-end
-
 defmodule MachineManager.CLI do
-	alias MachineManager.{Core, ScriptWriter}
+	alias MachineManager.Core
 
 	def main(argv) do
 		spec = Optimus.new!(
@@ -300,6 +311,13 @@ defmodule MachineManager.CLI do
 					args: [
 						hostname:    [required: true],
 						output_file: [required: true],
+					],
+				],
+				configure: [
+					name:  "configure",
+					about: "Configure a machine",
+					args: [
+						hostname: [required: true],
 					],
 				],
 				probe: [
@@ -349,7 +367,8 @@ defmodule MachineManager.CLI do
 		{[subcommand], %{args: args, options: options}} = Optimus.parse!(spec, argv)
 		case subcommand do
 			:ls         -> list()
-			:script     -> write_script_for_machine(args.hostname, args.output_file)
+			:script     -> Core.write_script_for_machine(args.hostname, args.output_file)
+			:configure  -> Core.configure(args.hostname)
 			:ssh_config -> Core.ssh_config()
 			:probe      -> Core.probe(args.hostnames |> String.split(","))
 			:add        -> Core.add(args.hostname, options.ip, options.ssh_port, options.tag)
@@ -517,11 +536,5 @@ defmodule MachineManager.CLI do
 			second: sec, microsecond: {usec, 6}, zone_abbr: "UTC", time_zone: "Etc/UTC",
 			utc_offset: 0, std_offset: 0
 		}
-	end
-
-	def write_script_for_machine(hostname, output_file) do
-		tags  = Core.get_tags_for_machine(hostname)
-		roles = ScriptWriter.roles_for_tags(tags)
-		ScriptWriter.write_script_for_roles(roles, output_file)
 	end
 end
