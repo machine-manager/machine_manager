@@ -111,7 +111,7 @@ defmodule MachineManager.Core do
 		ScriptWriter.write_script_for_roles(roles, output_file)
 		transfer_file(output_file, "root", hostname, ".cache/machine_manager/script",
 		              before_rsync: "mkdir -p .cache/machine_manager")
-		ssh_no_capture("root", inet_to_ip(row.ip), row.ssh_port, ".cache/machine_manager/script")
+		0 = ssh_no_capture("root", inet_to_ip(row.ip), row.ssh_port, ".cache/machine_manager/script")
 	end
 
 	defp transfer_file(source, user, hostname, dest, opts) do
@@ -203,19 +203,22 @@ defmodule MachineManager.Core do
 	Runs `command` on machine at `ip` and `ssh_port` with user `user`, returns
 	`{output, exit_code}`.  Output includes both stdout and stderr.
 	"""
+	@spec ssh(String.t, String.t, integer, String.t) :: {String.t, integer}
 	def ssh(user, ip, ssh_port, command) do
 		System.cmd("ssh", ["-q", "-p", "#{ssh_port}", "#{user}@#{ip}", command])
 	end
 
 	@doc """
 	Runs `command` on machine at `ip` and `ssh_port` with user `user`, outputs
-	command's stdout and stderr to stdout in this terminal.
+	command's stdout and stderr to stdout in this terminal.  Returns `exit_code`.
 	"""
+	@spec ssh_no_capture(String.t, String.t, integer, String.t) :: integer
 	def ssh_no_capture(user, ip, ssh_port, command) do
-		%Porcelain.Result{status: 0} = \
+		%Porcelain.Result{status: exit_code} = \
 			Porcelain.exec("ssh", ["-q", "-p", "#{ssh_port}", "#{user}@#{ip}", command],
 								out: {:file, Process.group_leader},
 								err: {:file, Process.group_leader})
+		exit_code
 	end
 
 	def add(hostname, ip, ssh_port, tags) do
