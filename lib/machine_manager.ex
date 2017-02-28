@@ -134,7 +134,7 @@ defmodule MachineManager.Core do
 	end
 
 	def configure(hostname) do
-		{ip, ssh_port, tags} = Repo.transaction(fn ->
+		{:ok, {ip, ssh_port, tags}} = Repo.transaction(fn ->
 			row =
 				machine(hostname)
 				|> select([:ip, :ssh_port])
