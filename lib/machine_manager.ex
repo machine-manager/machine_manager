@@ -71,13 +71,23 @@ defmodule MachineManager.Core do
 	import Ecto.Query
 
 	def list() do
+		tags_aggregate = \
+			from("machine_tags")
+				|> select([t], %{hostname: t.hostname, tags: fragment("array_agg(?::character varying)", t.tag)})
+				|> group_by([t], t.hostname)
+
+		pending_upgrades_aggregate = \
+			from("machine_pending_upgrades")
+				|> select([u], %{hostname: u.hostname, pending_upgrades: fragment("array_agg(?::character varying)", u.package)})
+				|> group_by([u], u.hostname)
+
 		all_machines()
 		|> select([m, t, u], %{
 				hostname:         m.hostname,
 				ip:               m.ip,
 				ssh_port:         m.ssh_port,
-				tags:             fragment("array_agg(DISTINCT ?::character varying)", t.tag),
-				pending_upgrades: fragment("array_agg(DISTINCT ?::character varying)", u.package),
+				tags:             t.tags,
+				pending_upgrades: u.pending_upgrades,
 				last_probe_time:  m.last_probe_time,
 				boot_time:        m.boot_time,
 				country:          m.country,
@@ -86,9 +96,8 @@ defmodule MachineManager.Core do
 				thread_count:     m.thread_count,
 				kernel:           m.kernel,
 			})
-		|> join(:left, [m], t in "machine_tags",             t.hostname == m.hostname)
-		|> join(:left, [m], u in "machine_pending_upgrades", u.hostname == m.hostname)
-		|> group_by([m], m.hostname)
+		|> join(:left, [m], t in subquery(tags_aggregate),             t.hostname == m.hostname)
+		|> join(:left, [m], u in subquery(pending_upgrades_aggregate), u.hostname == m.hostname)
 		|> order_by(asc: :hostname)
 		|> Repo.all
 		|> fix_aggregate(:tags)
@@ -98,7 +107,7 @@ defmodule MachineManager.Core do
 	defp fix_aggregate(rows, col) do
 		Enum.map(rows, fn row ->
 			fixed = case row[col] do
-				[nil] -> []
+				nil   -> []
 				other -> other
 			end
 			%{row | col => fixed}
