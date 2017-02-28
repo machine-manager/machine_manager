@@ -71,15 +71,38 @@ defmodule MachineManager.Core do
 	import Ecto.Query
 
 	def list() do
-		cols = [
-			:hostname, :ip, :ssh_port, :tags, :last_probe_time, :boot_time, :country,
-			:ram_mb, :core_count, :thread_count, :kernel
-		]
-		# TODO: pending_upgrades
 		all_machines()
+		|> select([m, t, u], %{
+				hostname:         m.hostname,
+				ip:               m.ip,
+				ssh_port:         m.ssh_port,
+				tags:             fragment("array_agg(?::character varying)", t.tag),
+				pending_upgrades: fragment("array_agg(?::character varying)", u.package),
+				last_probe_time:  m.last_probe_time,
+				boot_time:        m.boot_time,
+				country:          m.country,
+				ram_mb:           m.ram_mb,
+				core_count:       m.core_count,
+				thread_count:     m.thread_count,
+				kernel:           m.kernel,
+			})
+		|> join(:left, [m], t in "machine_tags",             t.hostname == m.hostname)
+		|> join(:left, [m], u in "machine_pending_upgrades", u.hostname == m.hostname)
+		|> group_by([m], m.hostname)
 		|> order_by(asc: :hostname)
-		|> select(^cols)
 		|> Repo.all
+		|> fix_aggregate(:tags)
+		|> fix_aggregate(:pending_upgrades)
+	end
+
+	defp fix_aggregate(rows, col) do
+		Enum.map(rows, fn row ->
+			fixed = case row[col] do
+				[nil] -> []
+				other -> other
+			end
+			%{row | col => fixed}
+		end)
 	end
 
 	def ssh_config() do
