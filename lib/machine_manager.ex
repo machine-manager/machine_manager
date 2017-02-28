@@ -275,8 +275,11 @@ defmodule MachineManager.Core do
 	end
 
 	def rm(hostname) do
-		machine(hostname)
-		|> Repo.delete_all
+		Repo.transaction(fn ->
+			from("machine_tags")             |> where([t], t.hostname == ^hostname) |> Repo.delete_all
+			from("machine_pending_upgrades") |> where([u], u.hostname == ^hostname) |> Repo.delete_all
+			machine(hostname) |> Repo.delete_all
+		end)
 	end
 
 	@doc """
@@ -295,11 +298,10 @@ defmodule MachineManager.Core do
 	Remove tags in enumerable `remove_tags` from machine with hostname `hostname`.
 	"""
 	def untag(hostname, remove_tags) do
-		Repo.delete_all("machine_tags",
-			remove_tags |> Enum.map(fn tag ->
-				[hostname: hostname, tag: tag]
-			end)
-		)
+		from("machine_tags")
+		|> where([t], t.hostname == ^hostname)
+		|> where([t], t.tag in ^remove_tags)
+		|> Repo.delete_all
 	end
 
 	def write_script_for_machine(hostname, output_file) do
