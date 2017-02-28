@@ -91,12 +91,18 @@ defmodule MachineManager.Core do
 	def list() do
 		tags_aggregate = \
 			from("machine_tags")
-				|> select([t], %{hostname: t.hostname, tags: fragment("array_agg(?::character varying)", t.tag)})
+				|> select([t], %{
+						hostname: t.hostname,
+						tags:     fragment("array_agg(?::character varying)", t.tag)
+					})
 				|> group_by([t], t.hostname)
 
 		pending_upgrades_aggregate = \
 			from("machine_pending_upgrades")
-				|> select([u], %{hostname: u.hostname, pending_upgrades: fragment("array_agg(?::character varying)", u.package)})
+				|> select([u], %{
+						hostname:         u.hostname,
+						pending_upgrades: fragment("array_agg(?::character varying)", u.package)
+					})
 				|> group_by([u], u.hostname)
 
 		all_machines()
