@@ -73,8 +73,9 @@ defmodule MachineManager.Core do
 	def list() do
 		cols = [
 			:hostname, :ip, :ssh_port, :tags, :last_probe_time, :boot_time, :country,
-			:ram_mb, :core_count, :thread_count, :kernel, :pending_upgrades
+			:ram_mb, :core_count, :thread_count, :kernel
 		]
+		# TODO: pending_upgrades
 		all_machines()
 		|> order_by(asc: :hostname)
 		|> select(^cols)
@@ -101,12 +102,16 @@ defmodule MachineManager.Core do
 	end
 
 	def configure(hostname) do
-		row =
-			machine(hostname)
-			|> select([:ip, :ssh_port, :tags])
-			|> Repo.all
-			|> one_row
-		roles        = ScriptWriter.roles_for_tags(row.tags)
+		{ip, ssh_port, tags} = Repo.transaction(fn ->
+			row =
+				machine(hostname)
+				|> select([:ip, :ssh_port])
+				|> Repo.all
+				|> one_row
+			tags = get_tags_for_machine(hostname)
+			{row.ip, row.ssh_port, tags}
+		end)
+		roles        = ScriptWriter.roles_for_tags(tags)
 		script_cache = Path.expand("~/.cache/machine_manager/script_cache")
 		basename     = roles |> Enum.sort |> Enum.join(",")
 		output_file  = Path.join(script_cache, basename)
@@ -114,7 +119,7 @@ defmodule MachineManager.Core do
 		ScriptWriter.write_script_for_roles(roles, output_file)
 		transfer_file(output_file, "root", hostname, ".cache/machine_manager/script",
 		              before_rsync: "mkdir -p .cache/machine_manager")
-		arguments    = [".cache/machine_manager/script"] ++ row.tags
+		arguments    = [".cache/machine_manager/script"] ++ tags
 		for arg <- arguments do
 			if arg |> String.contains?(" ") do
 				raise BadDataError, message:
@@ -123,7 +128,7 @@ defmodule MachineManager.Core do
 					"""
 			end
 		end
-		0 = ssh_no_capture("root", inet_to_ip(row.ip), row.ssh_port, arguments |> Enum.join(" "))
+		0 = ssh_no_capture("root", inet_to_ip(ip), ssh_port, arguments |> Enum.join(" "))
 	end
 
 	defp transfer_file(source, user, hostname, dest, opts) do
@@ -172,6 +177,7 @@ defmodule MachineManager.Core do
 		|> Repo.update_all(set: [
 			ram_mb:           data.ram_mb,
 			cpu_model_name:   data.cpu_model_name,
+			cpu_architecture: data.architecture,
 			core_count:       data.core_count,
 			thread_count:     data.thread_count,
 			country:          data.country,
@@ -184,7 +190,8 @@ defmodule MachineManager.Core do
 
 	def _atoms() do
 		# Make sure these atoms are in the atom table
-		[:ram_mb, :cpu_model_name, :core_count, :thread_count, :country, :kernel, :boot_time_ms, :pending_upgrades]
+		[:ram_mb, :cpu_model_name, :cpu_architecture, :core_count, :thread_count,
+		 :country, :kernel, :boot_time_ms, :pending_upgrades]
 	end
 
 	def probe_one(hostname) do
@@ -234,12 +241,14 @@ defmodule MachineManager.Core do
 	end
 
 	def add(hostname, ip, ssh_port, tags) do
-		Repo.insert_all("machines", [[
-			hostname: hostname,
-			ip:       ip_to_inet(ip),
-			ssh_port: ssh_port,
-			tags:     tags
-		]])
+		Repo.transaction(fn ->
+			Repo.insert_all("machines", [[
+				hostname: hostname,
+				ip:       ip_to_inet(ip),
+				ssh_port: ssh_port,
+			]])
+			tag(hostname, tags)
+		end)
 	end
 
 	def rm(hostname) do
@@ -248,36 +257,26 @@ defmodule MachineManager.Core do
 	end
 
 	@doc """
-	Add tags in MapSet `new_tags` to machine with hostname `hostname`.
+	Add tags in enumerable `new_tags` to machine with hostname `hostname`.
 	"""
 	def tag(hostname, new_tags) do
-		update_tags(hostname, fn existing_tags ->
-			MapSet.union(existing_tags, new_tags)
-		end)
+		Repo.insert_all("machine_tags",
+			new_tags |> Enum.map(fn tag ->
+				[hostname: hostname, tag: tag]
+			end),
+			on_conflict: :nothing
+		)
 	end
 
 	@doc """
-	Remove tags in MapSet `remove_tags` from machine with hostname `hostname`.
+	Remove tags in enumerable `remove_tags` from machine with hostname `hostname`.
 	"""
 	def untag(hostname, remove_tags) do
-		update_tags(hostname, fn existing_tags ->
-			MapSet.difference(existing_tags, remove_tags)
-		end)
-	end
-
-	defp update_tags(hostname, fun) do
-		Repo.transaction(fn ->
-			rows =
-				machine(hostname)
-				|> select([m], m.tags)
-				|> Repo.all
-			if rows |> length > 0 do
-				existing_tags = one_row(rows) |> MapSet.new
-				updated_tags  = fun.(existing_tags)
-				machine(hostname)
-				|> Repo.update_all(set: [tags: updated_tags |> Enum.sort])
-			end
-		end)
+		Repo.delete_all("machine_tags",
+			remove_tags |> Enum.map(fn tag ->
+				[hostname: hostname, tag: tag]
+			end)
+		)
 	end
 
 	def write_script_for_machine(hostname, output_file) do
@@ -287,11 +286,10 @@ defmodule MachineManager.Core do
 	end
 
 	def get_tags_for_machine(hostname) do
-		rows =
-			machine(hostname)
-			|> select([m], m.tags)
-			|> Repo.all
-		one_row(rows)
+		from("machine_tags")
+		|> where([hostname: ^hostname])
+		|> select([m], m.tag)
+		|> Repo.all
 	end
 
 	defp all_machines() do
@@ -413,8 +411,8 @@ defmodule MachineManager.CLI do
 			:probe      -> Core.probe(args.hostnames |> String.split(","))
 			:add        -> Core.add(args.hostname, options.ip, options.ssh_port, options.tag)
 			:rm         -> Core.rm(args.hostname)
-			:tag        -> Core.tag(args.hostname,   args.tags |> String.split(",") |> MapSet.new)
-			:untag      -> Core.untag(args.hostname, args.tags |> String.split(",") |> MapSet.new)
+			:tag        -> Core.tag(args.hostname,   args.tags |> String.split(","))
+			:untag      -> Core.untag(args.hostname, args.tags |> String.split(","))
 		end
 	end
 

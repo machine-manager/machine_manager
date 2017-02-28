@@ -30,7 +30,7 @@ make_backup() {
 	sed -i -r 's,^COPY machines_backup_subset ,COPY machines ,' "$backup_file"
 }
 
-if [[ "$1" != "--use-existing-backup" ]]; then
+if [[ "${1:-}" != "--use-existing-backup" ]]; then
 	make_backup
 fi
 
