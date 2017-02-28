@@ -461,20 +461,22 @@ defmodule MachineManager.CLI do
 					about: "Add tags to a machine",
 					args: [
 						hostname: [required: true],
-						tags:     [required: true, help: "Comma-separated list of tags to add"],
+						tag:      [required: false, help: "Tags to add", value_name: "TAG..."],
 					],
+					allow_unknown_args: true,
 				],
 				untag: [
 					name:  "untag",
 					about: "Remove tag from a machine",
 					args: [
 						hostname: [required: true],
-						tags:     [required: true, help: "Comma-separated list of tags to remove"],
+						tag:      [required: false, help: "Tags to remove", value_name: "TAG..."],
 					],
+					allow_unknown_args: true,
 				],
 			],
 		)
-		{[subcommand], %{args: args, options: options}} = Optimus.parse!(spec, argv)
+		{[subcommand], %{args: args, options: options, unknown: unknown}} = Optimus.parse!(spec, argv)
 		case subcommand do
 			:ls         -> list()
 			:script     -> Core.write_script_for_machine(args.hostname, args.output_file)
@@ -483,8 +485,16 @@ defmodule MachineManager.CLI do
 			:probe      -> Core.probe(args.hostnames |> String.split(","))
 			:add        -> Core.add(args.hostname, options.ip, options.ssh_port, options.tag)
 			:rm         -> Core.rm(args.hostname)
-			:tag        -> Core.tag(args.hostname,   args.tags |> String.split(","))
-			:untag      -> Core.untag(args.hostname, args.tags |> String.split(","))
+			:tag        -> Core.tag(args.hostname,   all_arguments(args.tag, unknown))
+			:untag      -> Core.untag(args.hostname, all_arguments(args.tag, unknown))
+		end
+	end
+
+	# https://github.com/savonarola/optimus/issues/3
+	defp all_arguments(maybe_first, rest) do
+		case maybe_first do
+			nil -> []
+			_   -> [maybe_first | rest]
 		end
 	end
 
