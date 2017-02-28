@@ -47,14 +47,16 @@ CREATE TABLE machines (
 -- state:mess, boot:ovh_vps, dc:ovh_bhs, role:custom_packages_server
 -- state = {mess,zygote,converged,needs_converge,decommissioning}
 
-CREATE TABLE machine_pending_upgrades (
-	hostname  hostname NOT NULL REFERENCES machines,
-	package   package  NOT NULL,
-	PRIMARY KEY(hostname, package)
-);
-
 CREATE TABLE machine_tags (
 	hostname  hostname NOT NULL REFERENCES machines,
 	tag       tag      NOT NULL,
 	PRIMARY KEY(hostname, tag)
 );
+CREATE INDEX machine_tags_hostname_idx ON machine_tags(hostname);
+
+CREATE TABLE machine_pending_upgrades (
+	hostname  hostname NOT NULL REFERENCES machines,
+	package   package  NOT NULL,
+	PRIMARY KEY(hostname, package)
+);
+CREATE INDEX machine_pending_upgrades_hostname_idx ON machine_pending_upgrades(hostname);
