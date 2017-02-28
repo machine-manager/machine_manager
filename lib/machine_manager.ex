@@ -196,19 +196,32 @@ defmodule MachineManager.Core do
 	end
 
 	defp write_probe_data_to_db(hostname, data) do
-		machine(hostname)
-		|> Repo.update_all(set: [
-			ram_mb:           data.ram_mb,
-			cpu_model_name:   data.cpu_model_name,
-			cpu_architecture: data.architecture,
-			core_count:       data.core_count,
-			thread_count:     data.thread_count,
-			country:          data.country,
-			kernel:           data.kernel,
-			boot_time:        data.boot_time_ms |> DateTime.from_unix!(:millisecond),
-			pending_upgrades: data.pending_upgrades,
-			last_probe_time:  DateTime.utc_now(),
-		])
+		Repo.transaction(fn -> 
+			machine(hostname)
+			|> Repo.update_all(set: [
+				ram_mb:           data.ram_mb,
+				cpu_model_name:   data.cpu_model_name,
+				cpu_architecture: data.cpu_architecture,
+				core_count:       data.core_count,
+				thread_count:     data.thread_count,
+				country:          data.country,
+				kernel:           data.kernel,
+				boot_time:        data.boot_time_ms |> DateTime.from_unix!(:millisecond),
+				last_probe_time:  DateTime.utc_now(),
+			])
+
+			# Clear out existing pending upgrades
+			from("machine_pending_upgrades")
+			|> where([u], u.hostname == ^hostname)
+			|> Repo.delete_all
+
+			Repo.insert_all("machine_pending_upgrades",
+				data.pending_upgrades |> Enum.map(fn package ->
+					[hostname: hostname, package: package]
+				end),
+				on_conflict: :nothing
+			)
+		end)
 	end
 
 	def _atoms() do
