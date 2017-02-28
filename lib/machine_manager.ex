@@ -1,5 +1,20 @@
 alias Gears.{TableFormatter, StringUtil, FileUtil}
 
+defmodule MachineManager.CPU do
+	@spec short_description(String.t) :: String.t
+	def short_description(cpu_model_name) do
+		cpu_model_name
+		|> String.replace_prefix("Intel Core Processor (Haswell, no TSX)", "Mystery Haswell")
+		|> String.replace_prefix("Intel(R) Core(TM) ", "")
+		|> String.replace_prefix("Intel(R) Xeon(R) ", "")
+		|> String.replace_prefix("Intel(R) Atom(TM) ", "Atom ")
+		|> String.replace(~r"(\b\d\.\d)\dGHz\b", "\\1GHz")
+		|> String.replace(~r"\bCPU\b", "")
+		|> String.replace(~r"\s+", " ")
+		|> String.trim
+	end
+end
+
 defmodule MachineManager.ScriptWriter do
 	# We want to make a script for each combination of roles, not tags,
 	# to avoid compiling a script for each tag combination.
