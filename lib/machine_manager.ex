@@ -1,6 +1,9 @@
 alias Gears.{TableFormatter, StringUtil, FileUtil}
 
 defmodule MachineManager.CPU do
+	@doc """
+	Convert a CPU model name from /proc/cpuinfo into a shorter string.
+	"""
 	@spec short_description(String.t) :: String.t
 	def short_description(cpu_model_name) do
 		cpu_model_name
@@ -106,6 +109,7 @@ defmodule MachineManager.Core do
 				last_probe_time:  m.last_probe_time,
 				boot_time:        m.boot_time,
 				country:          m.country,
+				cpu_model_name:   m.cpu_model_name,
 				ram_mb:           m.ram_mb,
 				core_count:       m.core_count,
 				thread_count:     m.thread_count,
@@ -387,7 +391,7 @@ defmodule MachineManager.Core do
 end
 
 defmodule MachineManager.CLI do
-	alias MachineManager.Core
+	alias MachineManager.{Core, CPU}
 
 	def main(argv) do
 		spec = Optimus.new!(
@@ -480,7 +484,7 @@ defmodule MachineManager.CLI do
 
 	def list() do
 		rows          = Core.list()
-		header        = ["HOSTNAME", "IP", "SSH", "TAGS", "国", "RAM", "核", "糸", "PROBE TIME", "BOOT TIME", "KERNEL", "PENDING UPGRADES"]
+		header        = ["HOSTNAME", "IP", "SSH", "TAGS", "国", "RAM", "CPU", "核", "糸", "PROBE TIME", "BOOT TIME", "KERNEL", "PENDING UPGRADES"]
                       |> Enum.map(&maybe_bolded/1)
 		tag_frequency = make_tag_frequency(rows)
 		table         = [header | Enum.map(rows, fn row -> sql_row_to_table_row(row, tag_frequency) end)]
@@ -519,6 +523,7 @@ defmodule MachineManager.CLI do
 				|> Enum.join(" "),
 			(if row.country != nil, do: row.country |> colorize),
 			row.ram_mb,
+			(if row.cpu_model_name   != nil, do: CPU.short_description(row.cpu_model_name)),
 			row.core_count,
 			row.thread_count,
 			(if row.last_probe_time  != nil, do: pretty_datetime(row.last_probe_time) |> colorize_time),
