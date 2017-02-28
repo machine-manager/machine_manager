@@ -89,7 +89,7 @@ defmodule MachineManager.Core do
 	import Ecto.Query
 
 	def list() do
-		tags_aggregate = \
+		tags_aggregate =
 			from("machine_tags")
 				|> select([t], %{
 						hostname: t.hostname,
@@ -97,7 +97,7 @@ defmodule MachineManager.Core do
 					})
 				|> group_by([t], t.hostname)
 
-		pending_upgrades_aggregate = \
+		pending_upgrades_aggregate =
 			from("machine_pending_upgrades")
 				|> select([u], %{
 						hostname:         u.hostname,
