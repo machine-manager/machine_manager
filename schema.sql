@@ -52,11 +52,9 @@ CREATE TABLE machine_tags (
 	tag       tag      NOT NULL,
 	PRIMARY KEY(hostname, tag)
 );
-CREATE INDEX machine_tags_hostname_idx ON machine_tags(hostname);
 
 CREATE TABLE machine_pending_upgrades (
 	hostname  hostname NOT NULL REFERENCES machines,
 	package   package  NOT NULL,
 	PRIMARY KEY(hostname, package)
 );
-CREATE INDEX machine_pending_upgrades_hostname_idx ON machine_pending_upgrades(hostname);
