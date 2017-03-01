@@ -305,6 +305,18 @@ defmodule MachineManager.Core do
 		configure(hostname)
 	end
 
+	def reboot(hostname) do
+		row =
+			machine(hostname)
+			|> select([:ip, :ssh_port])
+			|> Repo.all
+			|> one_row
+		# Use `systemctl reboot` (which results in exit code 0 from ssh)
+		# instead of `shutdown -r now` (exit code 255, cannot to distinguish from failure.)
+		command = "systemctl reboot"
+		{_, 0} = ssh("root", inet_to_ip(row.ip), row.ssh_port, command)
+	end
+
 	def probe_one(hostname) do
 		row =
 			machine(hostname)
@@ -487,6 +499,13 @@ defmodule MachineManager.CLI do
 						hostname: [required: true],
 					],
 				],
+				reboot: [
+					name:  "reboot",
+					about: "Reboot a machine",
+					args: [
+						hostname: [required: true],
+					],
+				],
 				probe: [
 					name:  "probe",
 					about: "Probe machines",
@@ -541,6 +560,7 @@ defmodule MachineManager.CLI do
 			:ssh_config -> Core.ssh_config()
 			:probe      -> Core.probe(args.hostnames |> String.split(","))
 			:upgrade    -> Core.upgrade(args.hostname)
+			:reboot     -> Core.reboot(args.hostname)
 			:add        -> Core.add(args.hostname, options.ip, options.ssh_port, options.tag)
 			:rm         -> Core.rm(args.hostname)
 			:tag        -> Core.tag(args.hostname,   all_arguments(args.tag, unknown))
