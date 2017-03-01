@@ -80,12 +80,16 @@ defmodule MachineManager.ProbeError do
 	defexception [:message]
 end
 
+defmodule MachineManager.UpgradeError do
+	defexception [:message]
+end
+
 defmodule MachineManager.BadDataError do
 	defexception [:message]
 end
 
 defmodule MachineManager.Core do
-	alias MachineManager.{ScriptWriter, Repo, TooManyRowsError, ProbeError, BadDataError}
+	alias MachineManager.{ScriptWriter, Repo, TooManyRowsError, ProbeError, UpgradeError, BadDataError}
 	import Ecto.Query
 
 	def list() do
@@ -166,7 +170,7 @@ defmodule MachineManager.Core do
 				|> Repo.all
 				|> one_row
 			tags = get_tags_for_machine(hostname)
-			{row.ip, row.ssh_port, tags}
+			{inet_to_ip(row.ip), row.ssh_port, tags}
 		end)
 		roles        = ScriptWriter.roles_for_tags(tags)
 		script_cache = Path.expand("~/.cache/machine_manager/script_cache")
@@ -185,7 +189,7 @@ defmodule MachineManager.Core do
 					"""
 			end
 		end
-		0 = ssh_no_capture("root", inet_to_ip(ip), ssh_port, arguments |> Enum.join(" "))
+		0 = ssh_no_capture("root", ip, ssh_port, arguments |> Enum.join(" "))
 	end
 
 	defp transfer_file(source, user, hostname, dest, opts) do
@@ -264,6 +268,37 @@ defmodule MachineManager.Core do
 		 :country, :kernel, :boot_time_ms, :pending_upgrades]
 	end
 
+	def upgrade(hostname) do
+		{:ok, {ip, ssh_port, packages}} = Repo.transaction(fn ->
+			row =
+				machine(hostname)
+				|> select([:ip, :ssh_port])
+				|> Repo.all
+				|> one_row
+			packages = get_pending_upgrades_for_machine(hostname)
+			{inet_to_ip(row.ip), row.ssh_port, packages}
+		end)
+		command = """
+		wait-for-dpkg-lock || true;
+		apt-get update > /dev/null 2>&1 &&
+		env \
+			DEBIAN_FRONTEND=noninteractive \
+			APT_LISTCHANGES_FRONTEND=none \
+			APT_LISTBUGS_FRONTEND=none \
+			apt-get install \
+				-y --no-install-recommends --only-upgrade \
+				-o Dpkg::Options::=--force-confdef \
+				-o Dpkg::Options::=--force-confold \
+				-- \
+				#{packages |> Enum.map(&inspect/1) |> Enum.join(" ")}
+		"""
+		{output, exit_code} = ssh("root", ip, ssh_port, command)
+		case exit_code do
+			0     -> nil
+			other -> raise UpgradeError, message: "Upgrade of #{hostname} failed with exit code #{other}; output:\n\n#{output}"
+		end
+	end
+
 	def probe_one(hostname) do
 		row =
 			machine(hostname)
@@ -284,7 +319,7 @@ defmodule MachineManager.Core do
 		{output, exit_code} = ssh("root", inet_to_ip(row.ip), row.ssh_port, command)
 		case exit_code do
 			0     -> Poison.decode!(output, keys: :atoms!)
-			other -> raise ProbeError, message: "Probe of #{hostname} failed with exit code #{other}; output: #{inspect output}"
+			other -> raise ProbeError, message: "Probe of #{hostname} failed with exit code #{other}; output:\n\n#{output}"
 		end
 	end
 
@@ -357,10 +392,19 @@ defmodule MachineManager.Core do
 		ScriptWriter.write_script_for_roles(roles, output_file)
 	end
 
+	@spec get_tags_for_machine(String.t) :: [String.t]
 	def get_tags_for_machine(hostname) do
 		from("machine_tags")
 		|> where([hostname: ^hostname])
 		|> select([m], m.tag)
+		|> Repo.all
+	end
+
+	@spec get_pending_upgrades_for_machine(String.t) :: [String.t]
+	def get_pending_upgrades_for_machine(hostname) do
+		from("machine_pending_upgrades")
+		|> where([hostname: ^hostname])
+		|> select([m], m.package)
 		|> Repo.all
 	end
 
@@ -430,6 +474,13 @@ defmodule MachineManager.CLI do
 						hostname: [required: true],
 					],
 				],
+				upgrade: [
+					name:  "upgrade",
+					about: "Upgrade all packages in our 'pending upgrades' list for a machine",
+					args: [
+						hostname: [required: true],
+					],
+				],
 				probe: [
 					name:  "probe",
 					about: "Probe machines",
@@ -483,6 +534,7 @@ defmodule MachineManager.CLI do
 			:configure  -> Core.configure(args.hostname)
 			:ssh_config -> Core.ssh_config()
 			:probe      -> Core.probe(args.hostnames |> String.split(","))
+			:upgrade    -> Core.upgrade(args.hostname)
 			:add        -> Core.add(args.hostname, options.ip, options.ssh_port, options.tag)
 			:rm         -> Core.rm(args.hostname)
 			:tag        -> Core.tag(args.hostname,   all_arguments(args.tag, unknown))
