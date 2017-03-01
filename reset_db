@@ -19,15 +19,25 @@ make_backup() {
 	# just the columns with data that can't be probed.  This way, after a big schema
 	# change, we still typically will not need to edit backup.sql for the restore.
 	create_backup_subset="\
-	DROP TABLE IF EXISTS machines_backup_subset;
-	CREATE TABLE         machines_backup_subset AS SELECT hostname, ip, ssh_port, tags, added_time FROM machines;
+	DROP TABLE IF EXISTS machines__backup;
+	CREATE TABLE         machines__backup AS SELECT hostname, ip, ssh_port, added_time FROM machines;
+
+	DROP TABLE IF EXISTS machine_tags__backup;
+	CREATE TABLE         machine_tags__backup AS SELECT hostname, tag FROM machine_tags;
 	"
-	echo "$create_backup_subset"  | ssh "$ssh_user_host" "psql -v ON_ERROR_STOP=1 -d $db_name"
+	echo "$create_backup_subset" | ssh "$ssh_user_host" "psql -v ON_ERROR_STOP=1 -d $db_name"
 
 	# Create the backup file
-	ssh "$ssh_user_host" "pg_dump --data-only --table machines_backup_subset machine_manager" > "$backup_file"
-	# Fix the backup to restore into the machines table
-	sed -i -r 's,^COPY machines_backup_subset ,COPY machines ,' "$backup_file"
+	ssh "$ssh_user_host" "\
+		pg_dump \
+			--data-only \
+			--table machines__backup \
+			--table machine_tags__backup \
+			machine_manager
+		" > "$backup_file"
+	# Fix the backup to restore into the correct tables
+	sed -i -r 's,^COPY machines__backup ,COPY machines ,'         "$backup_file"
+	sed -i -r 's,^COPY machine_tags__backup ,COPY machine_tags ,' "$backup_file"
 }
 
 if [[ "${1:-}" != "--use-existing-backup" ]]; then
@@ -41,7 +51,14 @@ CREATE DATABASE                  $db_name;
 GRANT ALL PRIVILEGES ON DATABASE $db_name TO $db_user;
 ALTER DATABASE                   $db_name SET bytea_output TO 'escape';
 "
-echo "$reset_db"              | ssh "$ssh_user_host" "psql -v ON_ERROR_STOP=1"
-cat schema.sql "$backup_file" | ssh "$ssh_user_host" "psql -v ON_ERROR_STOP=1 -d $db_name"
+echo "$reset_db" | ssh "$ssh_user_host" "psql -v ON_ERROR_STOP=1"
+cat schema.sql   | ssh "$ssh_user_host" "psql -v ON_ERROR_STOP=1 -d $db_name"
+# pg_dump dumps tables in an order that violates foreign key constraints when
+# restored, so use `set session_replication_role = replica;` to disable all
+# triggers (including FK constraints).
+(
+	echo "set session_replication_role = replica;" &&
+	cat "$backup_file"
+) | ssh "$ssh_user_host" "psql -v ON_ERROR_STOP=1 -d $db_name"
 
 echo "Backup restored.  You should probe all machines now."
