@@ -297,10 +297,12 @@ defmodule MachineManager.Core do
 		apt-get autoremove --quiet --assume-yes
 		"""
 		{output, exit_code} = ssh("root", ip, ssh_port, command)
-		case exit_code do
-			0     -> nil
-			other -> raise UpgradeError, message: "Upgrade of #{hostname} failed with exit code #{other}; output:\n\n#{output}"
+		if exit_code != 0 do
+			raise UpgradeError, message: "Upgrade of #{hostname} failed with exit code #{exit_code}; output:\n\n#{output}"
 		end
+		# Because packages upgrades can do things we don't like (e.g. install
+		# files in /etc/cron.d), configure immediately after upgrading.
+		configure(hostname)
 	end
 
 	def probe_one(hostname) do
