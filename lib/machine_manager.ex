@@ -278,6 +278,9 @@ defmodule MachineManager.Core do
 			packages = get_pending_upgrades_for_machine(hostname)
 			{inet_to_ip(row.ip), row.ssh_port, packages}
 		end)
+		# TODO: if disk is very low, first run
+		# apt-get clean
+		# apt-get autoremove --quiet --assume-yes
 		command = """
 		wait-for-dpkg-lock || true;
 		apt-get update > /dev/null 2>&1 &&
@@ -290,7 +293,8 @@ defmodule MachineManager.Core do
 				-o Dpkg::Options::=--force-confdef \
 				-o Dpkg::Options::=--force-confold \
 				-- \
-				#{packages |> Enum.map(&inspect/1) |> Enum.join(" ")}
+				#{packages |> Enum.map(&inspect/1) |> Enum.join(" ")} &&
+		apt-get autoremove --quiet --assume-yes
 		"""
 		{output, exit_code} = ssh("root", ip, ssh_port, command)
 		case exit_code do
