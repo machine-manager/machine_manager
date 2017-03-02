@@ -269,15 +269,7 @@ defmodule MachineManager.Core do
 	end
 
 	def upgrade(hostname) do
-		{:ok, {ip, ssh_port, packages}} = Repo.transaction(fn ->
-			row =
-				machine(hostname)
-				|> select([:ip, :ssh_port])
-				|> Repo.all
-				|> one_row
-			packages = get_pending_upgrades_for_machine(hostname)
-			{inet_to_ip(row.ip), row.ssh_port, packages}
-		end)
+		packages = get_pending_upgrades_for_machine(hostname)
 		# TODO: if disk is very low, first run
 		# apt-get clean
 		# apt-get autoremove --quiet --assume-yes
@@ -296,9 +288,14 @@ defmodule MachineManager.Core do
 				#{packages |> Enum.map(&inspect/1) |> Enum.join(" ")} &&
 		apt-get autoremove --quiet --assume-yes
 		"""
-		{output, exit_code} = ssh("root", ip, ssh_port, command)
+		{output, exit_code} = run_on_machine(hostname, command)
 		if exit_code != 0 do
-			raise UpgradeError, message: "Upgrade of #{hostname} failed with exit code #{exit_code}; output:\n\n#{output}"
+			raise UpgradeError, message:
+				"""
+				Upgrade of #{hostname} failed with exit code #{exit_code}; output:
+
+				#{output}
+				"""
 		end
 		# Because packages upgrades can do things we don't like (e.g. install
 		# files in /etc/cron.d), configure immediately after upgrading.
@@ -306,23 +303,16 @@ defmodule MachineManager.Core do
 	end
 
 	def reboot(hostname) do
-		row =
-			machine(hostname)
-			|> select([:ip, :ssh_port])
-			|> Repo.all
-			|> one_row
 		# Use `systemctl reboot` (which results in exit code 0 from ssh)
 		# instead of `shutdown -r now` (exit code 255, cannot to distinguish from failure.)
-		command = "systemctl reboot"
-		{_, 0} = ssh("root", inet_to_ip(row.ip), row.ssh_port, command)
+		{_, 0} = run_on_machine(hostname, "systemctl reboot")
+	end
+
+	def halt(hostname) do
+		{_, 0} = run_on_machine(hostname, "systemctl halt")
 	end
 
 	def probe_one(hostname) do
-		row =
-			machine(hostname)
-			|> select([:ip, :ssh_port])
-			|> Repo.all
-			|> one_row
 		# machine_probe expects that we already ran an `apt-get update` when
 		# it determines which packages can be upgraded.
 		#
@@ -334,11 +324,21 @@ defmodule MachineManager.Core do
 		apt-get install -y --upgrade machine_probe > /dev/null 2>&1;
 		machine_probe
 		"""
-		{output, exit_code} = ssh("root", inet_to_ip(row.ip), row.ssh_port, command)
+		{output, exit_code} = run_on_machine(hostname, command)
 		case exit_code do
 			0     -> Poison.decode!(output, keys: :atoms!)
 			other -> raise ProbeError, message: "Probe of #{hostname} failed with exit code #{other}; output:\n\n#{output}"
 		end
+	end
+
+	@spec run_on_machine(String.t, String.t) :: {String.t, integer}
+	defp run_on_machine(hostname, command) do
+		row =
+			machine(hostname)
+			|> select([:ip, :ssh_port])
+			|> Repo.all
+			|> one_row
+		ssh("root", inet_to_ip(row.ip), row.ssh_port, command)
 	end
 
 	@doc """
@@ -529,7 +529,14 @@ defmodule MachineManager.CLI do
 				],
 				reboot: [
 					name:  "reboot",
-					about: "Reboot a machine",
+					about: "Shut down and reboot a machine",
+					args: [
+						hostname: [required: true],
+					],
+				],
+				halt: [
+					name:  "halt",
+					about: "Shut down and halt a machine",
 					args: [
 						hostname: [required: true],
 					],
@@ -605,6 +612,7 @@ defmodule MachineManager.CLI do
 			:probe        -> Core.probe(args.hostnames |> String.split(","))
 			:upgrade      -> Core.upgrade(args.hostname)
 			:reboot       -> Core.reboot(args.hostname)
+			:halt         -> Core.halt(args.hostname)
 			:add          -> Core.add(args.hostname, options.ip, options.ssh_port, options.tag)
 			:rm           -> Core.rm(args.hostname)
 			:tag          -> Core.tag(args.hostname,   all_arguments(args.tag, unknown))
