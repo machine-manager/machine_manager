@@ -404,6 +404,12 @@ defmodule MachineManager.Core do
 		|> Repo.delete_all
 	end
 
+	def set_ip(hostname, ip) do
+		from("machines")
+		|> where([m], m.hostname == ^hostname)
+		|> Repo.update_all(set: [ip: ip_to_inet(ip)])
+	end
+
 	def write_script_for_machine(hostname, output_file) do
 		tags  = get_tags_for_machine(hostname)
 		roles = ScriptWriter.roles_for_tags(tags)
@@ -550,6 +556,14 @@ defmodule MachineManager.CLI do
 					],
 					allow_unknown_args: true,
 				],
+				set_ip: [
+					name:  "set-ip",
+					about: "Set new IP for a machine",
+					args: [
+						hostname: [required: true],
+						ip:       [required: true],
+					],
+				],
 			],
 		)
 		{[subcommand], %{args: args, options: options, unknown: unknown}} = Optimus.parse!(spec, argv)
@@ -565,6 +579,7 @@ defmodule MachineManager.CLI do
 			:rm         -> Core.rm(args.hostname)
 			:tag        -> Core.tag(args.hostname,   all_arguments(args.tag, unknown))
 			:untag      -> Core.untag(args.hostname, all_arguments(args.tag, unknown))
+			:set_ip     -> Core.set_ip(args.hostname, args.ip)
 		end
 	end
 
