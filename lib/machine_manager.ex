@@ -308,8 +308,8 @@ defmodule MachineManager.Core do
 		{_, 0} = run_on_machine(hostname, "systemctl reboot")
 	end
 
-	def halt(hostname) do
-		{_, 0} = run_on_machine(hostname, "systemctl halt")
+	def shutdown(hostname) do
+		{_, 0} = run_on_machine(hostname, "systemctl poweroff < /dev/null > /dev/null 2>/dev/null")
 	end
 
 	def probe_one(hostname) do
@@ -534,9 +534,9 @@ defmodule MachineManager.CLI do
 						hostname: [required: true],
 					],
 				],
-				halt: [
-					name:  "halt",
-					about: "Shut down and halt a machine",
+				shutdown: [
+					name:  "shutdown",
+					about: "Shut down and power-off a machine",
 					args: [
 						hostname: [required: true],
 					],
@@ -612,7 +612,7 @@ defmodule MachineManager.CLI do
 			:probe        -> Core.probe(args.hostnames |> String.split(","))
 			:upgrade      -> Core.upgrade(args.hostname)
 			:reboot       -> Core.reboot(args.hostname)
-			:halt         -> Core.halt(args.hostname)
+			:shutdown     -> Core.shutdown(args.hostname)
 			:add          -> Core.add(args.hostname, options.ip, options.ssh_port, options.tag)
 			:rm           -> Core.rm(args.hostname)
 			:tag          -> Core.tag(args.hostname,   all_arguments(args.tag, unknown))
