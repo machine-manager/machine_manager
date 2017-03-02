@@ -363,8 +363,12 @@ defmodule MachineManager.Core do
 		exit_code
 	end
 
+	@doc """
+	Adds a machine from the database.
+	"""
+	@spec add(String.t, String.t, integer, [String.t]) :: nil
 	def add(hostname, ip, ssh_port, tags) do
-		Repo.transaction(fn ->
+		{:ok, _} = Repo.transaction(fn ->
 			Repo.insert_all("machines", [[
 				hostname: hostname,
 				ip:       ip_to_inet(ip),
@@ -374,8 +378,12 @@ defmodule MachineManager.Core do
 		end)
 	end
 
+	@doc """
+	Removes a machine from the database.
+	"""
+	@spec rm(String.t) :: nil
 	def rm(hostname) do
-		Repo.transaction(fn ->
+		{:ok, _} = Repo.transaction(fn ->
 			from("machine_tags")             |> where([t], t.hostname == ^hostname) |> Repo.delete_all
 			from("machine_pending_upgrades") |> where([u], u.hostname == ^hostname) |> Repo.delete_all
 			machine(hostname) |> Repo.delete_all
@@ -385,6 +393,7 @@ defmodule MachineManager.Core do
 	@doc """
 	Add tags in enumerable `new_tags` to machine with hostname `hostname`.
 	"""
+	@spec tag(String.t, [String.t]) :: nil
 	def tag(hostname, new_tags) do
 		Repo.insert_all("machine_tags",
 			new_tags |> Enum.map(fn tag ->
@@ -392,22 +401,35 @@ defmodule MachineManager.Core do
 			end),
 			on_conflict: :nothing
 		)
+		nil
 	end
 
 	@doc """
 	Remove tags in enumerable `remove_tags` from machine with hostname `hostname`.
 	"""
+	@spec untag(String.t, [String.t]) :: nil
 	def untag(hostname, remove_tags) do
 		from("machine_tags")
 		|> where([t], t.hostname == ^hostname)
 		|> where([t], t.tag in ^remove_tags)
 		|> Repo.delete_all
+		nil
 	end
 
+	@spec set_ip(String.t, String.t) :: nil
 	def set_ip(hostname, ip) do
 		from("machines")
 		|> where([m], m.hostname == ^hostname)
 		|> Repo.update_all(set: [ip: ip_to_inet(ip)])
+		nil
+	end
+
+	@spec set_ssh_port(String.t, integer) :: nil
+	def set_ssh_port(hostname, ssh_port) do
+		from("machines")
+		|> where([m], m.hostname == ^hostname)
+		|> Repo.update_all(set: [ssh_port: ssh_port])
+		nil
 	end
 
 	def write_script_for_machine(hostname, output_file) do
@@ -564,22 +586,31 @@ defmodule MachineManager.CLI do
 						ip:       [required: true],
 					],
 				],
+				set_ssh_port: [
+					name:  "set-ssh-port",
+					about: "Set new SSH port for a machine",
+					args: [
+						hostname: [required: true],
+						ssh_port: [required: true, parser: :integer],
+					],
+				],
 			],
 		)
 		{[subcommand], %{args: args, options: options, unknown: unknown}} = Optimus.parse!(spec, argv)
 		case subcommand do
-			:ls         -> list()
-			:script     -> Core.write_script_for_machine(args.hostname, args.output_file)
-			:configure  -> Core.configure(args.hostname)
-			:ssh_config -> Core.ssh_config()
-			:probe      -> Core.probe(args.hostnames |> String.split(","))
-			:upgrade    -> Core.upgrade(args.hostname)
-			:reboot     -> Core.reboot(args.hostname)
-			:add        -> Core.add(args.hostname, options.ip, options.ssh_port, options.tag)
-			:rm         -> Core.rm(args.hostname)
-			:tag        -> Core.tag(args.hostname,   all_arguments(args.tag, unknown))
-			:untag      -> Core.untag(args.hostname, all_arguments(args.tag, unknown))
-			:set_ip     -> Core.set_ip(args.hostname, args.ip)
+			:ls           -> list()
+			:script       -> Core.write_script_for_machine(args.hostname, args.output_file)
+			:configure    -> Core.configure(args.hostname)
+			:ssh_config   -> Core.ssh_config()
+			:probe        -> Core.probe(args.hostnames |> String.split(","))
+			:upgrade      -> Core.upgrade(args.hostname)
+			:reboot       -> Core.reboot(args.hostname)
+			:add          -> Core.add(args.hostname, options.ip, options.ssh_port, options.tag)
+			:rm           -> Core.rm(args.hostname)
+			:tag          -> Core.tag(args.hostname,   all_arguments(args.tag, unknown))
+			:untag        -> Core.untag(args.hostname, all_arguments(args.tag, unknown))
+			:set_ip       -> Core.set_ip(args.hostname, args.ip)
+			:set_ssh_port -> Core.set_ssh_port(args.hostname, args.ssh_port)
 		end
 	end
 
