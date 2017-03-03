@@ -76,10 +76,6 @@ defmodule MachineManager.TooManyRowsError do
 	defexception [:message]
 end
 
-defmodule MachineManager.SSHError do
-	defexception [:message]
-end
-
 defmodule MachineManager.ProbeError do
 	defexception [:message]
 end
@@ -307,38 +303,11 @@ defmodule MachineManager.Core do
 	end
 
 	def reboot(hostname) do
-		run_on_machine(hostname, "echo connected; sleep 2; systemctl reboot")
-		|> check_ssh_result("connected\n", "Failed to reboot #{inspect hostname}")
+		{"", 0} = run_on_machine(hostname, "nohup sh -c 'sleep 2; systemctl reboot' > /dev/null 2>&1 < /dev/null &")
 	end
 
 	def shutdown(hostname) do
-		run_on_machine(hostname, "echo connected; sleep 2; systemctl poweroff")
-		|> check_ssh_result("connected\n", "Failed to shutdown #{inspect hostname}")
-	end
-
-	defp check_ssh_result({output, exit_code}, expect_out, error_prelude) do
-		# Because a reboot or shutdown may kill our ssh connection very quickly, ssh
-		# will often return exit code 255 instead of 0.  But ssh also returns exit
-		# code 255 when it fails to connect to the machine.  Tell these two cases
-		# apart by checking the output to make sure we connected to the machine.
-		case {output |> strip_connection_closed_message, exit_code} do
-			{^expect_out, 0}   -> nil
-			{^expect_out, 255} -> nil
-			_                  -> raise SSHError, message:
-			                        """
-			                        #{error_prelude}; \
-			                        ssh returned with exit code #{exit_code}; output:
-
-			                        #{output}
-			                        """
-		end
-	end
-
-	defp strip_connection_closed_message(s) do
-		# Even with ssh -q / -o LogLevel=QUIET, ssh writes a "connection closed"
-		# message when the server abruptly disconnects us.
-		connection_closed_re = ~r"Connection to [^ ]+ closed by remote host\.\r\n$"
-		s |> String.replace(connection_closed_re, "")
+		{"", 0} = run_on_machine(hostname, "nohup sh -c 'sleep 2; systemctl poweroff' > /dev/null 2>&1 < /dev/null &")
 	end
 
 	def probe_one(hostname) do
