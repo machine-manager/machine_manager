@@ -76,6 +76,10 @@ defmodule MachineManager.TooManyRowsError do
 	defexception [:message]
 end
 
+defmodule MachineManager.SSHError do
+	defexception [:message]
+end
+
 defmodule MachineManager.ProbeError do
 	defexception [:message]
 end
@@ -89,7 +93,7 @@ defmodule MachineManager.BadDataError do
 end
 
 defmodule MachineManager.Core do
-	alias MachineManager.{ScriptWriter, Repo, TooManyRowsError, ProbeError, UpgradeError, BadDataError}
+	alias MachineManager.{ScriptWriter, Repo, TooManyRowsError, ProbeError, UpgradeError, BadDataError, SSHError}
 	import Ecto.Query
 
 	def list() do
@@ -303,13 +307,37 @@ defmodule MachineManager.Core do
 	end
 
 	def reboot(hostname) do
-		# Use `systemctl reboot` (which results in exit code 0 from ssh)
-		# instead of `shutdown -r now` (exit code 255, cannot to distinguish from failure.)
-		{_, 0} = run_on_machine(hostname, "systemctl reboot")
+		run_on_machine(hostname, "echo connected; sleep 2; systemctl reboot")
+		|> check_ssh_result("connected\n", "Failed to reboot #{inspect hostname}")
 	end
 
 	def shutdown(hostname) do
-		{_, 0} = run_on_machine(hostname, "systemctl poweroff < /dev/null > /dev/null 2>/dev/null")
+		run_on_machine(hostname, "echo connected; sleep 2; systemctl poweroff")
+		|> check_ssh_result("connected\n", "Failed to shutdown #{inspect hostname}")
+	end
+
+	defp check_ssh_result({out, code}, expect_out, error_prelude) do
+		# Because a reboot or shutdown may kill our ssh connection very quickly,
+		# ssh will often return exit code 255 instead of 0.  But ssh also returns
+		# exit code 255 when it fails to connect to the machine.  Tell these two
+		# cases apart by checking stdout to make sure we connected to the machine.
+		case {out |> strip_connection_closed_message, code} do
+			{^expect_out, 0}   -> nil
+			{^expect_out, 255} -> nil
+			_                  -> raise SSHError, message:
+			                        """
+			                        #{error_prelude}; \
+			                        ssh returned {stdout, exit_code}:
+			                        #{inspect {out, code}}
+			                        """
+		end
+	end
+
+	defp strip_connection_closed_message(s) do
+		# Even with ssh -q / -o LogLevel=QUIET, ssh writes a "connection closed"
+		# message when the server abruptly disconnects us.
+		connection_closed_re = ~r"Connection to [^ ]+ closed by remote host\.\r\n$"
+		s |> String.replace(connection_closed_re, "")
 	end
 
 	def probe_one(hostname) do
@@ -347,7 +375,7 @@ defmodule MachineManager.Core do
 	"""
 	@spec ssh(String.t, String.t, integer, String.t) :: {String.t, integer}
 	def ssh(user, ip, ssh_port, command) do
-		System.cmd("ssh", ["-q", "-p", "#{ssh_port}", "#{user}@#{ip}", command])
+		System.cmd("ssh", ["-q", "-p", "#{ssh_port}", "#{user}@#{ip}", command], stderr_to_stdout: true)
 	end
 
 	@doc """
