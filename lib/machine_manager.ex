@@ -316,19 +316,20 @@ defmodule MachineManager.Core do
 		|> check_ssh_result("connected\n", "Failed to shutdown #{inspect hostname}")
 	end
 
-	defp check_ssh_result({out, code}, expect_out, error_prelude) do
-		# Because a reboot or shutdown may kill our ssh connection very quickly,
-		# ssh will often return exit code 255 instead of 0.  But ssh also returns
-		# exit code 255 when it fails to connect to the machine.  Tell these two
-		# cases apart by checking stdout to make sure we connected to the machine.
-		case {out |> strip_connection_closed_message, code} do
+	defp check_ssh_result({output, exit_code}, expect_out, error_prelude) do
+		# Because a reboot or shutdown may kill our ssh connection very quickly, ssh
+		# will often return exit code 255 instead of 0.  But ssh also returns exit
+		# code 255 when it fails to connect to the machine.  Tell these two cases
+		# apart by checking the output to make sure we connected to the machine.
+		case {output |> strip_connection_closed_message, exit_code} do
 			{^expect_out, 0}   -> nil
 			{^expect_out, 255} -> nil
 			_                  -> raise SSHError, message:
 			                        """
 			                        #{error_prelude}; \
-			                        ssh returned {stdout, exit_code}:
-			                        #{inspect {out, code}}
+			                        ssh returned with exit code #{exit_code}; output:
+
+			                        #{output}
 			                        """
 		end
 	end
