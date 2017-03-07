@@ -47,8 +47,8 @@ defmodule MachineManager.ScriptWriter do
 				end
 			end
 			""")
-		{_, 0} = System.cmd("mix", ["deps.get"],      cd: temp_dir)
-		case System.cmd("mix", ["compile"],       cd: temp_dir, env: [{"MIX_ENV", "prod"}], stderr_to_stdout: true) do
+		{_, 0} = System.cmd("mix", ["deps.get"], cd: temp_dir)
+		case System.cmd("mix", ["compile", "--warnings-as-errors"], cd: temp_dir, env: [{"MIX_ENV", "prod"}], stderr_to_stdout: true) do
 			{_, 0}       -> nil
 			{out, _code} -> raise ScriptCompilationError, message: "mix compile failed:\n\n#{out}"
 		end
