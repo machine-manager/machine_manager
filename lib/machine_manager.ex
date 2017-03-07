@@ -18,7 +18,13 @@ defmodule MachineManager.CPU do
 	end
 end
 
+defmodule MachineManager.ScriptCompilationError do
+	defexception [:message]
+end
+
 defmodule MachineManager.ScriptWriter do
+	alias MachineManager.ScriptCompilationError
+
 	# We want to make a script for each combination of roles, not tags,
 	# to avoid compiling a script for each tag combination.
 	@spec write_script_for_roles([String.t], String.t) :: nil
@@ -42,7 +48,10 @@ defmodule MachineManager.ScriptWriter do
 			end
 			""")
 		{_, 0} = System.cmd("mix", ["deps.get"],      cd: temp_dir)
-		{_, 0} = System.cmd("mix", ["compile"],       cd: temp_dir, env: [{"MIX_ENV", "prod"}])
+		case System.cmd("mix", ["compile"],       cd: temp_dir, env: [{"MIX_ENV", "prod"}], stderr_to_stdout: true) do
+			{_, 0}       -> nil
+			{out, _code} -> raise ScriptCompilationError, message: "mix compile failed:\n\n#{out}"
+		end
 		{_, 0} = System.cmd("mix", ["escript.build"], cd: temp_dir, env: [{"MIX_ENV", "prod"}])
 		File.cp!(Path.join(temp_dir, app_name), output_filename)
 		nil
@@ -89,7 +98,7 @@ defmodule MachineManager.BadDataError do
 end
 
 defmodule MachineManager.Core do
-	alias MachineManager.{ScriptWriter, Repo, TooManyRowsError, ProbeError, UpgradeError, BadDataError, SSHError}
+	alias MachineManager.{ScriptWriter, Repo, TooManyRowsError, ProbeError, UpgradeError, BadDataError}
 	import Ecto.Query
 
 	def list() do
