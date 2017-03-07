@@ -49,8 +49,15 @@ defmodule MachineManager.ScriptWriter do
 			""")
 		{_, 0} = System.cmd("mix", ["deps.get"], cd: temp_dir)
 		case System.cmd("mix", ["compile", "--warnings-as-errors"], cd: temp_dir, env: [{"MIX_ENV", "prod"}], stderr_to_stdout: true) do
-			{_, 0}       -> nil
-			{out, _code} -> raise ScriptCompilationError, message: "mix compile failed:\n\n#{out}"
+			{out, 0} ->
+				# Even with --warnings-as-errors, warnings in dependencies don't
+				# result in a non-0 exit from `mix compile`.  Parse the output and
+				# fail the build if there were any warnings.
+				if out |> String.contains?("warning:") do
+					raise ScriptCompilationError, message: "mix compile had a warning:\n\n#{out}"
+				end
+			{out, _code} ->
+				raise ScriptCompilationError, message: "mix compile failed:\n\n#{out}"
 		end
 		{_, 0} = System.cmd("mix", ["escript.build"], cd: temp_dir, env: [{"MIX_ENV", "prod"}])
 		File.cp!(Path.join(temp_dir, app_name), output_filename)
