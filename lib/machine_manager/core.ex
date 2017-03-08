@@ -134,28 +134,42 @@ defmodule MachineManager.Core do
 				probe_one(hostname)
 			end)}
 		end) |> Map.new
-		block_on_tasks(task_map)
+		block_on_tasks(task_map, &handle_probe_result/3)
 	end
 
-	defp block_on_tasks(task_map) do
-		pid_to_hostname  = task_map |> Enum.map(fn {hostname, task} -> {task.pid, hostname} end) |> Map.new
+	# completion_fn will be called with (hostname, :ok | :exit, task_result | exit reason)
+	defp block_on_tasks(task_map, completion_fn) do
+		pid_to_hostname =
+			task_map
+			|> Enum.map(fn {hostname, task} -> {task.pid, hostname} end)
+			|> Map.new
 		waiting_task_map = for {task, result} <- Task.yield_many(task_map |> Map.values, 2000) do
-			hostname = pid_to_hostname[task.pid] || raise RuntimeError, message: "hostname == nil for #{inspect task}"
+			hostname = pid_to_hostname[task.pid] || \
+				raise RuntimeError, message: "hostname == nil for #{inspect task}"
 			case result do
-				{:ok, probe_out} ->
-					IO.puts("PROBED #{hostname}: #{inspect probe_out}")
-					write_probe_data_to_db(hostname, probe_out)
+				{:ok, task_result} ->
+					completion_fn.(hostname, :ok, task_result)
 					nil
 				{:exit, reason} ->
-					IO.puts("FAILED #{hostname}: #{inspect reason}")
+					completion_fn.(hostname, :exit, reason)
 					nil
 				nil ->
 					{hostname, task}
 			end
 		end |> Enum.reject(&is_nil/1) |> Map.new
 		if waiting_task_map != %{} do
-			IO.puts("Still waiting on: #{waiting_task_map |> Map.keys |> Enum.join(" ")}")
-			block_on_tasks(waiting_task_map)
+			IO.puts("Waiting on: #{waiting_task_map |> Map.keys |> Enum.join(" ")}")
+			block_on_tasks(waiting_task_map, completion_fn)
+		end
+	end
+
+	defp handle_probe_result(hostname, status, task_result) do
+		case status do
+			:ok ->
+				IO.puts("Probed #{hostname}: #{inspect task_result}")
+				write_probe_data_to_db(hostname, task_result)
+			:exit ->
+				IO.puts("Failed #{hostname}: #{inspect task_result}")
 		end
 	end
 
