@@ -137,24 +137,24 @@ defmodule MachineManager.Core do
 		block_on_tasks(task_map, &handle_probe_result/3)
 	end
 
-	# completion_fn will be called with (hostname, :ok | :exit, task_result | exit reason)
+	# completion_fn will be called with (task_name, :ok | :exit, task_result | exit reason)
 	defp block_on_tasks(task_map, completion_fn) do
-		pid_to_hostname =
+		pid_to_task_name =
 			task_map
-			|> Enum.map(fn {hostname, task} -> {task.pid, hostname} end)
+			|> Enum.map(fn {task_name, task} -> {task.pid, task_name} end)
 			|> Map.new
 		waiting_task_map = for {task, result} <- Task.yield_many(task_map |> Map.values, 2000) do
-			hostname = pid_to_hostname[task.pid] || \
-				raise RuntimeError, message: "hostname == nil for #{inspect task}"
+			task_name = pid_to_task_name[task.pid] || \
+				raise RuntimeError, message: "task_name == nil for #{inspect task}"
 			case result do
 				{:ok, task_result} ->
-					completion_fn.(hostname, :ok, task_result)
+					completion_fn.(task_name, :ok, task_result)
 					nil
 				{:exit, reason} ->
-					completion_fn.(hostname, :exit, reason)
+					completion_fn.(task_name, :exit, reason)
 					nil
 				nil ->
-					{hostname, task}
+					{task_name, task}
 			end
 		end |> Enum.reject(&is_nil/1) |> Map.new
 		if waiting_task_map != %{} do
