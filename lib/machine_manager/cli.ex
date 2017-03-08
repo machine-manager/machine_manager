@@ -168,11 +168,16 @@ defmodule MachineManager.CLI do
 
 	defp handle_exec_result(hostname, task_result) do
 		pretty_hostname = hostname |> String.pad_trailing(16) |> bolded
+		green           = {24,  154, 0}
+		red             = {187, 10,  0}
 		case task_result do
 			{:ok, {output, exit_code}} ->
-				IO.puts("#{pretty_hostname} code=#{exit_code |> to_string |> String.pad_trailing(3)} #{inspect output}")
+				code_color = if exit_code == 0, do: green, else: red
+				code_text  = "code=#{exit_code |> to_string |> String.pad_trailing(3)}" |> with_fgcolor(code_color)
+				IO.puts("#{pretty_hostname} #{code_text} #{inspect output}")
 			{:exit, reason} ->
-				IO.puts("#{pretty_hostname} code=nil #{inspect reason}")
+				code_text  = "code=nil" |> with_fgcolor(red)
+				IO.puts("#{pretty_hostname} #{code_text} #{inspect reason}")
 		end
 	end
 
