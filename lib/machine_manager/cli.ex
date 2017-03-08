@@ -163,15 +163,24 @@ defmodule MachineManager.CLI do
 	end
 
 	def exec(hostname_regexp, command) do
-		Core.exec(hostname_regexp, command, &handle_exec_result/2)
+		Core.exec(hostname_regexp, command, &handle_exec_result/2, &handle_waiting/1)
 	end
 
 	defp handle_exec_result(hostname, task_result) do
 		pretty_hostname = hostname |> String.pad_trailing(16) |> bolded
 		case task_result do
-			{:ok, {output, exit_code}} -> IO.puts("#{pretty_hostname} output: code=#{exit_code} #{inspect output}")
-			{:exit, reason}            -> IO.puts("#{pretty_hostname} failed: #{inspect reason}")
+			{:ok, {output, exit_code}} ->
+				IO.puts("#{pretty_hostname} code=#{exit_code |> to_string |> String.pad_trailing(3)} #{inspect output}")
+			{:exit, reason} ->
+				IO.puts("#{pretty_hostname} code=nil #{inspect reason}")
 		end
+	end
+
+	defp handle_waiting(waiting_task_map) do
+		IO.puts(
+			"# Waiting on: #{waiting_task_map |> Map.keys |> Enum.join(" ")}"
+			|> with_fgcolor({150, 150, 150})
+		)
 	end
 
 	def list() do
@@ -235,7 +244,7 @@ defmodule MachineManager.CLI do
 
 	defp colorize_time(iso_time) do
 		[date, time] = iso_time |> String.split("T", parts: 2)
-		"#{date}#{with_fgcolor("T", {160, 160, 160})}#{time}"
+		"#{date}#{with_fgcolor("T", {150, 150, 150})}#{time}"
 	end
 
 	# Colorize the background color of a string in a manner that results in the

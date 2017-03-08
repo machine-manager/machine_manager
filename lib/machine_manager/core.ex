@@ -125,7 +125,7 @@ defmodule MachineManager.Core do
 		{"", 0} = System.cmd("rsync", args)
 	end
 
-	def probe(hostname_regexp) do
+	def probe(hostname_regexp, handle_waiting) do
 		hostnames = machines_matching_regexp(hostname_regexp |> hostname_regexp_to_postgres_regexp)
 			|> select([m], m.hostname)
 			|> Repo.all
@@ -133,7 +133,7 @@ defmodule MachineManager.Core do
 			hostnames
 			|> Enum.map(fn hostname -> {hostname, Task.async(fn -> probe_one(hostname) end)} end)
 			|> Map.new
-		block_on_tasks(task_map, &handle_probe_result/2, &handle_waiting/1, 2000)
+		block_on_tasks(task_map, &handle_probe_result/2, handle_waiting, 2000)
 	end
 
 	defp handle_probe_result(hostname, task_result) do
@@ -146,7 +146,7 @@ defmodule MachineManager.Core do
 		end
 	end
 
-	def exec(hostname_regexp, command, handle_exec_result) do
+	def exec(hostname_regexp, command, handle_exec_result, handle_waiting) do
 		hostnames = machines_matching_regexp(hostname_regexp |> hostname_regexp_to_postgres_regexp)
 			|> select([m], m.hostname)
 			|> Repo.all
@@ -154,7 +154,7 @@ defmodule MachineManager.Core do
 			hostnames
 			|> Enum.map(fn hostname -> {hostname, Task.async(fn -> run_on_machine(hostname, command) end)} end)
 			|> Map.new
-		block_on_tasks(task_map, handle_exec_result, &handle_waiting/1, 2000)
+		block_on_tasks(task_map, handle_exec_result, handle_waiting, 2000)
 	end
 
 	defp hostname_regexp_to_postgres_regexp(hostname_regexp) do
@@ -180,10 +180,6 @@ defmodule MachineManager.Core do
 			waiting_fn.(waiting_task_map)
 			block_on_tasks(waiting_task_map, completion_fn, waiting_fn, check_interval)
 		end
-	end
-
-	defp handle_waiting(waiting_task_map) do
-		IO.puts("Waiting on: #{waiting_task_map |> Map.keys |> Enum.join(" ")}")
 	end
 
 	defp write_probe_data_to_db(hostname, data) do
