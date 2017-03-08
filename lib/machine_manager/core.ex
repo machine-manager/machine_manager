@@ -129,15 +129,39 @@ defmodule MachineManager.Core do
 	end
 
 	def probe(hostnames) do
-		task_map = hostnames |> Enum.map(fn hostname ->
-			{hostname, Task.async(fn ->
-				probe_one(hostname)
-			end)}
-		end) |> Map.new
-		block_on_tasks(task_map, &handle_probe_result/3, &handle_probe_waiting/1, 2000)
+		task_map =
+			hostnames
+			|> Enum.map(fn hostname -> {hostname, Task.async(fn -> probe_one(hostname) end)} end)
+			|> Map.new
+		block_on_tasks(task_map, &handle_probe_result/3, &handle_waiting/1, 2000)
 	end
 
-	# completion_fn will be called with (task_name, :ok | :exit, task_result | exit reason)
+	defp handle_probe_result(hostname, status, task_result) do
+		case status do
+			:ok ->
+				IO.puts("Probed #{hostname}: #{inspect task_result}")
+				write_probe_data_to_db(hostname, task_result)
+			:exit ->
+				IO.puts("Failed #{hostname}: #{inspect task_result}")
+		end
+	end
+
+	def exec(hostnames, command) do
+		task_map =
+			hostnames
+			|> Enum.map(fn hostname -> {hostname, Task.async(fn -> run_on_machine(hostname, command) end)} end)
+			|> Map.new
+		block_on_tasks(task_map, &handle_exec_result/3, &handle_waiting/1, 2000)
+	end
+
+	defp handle_exec_result(hostname, status, task_result) do
+		case status do
+			:ok   -> IO.puts("Exec on #{hostname}: #{inspect task_result}")
+			:exit -> IO.puts("Failed to exec on #{hostname}: #{inspect task_result}")
+		end
+	end
+
+	@spec block_on_tasks(map, (String.t, :ok | :exit, term -> term), (map -> term), integer) :: nil
 	defp block_on_tasks(task_map, completion_fn, waiting_fn, check_interval) do
 		pid_to_task_name =
 			task_map
@@ -158,17 +182,7 @@ defmodule MachineManager.Core do
 		end
 	end
 
-	defp handle_probe_result(hostname, status, task_result) do
-		case status do
-			:ok ->
-				IO.puts("Probed #{hostname}: #{inspect task_result}")
-				write_probe_data_to_db(hostname, task_result)
-			:exit ->
-				IO.puts("Failed #{hostname}: #{inspect task_result}")
-		end
-	end
-
-	defp handle_probe_waiting(waiting_task_map) do
+	defp handle_waiting(waiting_task_map) do
 		IO.puts("Waiting on: #{waiting_task_map |> Map.keys |> Enum.join(" ")}")
 	end
 

@@ -62,6 +62,14 @@ defmodule MachineManager.CLI do
 						hostnames: [required: true, help: "Comma-separated list of hostnames"],
 					],
 				],
+				exec: [
+					name:  "exec",
+					about: "Execute command on machines",
+					args: [
+						hostnames: [required: true, help: "Comma-separated list of hostnames"],
+						command:   [required: true, help: "Command to execute on each machine"],
+					],
+				],
 				add: [
 					name:  "add",
 					about: "Add a machine",
@@ -124,6 +132,7 @@ defmodule MachineManager.CLI do
 			:configure    -> Core.configure(args.hostname)
 			:ssh_config   -> Core.ssh_config()
 			:probe        -> Core.probe(args.hostnames |> String.split(","))
+			:exec         -> Core.exec(args.hostnames |> String.split(","), args.command)
 			:upgrade      -> Core.upgrade(args.hostname)
 			:reboot       -> Core.reboot(args.hostname)
 			:shutdown     -> Core.shutdown(args.hostname)
