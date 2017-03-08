@@ -95,7 +95,7 @@ defmodule MachineManager.Core do
 				|> select([:ip, :ssh_port])
 				|> Repo.all
 				|> one_row
-			tags = get_tags_for_machine(hostname)
+			tags = get_tags(hostname)
 			{inet_to_ip(row.ip), row.ssh_port, tags}
 		end)
 		roles        = ScriptWriter.roles_for_tags(tags)
@@ -384,13 +384,13 @@ defmodule MachineManager.Core do
 	end
 
 	def write_script_for_machine(hostname, output_file) do
-		tags  = get_tags_for_machine(hostname)
+		tags  = get_tags(hostname)
 		roles = ScriptWriter.roles_for_tags(tags)
 		ScriptWriter.write_script_for_roles(roles, output_file)
 	end
 
-	@spec get_tags_for_machine(String.t) :: [String.t]
-	def get_tags_for_machine(hostname) do
+	@spec get_tags(String.t) :: [String.t]
+	def get_tags(hostname) do
 		from("machine_tags")
 		|> where([hostname: ^hostname])
 		|> select([m], m.tag)

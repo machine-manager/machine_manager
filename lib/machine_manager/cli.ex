@@ -98,6 +98,13 @@ defmodule MachineManager.CLI do
 					],
 					allow_unknown_args: true,
 				],
+				get_tags: [
+					name:  "get-tags",
+					about: "Get tags for a machine",
+					args: [
+						hostname: [required: true],
+					],
+				],
 				untag: [
 					name:  "untag",
 					about: "Remove tag from a machine",
@@ -140,6 +147,7 @@ defmodule MachineManager.CLI do
 			:rm           -> Core.rm(args.hostname)
 			:tag          -> Core.tag(args.hostname,   all_arguments(args.tag, unknown))
 			:untag        -> Core.untag(args.hostname, all_arguments(args.tag, unknown))
+			:get_tags     -> Core.get_tags(args.hostname) |> Enum.join(" ") |> IO.write
 			:set_ip       -> Core.set_ip(args.hostname, args.ip)
 			:set_ssh_port -> Core.set_ssh_port(args.hostname, args.ssh_port)
 		end
