@@ -129,7 +129,10 @@ defmodule MachineManager.Core do
 		{"", 0} = System.cmd("rsync", args)
 	end
 
-	def probe(hostnames) do
+	def probe(hostname_regexp) do
+		hostnames = machines_matching_regexp(hostname_regexp |> hostname_regexp_to_postgres_regexp)
+			|> select([m], m.hostname)
+			|> Repo.all
 		task_map =
 			hostnames
 			|> Enum.map(fn hostname -> {hostname, Task.async(fn -> probe_one(hostname) end)} end)
@@ -147,12 +150,19 @@ defmodule MachineManager.Core do
 		end
 	end
 
-	def exec(hostnames, command) do
+	def exec(hostname_regexp, command) do
+		hostnames = machines_matching_regexp(hostname_regexp |> hostname_regexp_to_postgres_regexp)
+			|> select([m], m.hostname)
+			|> Repo.all
 		task_map =
 			hostnames
 			|> Enum.map(fn hostname -> {hostname, Task.async(fn -> run_on_machine(hostname, command) end)} end)
 			|> Map.new
 		block_on_tasks(task_map, &handle_exec_result/3, &handle_waiting/1, 2000)
+	end
+
+	defp hostname_regexp_to_postgres_regexp(hostname_regexp) do
+		"^#{hostname_regexp}$"
 	end
 
 	defp handle_exec_result(hostname, status, task_result) do
@@ -414,6 +424,11 @@ defmodule MachineManager.Core do
 	defp machine(hostname) do
 		all_machines()
 		|> where([hostname: ^hostname])
+	end
+
+	defp machines_matching_regexp(hostname_regexp) do
+		all_machines()
+		|> where([m], fragment("? ~ ?", m.hostname, ^hostname_regexp))
 	end
 
 	defp one_row(rows) do

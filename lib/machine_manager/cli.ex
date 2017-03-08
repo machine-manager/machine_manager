@@ -59,15 +59,15 @@ defmodule MachineManager.CLI do
 					name:  "probe",
 					about: "Probe machines",
 					args: [
-						hostnames: [required: true, help: "Comma-separated list of hostnames"],
+						hostname_regexp: [required: true, help: "Regular expression used to match hostnames. Automatically wrapped with ^ and $."],
 					],
 				],
 				exec: [
 					name:  "exec",
 					about: "Execute command on machines",
 					args: [
-						hostnames: [required: true, help: "Comma-separated list of hostnames"],
-						command:   [required: true, help: "Command to execute on each machine"],
+						hostname_regexp: [required: true, help: "Regular expression used to match hostnames. Automatically wrapped with ^ and $."],
+						command:         [required: true, help: "Command to execute on each machine"],
 					],
 				],
 				add: [
@@ -139,8 +139,8 @@ defmodule MachineManager.CLI do
 			:script       -> Core.write_script_for_machine(args.hostname, args.output_file)
 			:configure    -> Core.configure(args.hostname)
 			:ssh_config   -> Core.ssh_config()
-			:probe        -> Core.probe(args.hostnames |> String.split(","))
-			:exec         -> Core.exec(args.hostnames |> String.split(","), args.command)
+			:probe        -> Core.probe(args.hostname_regexp)
+			:exec         -> Core.exec(args.hostname_regexp, args.command)
 			:upgrade      -> Core.upgrade(args.hostname)
 			:reboot       -> Core.reboot(args.hostname)
 			:shutdown     -> Core.shutdown(args.hostname)
