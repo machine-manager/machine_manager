@@ -146,7 +146,7 @@ defmodule MachineManager.Core do
 		end
 	end
 
-	def exec(hostname_regexp, command) do
+	def exec(hostname_regexp, command, handle_exec_result) do
 		hostnames = machines_matching_regexp(hostname_regexp |> hostname_regexp_to_postgres_regexp)
 			|> select([m], m.hostname)
 			|> Repo.all
@@ -154,18 +154,11 @@ defmodule MachineManager.Core do
 			hostnames
 			|> Enum.map(fn hostname -> {hostname, Task.async(fn -> run_on_machine(hostname, command) end)} end)
 			|> Map.new
-		block_on_tasks(task_map, &handle_exec_result/2, &handle_waiting/1, 2000)
+		block_on_tasks(task_map, handle_exec_result, &handle_waiting/1, 2000)
 	end
 
 	defp hostname_regexp_to_postgres_regexp(hostname_regexp) do
 		"^#{hostname_regexp}$"
-	end
-
-	defp handle_exec_result(hostname, task_result) do
-		case task_result do
-			{:ok, {output, exit_code}} -> IO.puts("#{hostname}: code=#{exit_code} #{inspect output}")
-			{:exit, reason}            -> IO.puts("#{hostname}: FAILED: #{inspect reason}")
-		end
 	end
 
 	@spec block_on_tasks(map, (String.t, :ok | :exit, term -> term), (map -> term), integer) :: nil

@@ -140,7 +140,7 @@ defmodule MachineManager.CLI do
 			:configure    -> Core.configure(args.hostname)
 			:ssh_config   -> Core.ssh_config()
 			:probe        -> Core.probe(args.hostname_regexp)
-			:exec         -> Core.exec(args.hostname_regexp, args.command)
+			:exec         -> exec(args.hostname_regexp, args.command)
 			:upgrade      -> Core.upgrade(args.hostname)
 			:reboot       -> Core.reboot(args.hostname)
 			:shutdown     -> Core.shutdown(args.hostname)
@@ -159,6 +159,18 @@ defmodule MachineManager.CLI do
 		case maybe_first do
 			nil -> []
 			_   -> [maybe_first | rest]
+		end
+	end
+
+	def exec(hostname_regexp, command) do
+		Core.exec(hostname_regexp, command, &handle_exec_result/2)
+	end
+
+	defp handle_exec_result(hostname, task_result) do
+		pretty_hostname = hostname |> String.pad_trailing(16) |> bolded
+		case task_result do
+			{:ok, {output, exit_code}} -> IO.puts("#{pretty_hostname} output: code=#{exit_code} #{inspect output}")
+			{:exit, reason}            -> IO.puts("#{pretty_hostname} failed: #{inspect reason}")
 		end
 	end
 
