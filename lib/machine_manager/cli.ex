@@ -77,9 +77,10 @@ defmodule MachineManager.CLI do
 						hostname: [required: true],
 					],
 					options: [
-						ip:       [short: "-i", long: "--ip",       required: true],
-						ssh_port: [short: "-p", long: "--ssh-port", required: true,  parser: :integer],
-						tag:      [short: "-t", long: "--tag",      required: false, multiple: true],
+						ip:         [short: "-i", long: "--ip",       required: true,                    help: "IP address"],
+						datacenter: [short: "-d", long: "--dc",       required: true,                    help: "Datacenter"],
+						ssh_port:   [short: "-p", long: "--ssh-port", required: true,  parser: :integer, help: "SSH port"],
+						tag:        [short: "-t", long: "--tag",      required: false, multiple: true,   help: "Tag"],
 					],
 				],
 				rm: [
@@ -143,7 +144,7 @@ defmodule MachineManager.CLI do
 			:upgrade      -> Core.upgrade(args.hostname)
 			:reboot       -> Core.reboot(args.hostname)
 			:shutdown     -> Core.shutdown(args.hostname)
-			:add          -> Core.add(args.hostname, options.ip, options.ssh_port, options.tag)
+			:add          -> Core.add(args.hostname, options.ip, options.ssh_port, options.datacenter, options.tag)
 			:rm           -> Core.rm(args.hostname)
 			:tag          -> Core.tag(args.hostname,   all_arguments(args.tag, unknown))
 			:untag        -> Core.untag(args.hostname, all_arguments(args.tag, unknown))
@@ -163,7 +164,7 @@ defmodule MachineManager.CLI do
 
 	def list() do
 		rows          = Core.list()
-		header        = ["HOSTNAME", "IP", "SSH", "TAGS", "国", "RAM", "CPU", "核", "糸", "PROBE TIME", "BOOT TIME", "KERNEL", "PENDING UPGRADES"]
+		header        = ["HOSTNAME", "IP", "SSH", "TAGS", "DC", "国", "RAM", "CPU", "核", "糸", "PROBE TIME", "BOOT TIME", "KERNEL", "PENDING UPGRADES"]
                       |> Enum.map(&maybe_bolded/1)
 		tag_frequency = make_tag_frequency(rows)
 		table         = [header | Enum.map(rows, fn row -> sql_row_to_table_row(row, tag_frequency) end)]
@@ -200,7 +201,8 @@ defmodule MachineManager.CLI do
 						tag |> bold_first_part_if_multiple_parts |> colorize(hash)
 					end)
 				|> Enum.join(" "),
-			(if row.country != nil, do: row.country |> colorize),
+			row.datacenter |> colorize,
+			(if row.country          != nil, do: row.country |> colorize),
 			row.ram_mb,
 			(if row.cpu_model_name   != nil, do: CPU.short_description(row.cpu_model_name)),
 			row.core_count,

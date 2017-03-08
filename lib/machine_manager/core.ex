@@ -44,6 +44,7 @@ defmodule MachineManager.Core do
 				pending_upgrades: u.pending_upgrades,
 				last_probe_time:  m.last_probe_time,
 				boot_time:        m.boot_time,
+				datacenter:       m.datacenter,
 				country:          m.country,
 				cpu_model_name:   m.cpu_model_name,
 				ram_mb:           m.ram_mb,
@@ -215,12 +216,6 @@ defmodule MachineManager.Core do
 		end)
 	end
 
-	def _atoms() do
-		# Make sure these atoms are in the atom table
-		[:ram_mb, :cpu_model_name, :cpu_architecture, :core_count, :thread_count,
-		 :country, :kernel, :boot_time_ms, :pending_upgrades]
-	end
-
 	def upgrade(hostname) do
 		packages = get_pending_upgrades_for_machine(hostname)
 		# TODO: if disk is very low, first run
@@ -282,6 +277,12 @@ defmodule MachineManager.Core do
 		end
 	end
 
+	def _atoms() do
+		# Make sure these atoms are in the atom table for our Poison.decode!
+		[:ram_mb, :cpu_model_name, :cpu_architecture, :core_count, :thread_count,
+		 :datacenter, :country, :kernel, :boot_time_ms, :pending_upgrades]
+	end
+
 	@spec run_on_machine(String.t, String.t) :: {String.t, integer}
 	defp run_on_machine(hostname, command) do
 		row =
@@ -317,13 +318,14 @@ defmodule MachineManager.Core do
 	@doc """
 	Adds a machine from the database.
 	"""
-	@spec add(String.t, String.t, integer, [String.t]) :: nil
-	def add(hostname, ip, ssh_port, tags) do
+	@spec add(String.t, String.t, integer, String.t, [String.t]) :: nil
+	def add(hostname, ip, ssh_port, datacenter, tags) do
 		{:ok, _} = Repo.transaction(fn ->
 			Repo.insert_all("machines", [[
-				hostname: hostname,
-				ip:       ip_to_inet(ip),
-				ssh_port: ssh_port,
+				hostname:   hostname,
+				ip:         ip_to_inet(ip),
+				datacenter: datacenter,
+				ssh_port:   ssh_port,
 			]])
 			tag(hostname, tags)
 		end)

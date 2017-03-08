@@ -10,6 +10,7 @@
 SET ROLE machine_manager;
 
 CREATE DOMAIN hostname         AS character varying(32) CHECK(VALUE ~ '\A[-_a-z0-9]+\Z');
+CREATE DOMAIN datacenter       AS character varying(32) CHECK(VALUE ~ '\A[-_a-z0-9]+\Z');
 CREATE DOMAIN country          AS character(2)          CHECK(VALUE ~ '\A[a-z]{2}\Z');
 CREATE DOMAIN ssh_port         AS integer               CHECK(VALUE > 0 AND VALUE <= 65536);
 CREATE DOMAIN int4_gt0         AS integer               CHECK(VALUE > 0);
@@ -22,9 +23,10 @@ CREATE DOMAIN cpu_architecture AS character varying(8)  CHECK(VALUE ~ '\A[^\x00-
 
 CREATE TABLE machines (
 	-- Access information
-	hostname          hostname NOT NULL PRIMARY KEY,
-	ip                inet     NOT NULL,
-	ssh_port          ssh_port NOT NULL,
+	hostname          hostname   NOT NULL PRIMARY KEY,
+	ip                inet       NOT NULL,
+	ssh_port          ssh_port   NOT NULL,
+	datacenter        datacenter NOT NULL,
 	country           country,
 
 	-- Hardware information
