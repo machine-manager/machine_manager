@@ -2,10 +2,6 @@ defmodule MachineManager.TooManyRowsError do
 	defexception [:message]
 end
 
-defmodule MachineManager.ProbeError do
-	defexception [:message]
-end
-
 defmodule MachineManager.UpgradeError do
 	defexception [:message]
 end
@@ -15,7 +11,7 @@ defmodule MachineManager.BadDataError do
 end
 
 defmodule MachineManager.Core do
-	alias MachineManager.{ScriptWriter, Repo, TooManyRowsError, ProbeError, UpgradeError, BadDataError}
+	alias MachineManager.{ScriptWriter, Repo, TooManyRowsError, UpgradeError, BadDataError}
 	import Ecto.Query
 
 	def list() do
@@ -137,15 +133,15 @@ defmodule MachineManager.Core do
 			hostnames
 			|> Enum.map(fn hostname -> {hostname, Task.async(fn -> probe_one(hostname) end)} end)
 			|> Map.new
-		block_on_tasks(task_map, &handle_probe_result/3, &handle_waiting/1, 2000)
+		block_on_tasks(task_map, &handle_probe_result/2, &handle_waiting/1, 2000)
 	end
 
-	defp handle_probe_result(hostname, status, task_result) do
-		case status do
-			:ok ->
+	defp handle_probe_result(hostname, task_result) do
+		case task_result do
+			{:ok, {:probe_ok, data}} ->
 				IO.puts("Probed #{hostname}: #{inspect task_result}")
-				write_probe_data_to_db(hostname, task_result)
-			:exit ->
+				write_probe_data_to_db(hostname, data)
+			_ ->
 				IO.puts("Failed #{hostname}: #{inspect task_result}")
 		end
 	end
@@ -158,17 +154,17 @@ defmodule MachineManager.Core do
 			hostnames
 			|> Enum.map(fn hostname -> {hostname, Task.async(fn -> run_on_machine(hostname, command) end)} end)
 			|> Map.new
-		block_on_tasks(task_map, &handle_exec_result/3, &handle_waiting/1, 2000)
+		block_on_tasks(task_map, &handle_exec_result/2, &handle_waiting/1, 2000)
 	end
 
 	defp hostname_regexp_to_postgres_regexp(hostname_regexp) do
 		"^#{hostname_regexp}$"
 	end
 
-	defp handle_exec_result(hostname, status, task_result) do
-		case status do
-			:ok   -> IO.puts("Exec on #{hostname}: #{inspect task_result}")
-			:exit -> IO.puts("Failed to exec on #{hostname}: #{inspect task_result}")
+	defp handle_exec_result(hostname, task_result) do
+		case task_result do
+			{:ok, {output, exit_code}} -> IO.puts("#{hostname}: code=#{exit_code} #{inspect output}")
+			{:exit, reason}            -> IO.puts("#{hostname}: FAILED: #{inspect reason}")
 		end
 	end
 
@@ -182,8 +178,8 @@ defmodule MachineManager.Core do
 			task_name = pid_to_task_name[task.pid] || \
 				raise RuntimeError, message: "task_name == nil for #{inspect task}"
 			case result do
-				{:ok, task_result} -> completion_fn.(task_name, :ok, task_result); nil
-				{:exit, reason}    -> completion_fn.(task_name, :exit, reason);    nil
+				{:ok, task_result} -> completion_fn.(task_name, {:ok, task_result}); nil
+				{:exit, reason}    -> completion_fn.(task_name, {:exit, reason});    nil
 				nil                -> {task_name, task}
 			end
 		end |> Enum.reject(&is_nil/1) |> Map.new
@@ -282,8 +278,8 @@ defmodule MachineManager.Core do
 		"""
 		{output, exit_code} = run_on_machine(hostname, command)
 		case exit_code do
-			0     -> Poison.decode!(output, keys: :atoms!)
-			other -> raise ProbeError, message: "Probe of #{hostname} failed with exit code #{other}; output:\n\n#{output}"
+			0     -> {:probe_ok,     Poison.decode!(output, keys: :atoms!)}
+			other -> {:probe_failed, "Probe of #{hostname} failed with exit code #{other}; output:\n\n#{output}"}
 		end
 	end
 
