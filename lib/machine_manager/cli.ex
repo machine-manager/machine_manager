@@ -4,6 +4,7 @@ defmodule MachineManager.CLI do
 	alias MachineManager.{Core, CPU}
 
 	def main(argv) do
+		hostname_regexp_help = "Regular expression used to match hostnames. Automatically wrapped with ^ and $."
 		spec = Optimus.new!(
 			name:               "machine_manager",
 			description:        "Machine Manager",
@@ -59,14 +60,14 @@ defmodule MachineManager.CLI do
 					name:  "probe",
 					about: "Probe machines",
 					args: [
-						hostname_regexp: [required: true, help: "Regular expression used to match hostnames. Automatically wrapped with ^ and $."],
+						hostname_regexp: [required: true, help: hostname_regexp_help],
 					],
 				],
 				exec: [
 					name:  "exec",
 					about: "Execute command on machines",
 					args: [
-						hostname_regexp: [required: true, help: "Regular expression used to match hostnames. Automatically wrapped with ^ and $."],
+						hostname_regexp: [required: true, help: hostname_regexp_help],
 						command:         [required: true, help: "Command to execute on each machine"],
 					],
 				],
@@ -94,8 +95,17 @@ defmodule MachineManager.CLI do
 					name:  "tag",
 					about: "Add tags to a machine",
 					args: [
-						hostname: [required: true],
-						tag:      [required: false, help: "Tags to add", value_name: "TAG..."],
+						hostname_regexp: [required: true, help: hostname_regexp_help],
+						tag:             [required: false, help: "Tags to add", value_name: "TAG..."],
+					],
+					allow_unknown_args: true,
+				],
+				untag: [
+					name:  "untag",
+					about: "Remove tag from a machine",
+					args: [
+						hostname_regexp: [required: true, help: hostname_regexp_help],
+						tag:             [required: false, help: "Tags to remove", value_name: "TAG..."],
 					],
 					allow_unknown_args: true,
 				],
@@ -105,15 +115,6 @@ defmodule MachineManager.CLI do
 					args: [
 						hostname: [required: true],
 					],
-				],
-				untag: [
-					name:  "untag",
-					about: "Remove tag from a machine",
-					args: [
-						hostname: [required: true],
-						tag:      [required: false, help: "Tags to remove", value_name: "TAG..."],
-					],
-					allow_unknown_args: true,
 				],
 				set_ip: [
 					name:  "set-ip",
@@ -146,8 +147,8 @@ defmodule MachineManager.CLI do
 			:shutdown     -> Core.shutdown(args.hostname)
 			:add          -> Core.add(args.hostname, options.ip, options.ssh_port, options.datacenter, options.tag)
 			:rm           -> Core.rm(args.hostname)
-			:tag          -> Core.tag(args.hostname,   all_arguments(args.tag, unknown))
-			:untag        -> Core.untag(args.hostname, all_arguments(args.tag, unknown))
+			:tag          -> Core.tag_many(args.hostname_regexp,   all_arguments(args.tag, unknown))
+			:untag        -> Core.untag_many(args.hostname_regexp, all_arguments(args.tag, unknown))
 			:get_tags     -> Core.get_tags(args.hostname) |> Enum.join(" ") |> IO.write
 			:set_ip       -> Core.set_ip(args.hostname, args.ip)
 			:set_ssh_port -> Core.set_ssh_port(args.hostname, args.ssh_port)

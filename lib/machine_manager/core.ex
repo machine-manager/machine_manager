@@ -137,7 +137,7 @@ defmodule MachineManager.Core do
 
 	def probe(hostname_regexp, log_probe_result, handle_waiting) do
 		hostnames =
-			machines_matching_regexp(hostname_regexp |> anchor_regexp)
+			machines_matching_regexp(hostname_regexp)
 			|> select([m], m.hostname)
 			|> Repo.all
 		task_map =
@@ -159,7 +159,7 @@ defmodule MachineManager.Core do
 
 	def exec(hostname_regexp, command, handle_exec_result, handle_waiting) do
 		hostnames =
-			machines_matching_regexp(hostname_regexp |> anchor_regexp)
+			machines_matching_regexp(hostname_regexp)
 			|> select([m], m.hostname)
 			|> Repo.all
 		task_map =
@@ -167,10 +167,6 @@ defmodule MachineManager.Core do
 			|> Enum.map(fn hostname -> {hostname, Task.async(fn -> run_on_machine(hostname, command) end)} end)
 			|> Map.new
 		block_on_tasks(task_map, handle_exec_result, handle_waiting, 2000)
-	end
-
-	defp anchor_regexp(hostname_regexp) do
-		"^#{hostname_regexp}$"
 	end
 
 	@spec block_on_tasks(map, (String.t, :ok | :exit, term -> term), (map -> term), integer) :: nil
@@ -361,16 +357,41 @@ defmodule MachineManager.Core do
 			end),
 			on_conflict: :nothing
 		)
-		nil
 	end
 
 	@doc """
-	Remove tags in enumerable `remove_tags` from machine with hostname `hostname`.
+	Add tags in enumerable `new_tags` to machine with hostnames matching `hostname_regexp`.
 	"""
-	@spec untag(String.t, [String.t]) :: nil
-	def untag(hostname, remove_tags) do
+	@spec tag_many(String.t, [String.t]) :: nil
+	def tag_many(hostname_regexp, new_tags) do
+		Repo.transaction(fn ->
+			hostnames =
+				machines_matching_regexp(hostname_regexp)
+				|> select([m], m.hostname)
+				|> Repo.all
+			Repo.insert_all("machine_tags",
+				cartesian_product(hostnames, new_tags)
+				|> Enum.map(fn {hostname, tag} ->
+					[hostname: hostname, tag: tag]
+				end),
+				on_conflict: :nothing
+			)
+		end)
+		nil
+	end
+
+	@spec cartesian_product(Enum.t, Enum.t) :: [{term, term}]
+	defp cartesian_product(a, b) do
+		for x <- a, y <- b, do: {x, y}
+	end
+
+	@doc """
+	Remove tags in enumerable `remove_tags` from machine with hostnames matching `hostname_regexp`.
+	"""
+	@spec untag_many(String.t, [String.t]) :: nil
+	def untag_many(hostname_regexp, remove_tags) do
 		from("machine_tags")
-		|> where([t], t.hostname == ^hostname)
+		|> hostname_matching_regexp(hostname_regexp)
 		|> where([t], t.tag in ^remove_tags)
 		|> Repo.delete_all
 		nil
@@ -421,7 +442,17 @@ defmodule MachineManager.Core do
 
 	defp machines_matching_regexp(hostname_regexp) do
 		from("machines")
-		|> where([m], fragment("? ~ ?", m.hostname, ^hostname_regexp))
+		|> hostname_matching_regexp(hostname_regexp)
+	end
+
+	defp hostname_matching_regexp(queryable, hostname_regexp) do
+		anchored_regexp = anchor_regexp(hostname_regexp)
+		queryable
+		|> where([t], fragment("? ~ ?", t.hostname, ^anchored_regexp))
+	end
+
+	defp anchor_regexp(hostname_regexp) do
+		"^#{hostname_regexp}$"
 	end
 
 	defp one_row(rows) do
