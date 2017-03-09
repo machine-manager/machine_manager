@@ -126,28 +126,30 @@ defmodule MachineManager.Core do
 	end
 
 	def probe(hostname_regexp, log_probe_result, handle_waiting) do
-		hostnames = machines_matching_regexp(hostname_regexp |> hostname_regexp_to_postgres_regexp)
+		hostnames =
+			machines_matching_regexp(hostname_regexp |> full_match_regexp)
 			|> select([m], m.hostname)
 			|> Repo.all
 		task_map =
 			hostnames
 			|> Enum.map(fn hostname -> {hostname, Task.async(fn -> probe_one(hostname) end)} end)
 			|> Map.new
-		block_on_tasks(task_map, fn hostname, task_result ->
-			handle_probe_result(hostname, task_result, log_probe_result)
-		end, handle_waiting, 2000)
-	end
-
-	defp handle_probe_result(hostname, task_result, log_probe_result) do
-		log_probe_result.(hostname, task_result)
-		case task_result do
-			{:ok, {:probe_ok, data}} -> write_probe_data_to_db(hostname, data)
-			_                        -> nil
-		end
+		block_on_tasks(
+			task_map,
+			fn hostname, task_result ->
+				log_probe_result.(hostname, task_result)
+				with {:ok, {:probe_ok, data}} <- task_result do
+					write_probe_data_to_db(hostname, data)
+				end
+			end,
+			handle_waiting,
+			2000
+		)
 	end
 
 	def exec(hostname_regexp, command, handle_exec_result, handle_waiting) do
-		hostnames = machines_matching_regexp(hostname_regexp |> hostname_regexp_to_postgres_regexp)
+		hostnames =
+			machines_matching_regexp(hostname_regexp |> full_match_regexp)
 			|> select([m], m.hostname)
 			|> Repo.all
 		task_map =
@@ -157,7 +159,7 @@ defmodule MachineManager.Core do
 		block_on_tasks(task_map, handle_exec_result, handle_waiting, 2000)
 	end
 
-	defp hostname_regexp_to_postgres_regexp(hostname_regexp) do
+	defp full_match_regexp(hostname_regexp) do
 		"^#{hostname_regexp}$"
 	end
 
