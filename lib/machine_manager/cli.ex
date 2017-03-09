@@ -140,7 +140,7 @@ defmodule MachineManager.CLI do
 			:script       -> Core.write_script_for_machine(args.hostname, args.output_file)
 			:configure    -> Core.configure(args.hostname)
 			:ssh_config   -> Core.ssh_config()
-			:probe        -> probe(args.hostname_regexp)
+			:probe        -> probe_many(args.hostname_regexp)
 			:exec         -> exec(args.hostname_regexp, args.command)
 			:upgrade      -> Core.upgrade(args.hostname)
 			:reboot       -> Core.reboot(args.hostname)
@@ -182,8 +182,8 @@ defmodule MachineManager.CLI do
 		end
 	end
 
-	def probe(hostname_regexp) do
-		Core.probe(hostname_regexp, &log_probe_result/2, &handle_waiting/1)
+	def probe_many(hostname_regexp) do
+		Core.probe_many(hostname_regexp, &log_probe_result/2, &handle_waiting/1)
 	end
 
 	defp log_probe_result(hostname, task_result) do

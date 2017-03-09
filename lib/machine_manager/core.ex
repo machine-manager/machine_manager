@@ -140,14 +140,14 @@ defmodule MachineManager.Core do
 		{"", 0} = System.cmd("rsync", args)
 	end
 
-	def probe(hostname_regexp, log_probe_result, handle_waiting) do
+	def probe_many(hostname_regexp, log_probe_result, handle_waiting) do
 		hostnames =
 			machines_matching_regexp(hostname_regexp)
 			|> select([m], m.hostname)
 			|> Repo.all
 		task_map =
 			hostnames
-			|> Enum.map(fn hostname -> {hostname, Task.async(fn -> probe_one(hostname) end)} end)
+			|> Enum.map(fn hostname -> {hostname, Task.async(fn -> probe(hostname) end)} end)
 			|> Map.new
 		block_on_tasks(
 			task_map,
@@ -266,7 +266,7 @@ defmodule MachineManager.Core do
 		{"", 0} = run_on_machine(hostname, "nohup sh -c 'sleep 2; systemctl poweroff' > /dev/null 2>&1 < /dev/null &")
 	end
 
-	def probe_one(hostname) do
+	def probe(hostname) do
 		# machine_probe expects that we already ran an `apt-get update` when
 		# it determines which packages can be upgraded.
 		#
