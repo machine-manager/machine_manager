@@ -125,6 +125,11 @@ defmodule MachineManager.Core do
 		0 = ssh_no_capture("root", ip, ssh_port, arguments |> Enum.join(" "))
 	end
 
+	# Transfer file `source` using rsync to user@host:dest
+	#
+	# If opts[:before_rsync] is non-nil, the given command is executed on the
+	# remote before the rsync transfer.  This can be used to create a directory
+	# needed for the transfer to succeed.
 	defp transfer_file(source, user, hostname, dest, opts) do
 		before_rsync = opts[:before_rsync]
 		args = case before_rsync do
