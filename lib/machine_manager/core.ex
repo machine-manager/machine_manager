@@ -125,7 +125,7 @@ defmodule MachineManager.Core do
 		{"", 0} = System.cmd("rsync", args)
 	end
 
-	def probe(hostname_regexp, handle_waiting) do
+	def probe(hostname_regexp, log_probe_result, handle_waiting) do
 		hostnames = machines_matching_regexp(hostname_regexp |> hostname_regexp_to_postgres_regexp)
 			|> select([m], m.hostname)
 			|> Repo.all
@@ -133,16 +133,16 @@ defmodule MachineManager.Core do
 			hostnames
 			|> Enum.map(fn hostname -> {hostname, Task.async(fn -> probe_one(hostname) end)} end)
 			|> Map.new
-		block_on_tasks(task_map, &handle_probe_result/2, handle_waiting, 2000)
+		block_on_tasks(task_map, fn hostname, task_result ->
+			handle_probe_result(hostname, task_result, log_probe_result)
+		end, handle_waiting, 2000)
 	end
 
-	defp handle_probe_result(hostname, task_result) do
+	defp handle_probe_result(hostname, task_result, log_probe_result) do
+		log_probe_result.(hostname, task_result)
 		case task_result do
-			{:ok, {:probe_ok, data}} ->
-				IO.puts("Probed #{hostname}: #{inspect task_result}")
-				write_probe_data_to_db(hostname, data)
-			_ ->
-				IO.puts("Failed #{hostname}: #{inspect task_result}")
+			{:ok, {:probe_ok, data}} -> write_probe_data_to_db(hostname, data)
+			_                        -> nil
 		end
 	end
 

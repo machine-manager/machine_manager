@@ -139,7 +139,7 @@ defmodule MachineManager.CLI do
 			:script       -> Core.write_script_for_machine(args.hostname, args.output_file)
 			:configure    -> Core.configure(args.hostname)
 			:ssh_config   -> Core.ssh_config()
-			:probe        -> Core.probe(args.hostname_regexp)
+			:probe        -> probe(args.hostname_regexp)
 			:exec         -> exec(args.hostname_regexp, args.command)
 			:upgrade      -> Core.upgrade(args.hostname)
 			:reboot       -> Core.reboot(args.hostname)
@@ -178,6 +178,17 @@ defmodule MachineManager.CLI do
 			{:exit, reason} ->
 				code_text  = "code=nil" |> with_fgcolor(red)
 				IO.puts("#{pretty_hostname} #{code_text} #{inspect reason}")
+		end
+	end
+
+	def probe(hostname_regexp) do
+		Core.probe(hostname_regexp, &log_probe_result/2, &handle_waiting/1)
+	end
+
+	defp log_probe_result(hostname, task_result) do
+		case task_result do
+			{:ok, {:probe_ok, data}} -> IO.puts("Probed #{hostname}: #{inspect data}")
+			_ ->                        IO.puts("Failed #{hostname}: #{inspect task_result}")
 		end
 	end
 
