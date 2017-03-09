@@ -15,11 +15,21 @@ defmodule MachineManager.Core do
 	import Ecto.Query
 
 	def list() do
+		# We need to do our aggregations in subqueries to prevent rows from multiplying.
+		# The Ecto below is an the equivalent of the SQL:
+		_ = """
+		SELECT    machines.hostname, ip, ssh_port, t.tags, u.pending_upgrades, last_probe_time, boot_time,
+		          datacenter, country, cpu_model_name, ram_mb, core_count, thread_count, kernel
+		FROM      machines
+		LEFT JOIN (SELECT hostname, array_agg(tag::varchar)     AS tags             FROM machine_tags             GROUP BY 1) t USING (hostname)
+		LEFT JOIN (SELECT hostname, array_agg(package::varchar) AS pending_upgrades FROM machine_pending_upgrades GROUP BY 1) u USING (hostname);
+		"""
+
 		tags_aggregate =
 			from("machine_tags")
 			|> select([t], %{
 					hostname: t.hostname,
-					tags:     fragment("array_agg(?::character varying)", t.tag)
+					tags:     fragment("array_agg(?::varchar)", t.tag)
 				})
 			|> group_by([t], t.hostname)
 
@@ -27,7 +37,7 @@ defmodule MachineManager.Core do
 			from("machine_pending_upgrades")
 			|> select([u], %{
 					hostname:         u.hostname,
-					pending_upgrades: fragment("array_agg(?::character varying)", u.package)
+					pending_upgrades: fragment("array_agg(?::varchar)", u.package)
 				})
 			|> group_by([u], u.hostname)
 
