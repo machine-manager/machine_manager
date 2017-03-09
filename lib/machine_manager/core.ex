@@ -41,7 +41,7 @@ defmodule MachineManager.Core do
 				})
 			|> group_by([u], u.hostname)
 
-		all_machines()
+		from("machines")
 		|> select([m, t, u], %{
 				hostname:         m.hostname,
 				ip:               m.ip,
@@ -78,7 +78,7 @@ defmodule MachineManager.Core do
 
 	def ssh_config() do
 		rows =
-			all_machines()
+			from("machines")
 			|> order_by(asc: :hostname)
 			|> select([:hostname, :ip, :ssh_port])
 			|> Repo.all
@@ -414,17 +414,13 @@ defmodule MachineManager.Core do
 		|> Repo.all
 	end
 
-	defp all_machines() do
-		from("machines")
-	end
-
 	defp machine(hostname) do
-		all_machines()
+		from("machines")
 		|> where([hostname: ^hostname])
 	end
 
 	defp machines_matching_regexp(hostname_regexp) do
-		all_machines()
+		from("machines")
 		|> where([m], fragment("? ~ ?", m.hostname, ^hostname_regexp))
 	end
 
