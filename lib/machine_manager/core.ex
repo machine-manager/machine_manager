@@ -127,7 +127,7 @@ defmodule MachineManager.Core do
 
 	def probe(hostname_regexp, log_probe_result, handle_waiting) do
 		hostnames =
-			machines_matching_regexp(hostname_regexp |> full_match_regexp)
+			machines_matching_regexp(hostname_regexp |> anchor_regexp)
 			|> select([m], m.hostname)
 			|> Repo.all
 		task_map =
@@ -149,7 +149,7 @@ defmodule MachineManager.Core do
 
 	def exec(hostname_regexp, command, handle_exec_result, handle_waiting) do
 		hostnames =
-			machines_matching_regexp(hostname_regexp |> full_match_regexp)
+			machines_matching_regexp(hostname_regexp |> anchor_regexp)
 			|> select([m], m.hostname)
 			|> Repo.all
 		task_map =
@@ -159,7 +159,7 @@ defmodule MachineManager.Core do
 		block_on_tasks(task_map, handle_exec_result, handle_waiting, 2000)
 	end
 
-	defp full_match_regexp(hostname_regexp) do
+	defp anchor_regexp(hostname_regexp) do
 		"^#{hostname_regexp}$"
 	end
 
