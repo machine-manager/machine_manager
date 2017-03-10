@@ -13,8 +13,18 @@ defmodule MachineManager.CLI do
 			parse_double_dash:  true,
 			subcommands: [
 				ls: [
-					name:  "ls",
-					about: "List all machines",
+					name:    "ls",
+					about:   "List all machines",
+					options: [
+						columns: [short: "-c", long: "--column", required: false, multiple: true, help:
+							"""
+							Column to include in the output.  Can be specified multiple times.  One of: \
+							#{column_spec() |> Map.keys |> Enum.join(" ")}.                                    \
+							If no columns given, uses the default of: \
+							#{default_columns() |> Enum.join(" ")}
+							"""
+						],
+					],
 				],
 				ssh_config: [
 					name:  "ssh_config",
@@ -136,7 +146,7 @@ defmodule MachineManager.CLI do
 		)
 		{[subcommand], %{args: args, options: options, unknown: unknown}} = Optimus.parse!(spec, argv)
 		case subcommand do
-			:ls           -> list()
+			:ls           -> list(options.columns)
 			:script       -> Core.write_script_for_machine(args.hostname, args.output_file)
 			:configure    -> Core.configure(args.hostname)
 			:ssh_config   -> Core.ssh_config()
@@ -200,14 +210,69 @@ defmodule MachineManager.CLI do
 		)
 	end
 
-	def list() do
+	def list(columns) do
+		columns = case columns do
+			nil -> default_columns()
+			_   -> columns
+		end
 		rows          = Core.list()
-		header        = ["HOSTNAME", "IP", "SSH", "TAGS", "DC", "国", "RAM", "CPU", "核", "糸", "PROBE TIME", "BOOT TIME", "KERNEL", "PENDING UPGRADES"]
-                      |> Enum.map(&maybe_bolded/1)
+		header        = get_column_header(columns)
 		tag_frequency = make_tag_frequency(rows)
-		table         = [header | Enum.map(rows, fn row -> sql_row_to_table_row(row, tag_frequency) end)]
+		table         = [header | Enum.map(rows, fn row -> sql_row_to_table_row(columns, row, tag_frequency) end)]
 		out           = TableFormatter.format(table, padding: 2, width_fn: &width_fn/1)
 		:ok = IO.write(out)
+	end
+
+	defp get_column_header(columns) do
+		spec = column_spec()
+		columns
+		|> Enum.map(fn column ->
+				tuple = spec[column]
+				if tuple == nil do
+					raise RuntimeError, message: "No such column #{inspect column}"
+				end
+				{header, _} = tuple
+				header
+			end)
+		|> Enum.map(&maybe_bolded/1)
+	end
+
+	defp default_columns() do
+		[
+			"hostname", "ip", "ssh_port", "tags", "datacenter", "country", "ram", "cpu",
+			"core_count", "thread_count", "last_probe_time", "boot_time", "kernel", "pending_upgrades"
+		]
+	end
+
+	defp column_spec() do
+		%{
+			"hostname"         => {"HOSTNAME",         fn row, _ -> row.hostname end},
+			"ip"               => {"IP",               fn row, _ -> Core.inet_to_ip(maybe_scramble_ip(row.ip)) end},
+			"ssh_port"         => {"SSH",              fn row, _ -> row.ssh_port end},
+			"tags"             => {"TAGS",             &format_tags/2},
+			"datacenter"       => {"DC",               fn row, _ -> row.datacenter |> colorize end},
+			"country"          => {"国",               fn row, _ -> if row.country          != nil, do: row.country |> colorize end},
+			"ram"              => {"RAM",              fn row, _ -> row.ram_mb end},
+			"cpu"              => {"CPU",              fn row, _ -> if row.cpu_model_name   != nil, do: CPU.short_description(row.cpu_model_name) end},
+			"core_count"       => {"核",               fn row, _ -> row.core_count end},
+			"thread_count"     => {"糸",               fn row, _ -> row.thread_count end},
+			"last_probe_time"  => {"PROBE TIME",       fn row, _ -> if row.last_probe_time  != nil, do: pretty_datetime(row.last_probe_time) |> colorize_time end},
+			"boot_time"        => {"BOOT TIME",        fn row, _ -> if row.boot_time        != nil, do: pretty_datetime(row.boot_time)       |> colorize_time end},
+			"kernel"           => {"KERNEL",           fn row, _ -> if row.kernel           != nil, do: row.kernel |> String.replace_prefix("Linux ", "🐧  ") |> colorize end},
+			"pending_upgrades" => {"PENDING UPGRADES", fn row, _ -> if row.pending_upgrades != nil, do: row.pending_upgrades |> Enum.join(" ") end},
+		}
+	end
+
+	defp format_tags(row, tag_frequency) do
+		row.tags
+		|> Enum.sort_by(fn tag -> -tag_frequency[tag] end)
+		|> Enum.map(fn tag ->
+				# Compute our own hash to avoid including the bold ANSI codes
+				# in the computation.
+				hash = :erlang.crc32(tag)
+				tag |> bold_first_part_if_multiple_parts |> colorize(hash)
+			end)
+		|> Enum.join(" ")
 	end
 
 	defp width_fn(s) do
@@ -225,31 +290,11 @@ defmodule MachineManager.CLI do
 		end)
 	end
 
-	def sql_row_to_table_row(row, tag_frequency) do
-		[
-			row.hostname,
-			Core.inet_to_ip(maybe_scramble_ip(row.ip)),
-			row.ssh_port,
-			row.tags
-				|> Enum.sort_by(fn tag -> -tag_frequency[tag] end)
-				|> Enum.map(fn tag ->
-						# Compute our own hash to avoid including the bold ANSI codes
-						# in the computation.
-						hash = :erlang.crc32(tag)
-						tag |> bold_first_part_if_multiple_parts |> colorize(hash)
-					end)
-				|> Enum.join(" "),
-			row.datacenter |> colorize,
-			(if row.country          != nil, do: row.country |> colorize),
-			row.ram_mb,
-			(if row.cpu_model_name   != nil, do: CPU.short_description(row.cpu_model_name)),
-			row.core_count,
-			row.thread_count,
-			(if row.last_probe_time  != nil, do: pretty_datetime(row.last_probe_time) |> colorize_time),
-			(if row.boot_time        != nil, do: pretty_datetime(row.boot_time)       |> colorize_time),
-			(if row.kernel           != nil, do: row.kernel |> String.replace_prefix("Linux ", "🐧  ") |> colorize),
-			(if row.pending_upgrades != nil, do: row.pending_upgrades |> Enum.join(" ")),
-		]
+	def sql_row_to_table_row(columns, row, tag_frequency) do
+		# TODO: get column spec just once
+		spec = column_spec()
+		columns
+		|> Enum.map(fn column -> {_, func} = spec[column]; func.(row, tag_frequency) end)
 		|> Enum.map(fn value ->
 			case value do
 				value when is_binary(value) -> value
