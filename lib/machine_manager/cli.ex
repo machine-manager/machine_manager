@@ -19,7 +19,7 @@ defmodule MachineManager.CLI do
 						columns: [short: "-c", long: "--column", required: false, multiple: true, help:
 							"""
 							Column to include in the output.  Can be specified multiple times.  One of: \
-							#{column_spec() |> Map.keys |> Enum.join(" ")}.                                    \
+							#{get_column_spec() |> Map.keys |> Enum.join(" ")}.                                    \
 							If no columns given, uses the default of: \
 							#{default_columns() |> Enum.join(" ")}
 							"""
@@ -212,22 +212,22 @@ defmodule MachineManager.CLI do
 
 	def list(columns) do
 		columns = case columns do
-			nil -> default_columns()
-			_   -> columns
+			[] -> default_columns()
+			_  -> columns
 		end
 		rows          = Core.list()
-		header        = get_column_header(columns)
+		column_spec   = get_column_spec()
+		header        = get_column_header(column_spec, columns)
 		tag_frequency = make_tag_frequency(rows)
-		table         = [header | Enum.map(rows, fn row -> sql_row_to_table_row(columns, row, tag_frequency) end)]
+		table         = [header | Enum.map(rows, fn row -> sql_row_to_table_row(column_spec, columns, row, tag_frequency) end)]
 		out           = TableFormatter.format(table, padding: 2, width_fn: &width_fn/1)
 		:ok = IO.write(out)
 	end
 
-	defp get_column_header(columns) do
-		spec = column_spec()
+	defp get_column_header(column_spec, columns) do
 		columns
 		|> Enum.map(fn column ->
-				tuple = spec[column]
+				tuple = column_spec[column]
 				if tuple == nil do
 					raise RuntimeError, message: "No such column #{inspect column}"
 				end
@@ -244,7 +244,7 @@ defmodule MachineManager.CLI do
 		]
 	end
 
-	defp column_spec() do
+	defp get_column_spec() do
 		%{
 			"hostname"         => {"HOSTNAME",         fn row, _ -> row.hostname end},
 			"ip"               => {"IP",               fn row, _ -> Core.inet_to_ip(maybe_scramble_ip(row.ip)) end},
@@ -290,11 +290,9 @@ defmodule MachineManager.CLI do
 		end)
 	end
 
-	def sql_row_to_table_row(columns, row, tag_frequency) do
-		# TODO: get column spec just once
-		spec = column_spec()
+	def sql_row_to_table_row(column_spec, columns, row, tag_frequency) do
 		columns
-		|> Enum.map(fn column -> {_, func} = spec[column]; func.(row, tag_frequency) end)
+		|> Enum.map(fn column -> {_, func} = column_spec[column]; func.(row, tag_frequency) end)
 		|> Enum.map(fn value ->
 			case value do
 				value when is_binary(value) -> value
