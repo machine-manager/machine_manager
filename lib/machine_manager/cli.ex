@@ -15,8 +15,11 @@ defmodule MachineManager.CLI do
 				ls: [
 					name:    "ls",
 					about:   "List all machines",
+					flags:   [
+						no_header: [long: "--no-header", help: "Don't print the column header"],
+					],
 					options: [
-						columns: [short: "-c", long: "--column", required: false, multiple: true, help:
+						columns:   [short: "-c", long: "--column", multiple: true, help:
 							"""
 							Column to include in the output.  Can be specified multiple times.  One of: \
 							#{get_column_spec() |> Map.keys |> Enum.join(" ")}.                                           \
@@ -144,9 +147,9 @@ defmodule MachineManager.CLI do
 				],
 			],
 		)
-		{[subcommand], %{args: args, options: options, unknown: unknown}} = Optimus.parse!(spec, argv)
+		{[subcommand], %{args: args, options: options, flags: flags, unknown: unknown}} = Optimus.parse!(spec, argv)
 		case subcommand do
-			:ls           -> list(options.columns)
+			:ls           -> list(options.columns, (if flags.no_header, do: false, else: true))
 			:script       -> Core.write_script_for_machine(args.hostname, args.output_file)
 			:configure    -> Core.configure(args.hostname)
 			:ssh_config   -> Core.ssh_config()
@@ -210,7 +213,7 @@ defmodule MachineManager.CLI do
 		)
 	end
 
-	def list(columns) do
+	def list(columns, print_header) do
 		columns = case columns do
 			[] -> default_columns()
 			_  -> columns
@@ -219,7 +222,11 @@ defmodule MachineManager.CLI do
 		column_spec   = get_column_spec()
 		header        = get_column_header(column_spec, columns)
 		tag_frequency = make_tag_frequency(rows)
-		table         = [header | Enum.map(rows, fn row -> sql_row_to_table_row(column_spec, columns, row, tag_frequency) end)]
+		table         = Enum.map(rows, fn row -> sql_row_to_table_row(column_spec, columns, row, tag_frequency) end)
+		table         = case print_header do
+			true  -> [header | table]
+			false -> table
+		end
 		out           = TableFormatter.format(table, padding: 2, width_fn: &width_fn/1)
 		:ok = IO.write(out)
 	end
