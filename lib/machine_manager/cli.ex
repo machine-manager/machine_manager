@@ -19,7 +19,7 @@ defmodule MachineManager.CLI do
 						columns: [short: "-c", long: "--column", required: false, multiple: true, help:
 							"""
 							Column to include in the output.  Can be specified multiple times.  One of: \
-							#{get_column_spec() |> Map.keys |> Enum.join(" ")}.                                    \
+							#{get_column_spec() |> Map.keys |> Enum.join(" ")}.                                           \
 							If no columns given, uses the default of: \
 							#{default_columns() |> Enum.join(" ")}
 							"""
@@ -239,7 +239,7 @@ defmodule MachineManager.CLI do
 
 	defp default_columns() do
 		[
-			"hostname", "ip", "ssh_port", "tags", "datacenter", "country", "ram", "cpu",
+			"hostname", "ip", "ssh_port", "tags", "datacenter", "country", "ram_mb", "cpu_model_name",
 			"core_count", "thread_count", "last_probe_time", "boot_time", "kernel", "pending_upgrades"
 		]
 	end
@@ -252,8 +252,8 @@ defmodule MachineManager.CLI do
 			"tags"             => {"TAGS",             &format_tags/2},
 			"datacenter"       => {"DC",               fn row, _ -> row.datacenter |> colorize end},
 			"country"          => {"国",               fn row, _ -> if row.country          != nil, do: row.country |> colorize end},
-			"ram"              => {"RAM",              fn row, _ -> row.ram_mb end},
-			"cpu"              => {"CPU",              fn row, _ -> if row.cpu_model_name   != nil, do: CPU.short_description(row.cpu_model_name) end},
+			"ram_mb"           => {"RAM",              fn row, _ -> row.ram_mb end},
+			"cpu_model_name"   => {"CPU",              fn row, _ -> if row.cpu_model_name   != nil, do: CPU.short_description(row.cpu_model_name) end},
 			"core_count"       => {"核",               fn row, _ -> row.core_count end},
 			"thread_count"     => {"糸",               fn row, _ -> row.thread_count end},
 			"last_probe_time"  => {"PROBE TIME",       fn row, _ -> if row.last_probe_time  != nil, do: pretty_datetime(row.last_probe_time) |> colorize_time end},
