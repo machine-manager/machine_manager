@@ -43,6 +43,7 @@ defmodule MachineManager.ScriptWriter do
 		end
 		{_, 0} = System.cmd("mix", ["escript.build"], cd: temp_dir, env: [{"MIX_ENV", "prod"}])
 		File.cp!(Path.join(temp_dir, app_name), output_filename)
+		File.rm_rf!(temp_dir)
 		nil
 	end
 
