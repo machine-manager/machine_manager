@@ -366,7 +366,11 @@ defmodule MachineManager.Core do
 	"""
 	@spec ssh(String.t, String.t, integer, String.t) :: {String.t, integer}
 	def ssh(user, ip, ssh_port, command) do
-		System.cmd("ssh", ["-q", "-p", "#{ssh_port}", "#{user}@#{ip}", command], stderr_to_stdout: true)
+		System.cmd("ssh", ["-q", "-p", "#{ssh_port}", "#{user}@#{ip}", command],
+		           stderr_to_stdout: true,
+		           # Make sure DISPLAY is unset so that ssh-askpass (if installed)
+		           # gives up instead of popping up a little X window.
+		           env: [{"DISPLAY", ""}])
 	end
 
 	@doc """
@@ -378,7 +382,10 @@ defmodule MachineManager.Core do
 		%Porcelain.Result{status: exit_code} = \
 			Porcelain.exec("ssh", ["-q", "-p", "#{ssh_port}", "#{user}@#{ip}", command],
 			               out: {:file, Process.group_leader},
-			               err: {:file, Process.group_leader})
+			               err: {:file, Process.group_leader},
+			               # Make sure DISPLAY is unset so that ssh-askpass (if installed)
+			               # gives up instead of popping up a little X window.
+			               env: [{"DISPLAY", ""}])
 		exit_code
 	end
 
