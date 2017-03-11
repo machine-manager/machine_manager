@@ -100,6 +100,25 @@ defmodule MachineManager.Core do
 		"""
 	end
 
+	def configure_many(hostname_regexp, handle_configure_result, handle_waiting) do
+		hostnames =
+			machines_matching_regexp(hostname_regexp)
+			|> select([m], m.hostname)
+			|> Repo.all
+		wrapped_configure = fn hostname ->
+			try do
+				configure(hostname)
+			rescue
+				e in ConfigureError -> {:configure_error, e.message}
+			end
+		end
+		task_map =
+			hostnames
+			|> Enum.map(fn hostname -> {hostname, Task.async(fn -> wrapped_configure.(hostname) end)} end)
+			|> Map.new
+		Parallel.block_on_tasks(task_map, handle_configure_result, handle_waiting, 2000)
+	end
+
 	def configure(hostname, show_progress \\ false) do
 		{:ok, {ip, ssh_port, tags}} = Repo.transaction(fn ->
 			row =
@@ -141,6 +160,7 @@ defmodule MachineManager.Core do
 						"Configuring machine #{inspect hostname} failed with exit code #{exit_code}; output:\n\n#{out}"
 				end
 		end
+		:configured
 	end
 
 	# Transfer file `source` using rsync to user@host:dest
@@ -218,7 +238,7 @@ defmodule MachineManager.Core do
 		end)
 	end
 
-	def upgrade_many(hostname_regexp, handle_exec_result, handle_waiting) do
+	def upgrade_many(hostname_regexp, handle_upgrade_result, handle_waiting) do
 		hostnames =
 			machines_matching_regexp(hostname_regexp)
 			|> select([m], m.hostname)
@@ -235,7 +255,7 @@ defmodule MachineManager.Core do
 			hostnames
 			|> Enum.map(fn hostname -> {hostname, Task.async(fn -> wrapped_upgrade.(hostname) end)} end)
 			|> Map.new
-		Parallel.block_on_tasks(task_map, handle_exec_result, handle_waiting, 2000)
+		Parallel.block_on_tasks(task_map, handle_upgrade_result, handle_waiting, 2000)
 	end
 
 	def upgrade(hostname) do

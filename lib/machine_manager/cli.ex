@@ -43,9 +43,9 @@ defmodule MachineManager.CLI do
 				],
 				configure: [
 					name:  "configure",
-					about: "Configure a machine",
+					about: "Configure machines",
 					args: [
-						hostname: [required: true],
+						hostname_regexp: [required: true, help: hostname_regexp_help],
 					],
 				],
 				upgrade: [
@@ -151,7 +151,7 @@ defmodule MachineManager.CLI do
 		case subcommand do
 			:ls           -> list(options.columns, (if flags.no_header, do: false, else: true))
 			:script       -> Core.write_script_for_machine(args.hostname, args.output_file)
-			:configure    -> Core.configure(args.hostname)
+			:configure    -> configure_many(args.hostname_regexp)
 			:ssh_config   -> Core.ssh_config()
 			:probe        -> probe_many(args.hostname_regexp)
 			:exec         -> exec_many(args.hostname_regexp, args.command)
@@ -173,6 +173,22 @@ defmodule MachineManager.CLI do
 		case maybe_first do
 			nil -> []
 			_   -> [maybe_first | rest]
+		end
+	end
+
+	def configure_many(hostname_regexp) do
+		Core.configure_many(hostname_regexp, &handle_configure_result/2, &handle_waiting/1)
+	end
+
+	defp handle_configure_result(hostname, task_result) do
+		pretty_hostname = hostname |> String.pad_trailing(16) |> bolded
+		case task_result do
+			{:ok, :configured} ->
+				IO.puts("#{pretty_hostname} configured")
+			{:ok, {:configure_error, message}} ->
+				IO.puts("#{pretty_hostname} configure failed: #{message}")
+			{:exit, reason} ->
+				IO.puts("#{pretty_hostname} configure task failed: #{reason}")
 		end
 	end
 
@@ -287,18 +303,18 @@ defmodule MachineManager.CLI do
 	defp get_column_spec() do
 		%{
 			"hostname"         => {"HOSTNAME",         fn row, _ -> row.hostname end},
-			"ip"               => {"IP",               fn row, _ -> Core.inet_to_ip(maybe_scramble_ip(row.ip)) end},
+			"ip"               => {"IP",               fn row, _ -> row.ip |> maybe_scramble_ip |> Core.inet_to_ip end},
 			"ssh_port"         => {"SSH",              fn row, _ -> row.ssh_port end},
 			"tags"             => {"TAGS",             &format_tags/2},
 			"datacenter"       => {"DC",               fn row, _ -> row.datacenter |> colorize end},
 			"country"          => {"国",               fn row, _ -> if row.country          != nil, do: row.country |> colorize end},
 			"ram_mb"           => {"RAM",              fn row, _ -> row.ram_mb end},
-			"cpu_model_name"   => {"CPU",              fn row, _ -> if row.cpu_model_name   != nil, do: CPU.short_description(row.cpu_model_name) end},
+			"cpu_model_name"   => {"CPU",              fn row, _ -> if row.cpu_model_name   != nil, do: row.cpu_model_name |> CPU.short_description end},
 			"cpu_architecture" => {"ARCH",             fn row, _ -> row.cpu_architecture end},
 			"core_count"       => {"核",               fn row, _ -> row.core_count end},
 			"thread_count"     => {"糸",               fn row, _ -> row.thread_count end},
-			"last_probe_time"  => {"PROBE TIME",       fn row, _ -> if row.last_probe_time  != nil, do: pretty_datetime(row.last_probe_time) |> colorize_time end},
-			"boot_time"        => {"BOOT TIME",        fn row, _ -> if row.boot_time        != nil, do: pretty_datetime(row.boot_time)       |> colorize_time end},
+			"last_probe_time"  => {"PROBE TIME",       fn row, _ -> if row.last_probe_time  != nil, do: row.last_probe_time |> pretty_datetime |> colorize_time end},
+			"boot_time"        => {"BOOT TIME",        fn row, _ -> if row.boot_time        != nil, do: row.boot_time       |> pretty_datetime |> colorize_time end},
 			"kernel"           => {"KERNEL",           fn row, _ -> if row.kernel           != nil, do: row.kernel |> String.replace_prefix("Linux ", "🐧  ") |> colorize end},
 			"pending_upgrades" => {"PENDING UPGRADES", fn row, _ -> if row.pending_upgrades != nil, do: row.pending_upgrades |> Enum.join(" ") end},
 		}
