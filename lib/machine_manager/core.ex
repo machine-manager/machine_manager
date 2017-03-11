@@ -341,14 +341,14 @@ defmodule MachineManager.Core do
 	end
 
 	@doc """
-	Removes a machine from the database.
+	Remove machines from the database.
 	"""
-	@spec rm(String.t) :: nil
-	def rm(hostname) do
+	@spec rm_many(String.t) :: nil
+	def rm_many(hostname_regexp) do
 		{:ok, _} = Repo.transaction(fn ->
-			from("machine_tags")             |> where([t], t.hostname == ^hostname) |> Repo.delete_all
-			from("machine_pending_upgrades") |> where([u], u.hostname == ^hostname) |> Repo.delete_all
-			machine(hostname) |> Repo.delete_all
+			from("machine_tags")             |> hostname_matching_regexp(hostname_regexp) |> Repo.delete_all
+			from("machine_pending_upgrades") |> hostname_matching_regexp(hostname_regexp) |> Repo.delete_all
+			machines_matching_regexp(hostname_regexp) |> Repo.delete_all
 		end)
 	end
 

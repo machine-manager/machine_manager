@@ -99,9 +99,9 @@ defmodule MachineManager.CLI do
 				],
 				rm: [
 					name:  "rm",
-					about: "Remove a machine",
+					about: "Remove machines",
 					args: [
-						hostname: [required: true],
+						hostname_regexp: [required: true, help: hostname_regexp_help],
 					],
 				],
 				tag: [
@@ -159,7 +159,7 @@ defmodule MachineManager.CLI do
 			:reboot       -> Core.reboot(args.hostname)
 			:shutdown     -> Core.shutdown(args.hostname)
 			:add          -> Core.add(args.hostname, options.ip, options.ssh_port, options.datacenter, options.tag)
-			:rm           -> Core.rm(args.hostname)
+			:rm           -> Core.rm_many(args.hostname_regexp)
 			:tag          -> Core.tag_many(args.hostname_regexp,   all_arguments(args.tag, unknown))
 			:untag        -> Core.untag_many(args.hostname_regexp, all_arguments(args.tag, unknown))
 			:get_tags     -> Core.get_tags(args.hostname) |> Enum.join(" ") |> IO.write
