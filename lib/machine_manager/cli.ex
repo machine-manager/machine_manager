@@ -227,8 +227,8 @@ defmodule MachineManager.CLI do
 
 	defp log_probe_result(hostname, task_result) do
 		case task_result do
-			{:ok, {:probe_ok, data}} -> IO.puts("Probed #{hostname}: #{inspect data}")
-			_ ->                        IO.puts("Failed #{hostname}: #{inspect task_result}")
+			{:ok, {:probed, data}} -> IO.puts("Probed #{hostname}: #{inspect data}")
+			_ ->                      IO.puts("Failed #{hostname}: #{inspect task_result}")
 		end
 	end
 

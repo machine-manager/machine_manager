@@ -166,7 +166,7 @@ defmodule MachineManager.Core do
 			|> Map.new
 		completion_fn = fn hostname, task_result ->
 			log_probe_result.(hostname, task_result)
-			with {:ok, {:probe_ok, data}} <- task_result do
+			with {:ok, {:probed, data}} <- task_result do
 				write_probe_data_to_db(hostname, data)
 			end
 		end
@@ -293,8 +293,8 @@ defmodule MachineManager.Core do
 		"""
 		{output, exit_code} = run_on_machine(hostname, command)
 		case exit_code do
-			0     -> {:probe_ok,     Poison.decode!(output, keys: :atoms!)}
-			other -> {:probe_failed, "Probe of #{hostname} failed with exit code #{other}; output:\n\n#{output}"}
+			0     -> {:probed,      Poison.decode!(output, keys: :atoms!)}
+			other -> {:probe_error, "Probe of #{hostname} failed with exit code #{other}; output:\n\n#{output}"}
 		end
 	end
 
