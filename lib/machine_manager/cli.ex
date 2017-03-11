@@ -222,13 +222,18 @@ defmodule MachineManager.CLI do
 	end
 
 	def probe_many(hostname_regexp) do
-		Core.probe_many(hostname_regexp, &log_probe_result/2, &handle_waiting/1)
+		Core.probe_many(hostname_regexp, &handle_probe_result/2, &handle_waiting/1)
 	end
 
-	defp log_probe_result(hostname, task_result) do
+	defp handle_probe_result(hostname, task_result) do
+		pretty_hostname = hostname |> String.pad_trailing(16) |> bolded
 		case task_result do
-			{:ok, {:probed, data}} -> IO.puts("Probed #{hostname}: #{inspect data}")
-			_ ->                      IO.puts("Failed #{hostname}: #{inspect task_result}")
+			{:ok, {:probed, nil}} ->
+				IO.puts("#{pretty_hostname} probed")
+			{:ok, {:probe_error, message}} ->
+				IO.puts("#{pretty_hostname} probe failed: #{message}")
+			{:exit, reason} ->
+				IO.puts("#{pretty_hostname} probe task failed: #{reason}")
 		end
 	end
 

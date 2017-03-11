@@ -10,8 +10,12 @@ defmodule MachineManager.ConfigureError do
 	defexception [:message]
 end
 
+defmodule MachineManager.ProbeError do
+	defexception [:message]
+end
+
 defmodule MachineManager.Core do
-	alias MachineManager.{ScriptWriter, Parallel, Repo, TooManyRowsError, UpgradeError, ConfigureError}
+	alias MachineManager.{ScriptWriter, Parallel, Repo, TooManyRowsError, UpgradeError, ConfigureError, ProbeError}
 	import Ecto.Query
 
 	def list() do
@@ -154,23 +158,23 @@ defmodule MachineManager.Core do
 		{"", 0} = System.cmd("rsync", args)
 	end
 
-	# TODO: maybe refactor this to just use exec_many
-	def probe_many(hostname_regexp, log_probe_result, handle_waiting) do
+	def probe_many(hostname_regexp, handle_probe_result, handle_waiting) do
 		hostnames =
 			machines_matching_regexp(hostname_regexp)
 			|> select([m], m.hostname)
 			|> Repo.all
-		task_map =
-			hostnames
-			|> Enum.map(fn hostname -> {hostname, Task.async(fn -> probe(hostname) end)} end)
-			|> Map.new
-		completion_fn = fn hostname, task_result ->
-			log_probe_result.(hostname, task_result)
-			with {:ok, {:probed, data}} <- task_result do
-				write_probe_data_to_db(hostname, data)
+		wrapped_probe = fn hostname ->
+			try do
+				{:probed, probe(hostname)}
+			rescue
+				e in ProbeError -> {:probe_error, e.message}
 			end
 		end
-		Parallel.block_on_tasks(task_map, completion_fn, handle_waiting, 2000)
+		task_map =
+			hostnames
+			|> Enum.map(fn hostname -> {hostname, Task.async(fn -> wrapped_probe.(hostname) end)} end)
+			|> Map.new
+		Parallel.block_on_tasks(task_map, handle_probe_result, handle_waiting, 2000)
 	end
 
 	def exec_many(hostname_regexp, command, handle_exec_result, handle_waiting) do
@@ -267,6 +271,8 @@ defmodule MachineManager.Core do
 		# Because packages upgrades can do things we don't like (e.g. install
 		# files in /etc/cron.d), configure immediately after upgrading.
 		configure(hostname)
+		# Probe the machine so that we don't have obsolete 'pending upgrade' list
+		probe(hostname)
 	end
 
 	def reboot_many(hostname_regexp, handle_exec_result, handle_waiting) do
@@ -279,7 +285,19 @@ defmodule MachineManager.Core do
 		exec_many(hostname_regexp, command, handle_exec_result, handle_waiting)
 	end
 
+	@doc """
+	Probe a machine and write the probe data to the database.
+	"""
 	def probe(hostname) do
+		data = get_probe_data(hostname)
+		write_probe_data_to_db(hostname, data)
+		nil
+	end
+
+	@doc """
+	Get probe data from a machine.
+	"""
+	def get_probe_data(hostname) do
 		# machine_probe expects that we already ran an `apt-get update` when
 		# it determines which packages can be upgraded.
 		#
@@ -293,8 +311,9 @@ defmodule MachineManager.Core do
 		"""
 		{output, exit_code} = run_on_machine(hostname, command)
 		case exit_code do
-			0     -> {:probed,      Poison.decode!(output, keys: :atoms!)}
-			other -> {:probe_error, "Probe of #{hostname} failed with exit code #{other}; output:\n\n#{output}"}
+			0 -> Poison.decode!(output, keys: :atoms!)
+			_ -> raise ProbeError, message:
+				"Probing machine #{inspect hostname} failed with exit code #{exit_code}; output:\n\n#{output}"
 		end
 	end
 
