@@ -411,10 +411,9 @@ defmodule MachineManager.Core do
 		nil
 	end
 
-	@spec set_ssh_port(String.t, integer) :: nil
-	def set_ssh_port(hostname, ssh_port) do
-		from("machines")
-		|> where([m], m.hostname == ^hostname)
+	@spec set_ssh_port_many(String.t, integer) :: nil
+	def set_ssh_port_many(hostname_regexp, ssh_port) do
+		machines_matching_regexp(hostname_regexp)
 		|> Repo.update_all(set: [ssh_port: ssh_port])
 		nil
 	end

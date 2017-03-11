@@ -106,7 +106,7 @@ defmodule MachineManager.CLI do
 				],
 				tag: [
 					name:  "tag",
-					about: "Add tags to a machine",
+					about: "Add tags to machines",
 					args: [
 						hostname_regexp: [required: true, help: hostname_regexp_help],
 						tag:             [required: false, help: "Tags to add", value_name: "TAG..."],
@@ -115,7 +115,7 @@ defmodule MachineManager.CLI do
 				],
 				untag: [
 					name:  "untag",
-					about: "Remove tag from a machine",
+					about: "Remove tags from machines",
 					args: [
 						hostname_regexp: [required: true, help: hostname_regexp_help],
 						tag:             [required: false, help: "Tags to remove", value_name: "TAG..."],
@@ -139,10 +139,10 @@ defmodule MachineManager.CLI do
 				],
 				set_ssh_port: [
 					name:  "set-ssh-port",
-					about: "Set new SSH port for a machine",
+					about: "Set a new SSH port for machines",
 					args: [
-						hostname: [required: true],
-						ssh_port: [required: true, parser: :integer],
+						hostname_regexp: [required: true, help: hostname_regexp_help],
+						ssh_port:        [required: true, parser: :integer],
 					],
 				],
 			],
@@ -164,7 +164,7 @@ defmodule MachineManager.CLI do
 			:untag        -> Core.untag_many(args.hostname_regexp, all_arguments(args.tag, unknown))
 			:get_tags     -> Core.get_tags(args.hostname) |> Enum.join(" ") |> IO.write
 			:set_ip       -> Core.set_ip(args.hostname, args.ip)
-			:set_ssh_port -> Core.set_ssh_port(args.hostname, args.ssh_port)
+			:set_ssh_port -> Core.set_ssh_port_many(args.hostname_regexp, args.ssh_port)
 		end
 	end
 
