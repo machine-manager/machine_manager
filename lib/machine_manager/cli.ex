@@ -28,6 +28,9 @@ defmodule MachineManager.CLI do
 							"""
 						],
 					],
+					args: [
+						hostname_regexp: [required: false, help: hostname_regexp_help],
+					],
 				],
 				ssh_config: [
 					name:  "ssh_config",
@@ -152,7 +155,7 @@ defmodule MachineManager.CLI do
 		)
 		{[subcommand], %{args: args, options: options, flags: flags, unknown: unknown}} = Optimus.parse!(spec, argv)
 		case subcommand do
-			:ls           -> list(options.columns, (if flags.no_header, do: false, else: true))
+			:ls           -> list(args.hostname_regexp, options.columns, (if flags.no_header, do: false, else: true))
 			:script       -> Core.write_script_for_machine(args.hostname, args.output_file)
 			:configure    -> configure_many(args.hostname_regexp, flags.show_progress)
 			:ssh_config   -> Core.ssh_config()
@@ -271,12 +274,16 @@ defmodule MachineManager.CLI do
 		)
 	end
 
-	def list(columns, print_header) do
+	def list(hostname_regexp, columns, print_header) do
+		hostname_regexp = case hostname_regexp do
+			nil -> ".*"
+			_   -> hostname_regexp
+		end
 		columns = case columns do
 			[] -> default_columns()
 			_  -> columns
 		end
-		rows          = Core.list()
+		rows          = Core.list(hostname_regexp)
 		column_spec   = get_column_spec()
 		header        = get_column_header(column_spec, columns)
 		tag_frequency = make_tag_frequency(rows)

@@ -18,7 +18,7 @@ defmodule MachineManager.Core do
 	alias MachineManager.{ScriptWriter, Parallel, Repo, TooManyRowsError, UpgradeError, ConfigureError, ProbeError}
 	import Ecto.Query
 
-	def list() do
+	def list(hostname_regexp) do
 		# We need to do our aggregations in subqueries to prevent rows from multiplying.
 		# The Ecto below is an the equivalent of the SQL:
 		_ = """
@@ -45,7 +45,7 @@ defmodule MachineManager.Core do
 				})
 			|> group_by([u], u.hostname)
 
-		from("machines")
+		machines_matching_regexp(hostname_regexp)
 		|> select([m, t, u], %{
 				hostname:         m.hostname,
 				ip:               m.ip,
