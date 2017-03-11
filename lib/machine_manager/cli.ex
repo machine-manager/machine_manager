@@ -241,7 +241,7 @@ defmodule MachineManager.CLI do
 				{header, _} = tuple
 				header
 			end)
-		|> Enum.map(&maybe_bolded/1)
+		|> Enum.map(&bolded_unless_cjk/1)
 	end
 
 	defp default_columns() do
@@ -366,7 +366,7 @@ defmodule MachineManager.CLI do
 		end
 	end
 
-	defp maybe_bolded(s) do
+	defp bolded_unless_cjk(s) do
 		case s =~ ~r/^\p{Han}+$/u do
 			false -> bolded(s)
 			true  -> s
