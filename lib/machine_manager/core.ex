@@ -100,14 +100,17 @@ defmodule MachineManager.Core do
 		"""
 	end
 
-	def configure_many(hostname_regexp, handle_configure_result, handle_waiting) do
+	def configure_many(hostname_regexp, handle_configure_result, handle_waiting, show_progress) do
 		hostnames =
 			machines_matching_regexp(hostname_regexp)
 			|> select([m], m.hostname)
 			|> Repo.all
+		if show_progress and hostnames |> length > 1 do
+			raise ConfigureError, message: "Can't show progress when configuring more than one machine"
+		end
 		wrapped_configure = fn hostname ->
 			try do
-				configure(hostname)
+				configure(hostname, show_progress)
 			rescue
 				e in ConfigureError -> {:configure_error, e.message}
 			end

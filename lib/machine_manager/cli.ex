@@ -44,6 +44,9 @@ defmodule MachineManager.CLI do
 				configure: [
 					name:  "configure",
 					about: "Configure machines",
+					flags: [
+						show_progress: [long: "--progress", help: "Show configure progress.  Works only when configuring a single server."],
+					],
 					args: [
 						hostname_regexp: [required: true, help: hostname_regexp_help],
 					],
@@ -151,7 +154,7 @@ defmodule MachineManager.CLI do
 		case subcommand do
 			:ls           -> list(options.columns, (if flags.no_header, do: false, else: true))
 			:script       -> Core.write_script_for_machine(args.hostname, args.output_file)
-			:configure    -> configure_many(args.hostname_regexp)
+			:configure    -> configure_many(args.hostname_regexp, flags.show_progress)
 			:ssh_config   -> Core.ssh_config()
 			:probe        -> probe_many(args.hostname_regexp)
 			:exec         -> exec_many(args.hostname_regexp, args.command)
@@ -176,8 +179,14 @@ defmodule MachineManager.CLI do
 		end
 	end
 
-	def configure_many(hostname_regexp) do
-		Core.configure_many(hostname_regexp, &handle_configure_result/2, &handle_waiting/1)
+	def configure_many(hostname_regexp, show_progress) do
+		# If Core.configure is printing converge output to the terminal, we don't
+		# want to overlap it with "# Waiting on host" output.
+		handle_waiting = case show_progress do
+			true  -> fn _ -> nil end
+			false -> &handle_waiting/1
+		end
+		Core.configure_many(hostname_regexp, &handle_configure_result/2, handle_waiting, show_progress)
 	end
 
 	defp handle_configure_result(hostname, task_result) do
