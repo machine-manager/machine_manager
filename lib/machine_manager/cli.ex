@@ -185,6 +185,8 @@ defmodule MachineManager.CLI do
 		case task_result do
 			{:ok, :upgraded} ->
 				IO.puts("#{pretty_hostname} upgraded")
+			{:ok, :no_pending_upgrades} ->
+				IO.puts("#{pretty_hostname} had no pending upgrades in database; probe again if needed")
 			{:ok, {:upgrade_error, message}} ->
 				IO.puts("#{pretty_hostname} upgrade failed: #{message}")
 			{:ok, {:configure_error, message}} ->

@@ -226,7 +226,6 @@ defmodule MachineManager.Core do
 		wrapped_upgrade = fn hostname ->
 			try do
 				upgrade(hostname)
-				:upgraded
 			rescue
 				e in UpgradeError   -> {:upgrade_error,   e.message}
 				e in ConfigureError -> {:configure_error, e.message}
@@ -241,38 +240,43 @@ defmodule MachineManager.Core do
 
 	def upgrade(hostname) do
 		packages = get_pending_upgrades_for_machine(hostname)
-		# TODO: if disk is very low, first run
-		# apt-get clean
-		# apt-get autoremove --quiet --assume-yes
-		command = """
-		wait-for-dpkg-lock || true;
-		apt-get update > /dev/null 2>&1 &&
-		env \
-			DEBIAN_FRONTEND=noninteractive \
-			APT_LISTCHANGES_FRONTEND=none \
-			APT_LISTBUGS_FRONTEND=none \
-			apt-get install \
-				-y --no-install-recommends --only-upgrade \
-				-o Dpkg::Options::=--force-confdef \
-				-o Dpkg::Options::=--force-confold \
-				-- \
-				#{packages |> Enum.map(&inspect/1) |> Enum.join(" ")} &&
-		apt-get autoremove --quiet --assume-yes
-		"""
-		{output, exit_code} = run_on_machine(hostname, command)
-		if exit_code != 0 do
-			raise UpgradeError, message:
+		case packages do
+			[] -> :no_pending_upgrades
+			_  ->
+				# TODO: if disk is very low, first run
+				# apt-get clean
+				# apt-get autoremove --quiet --assume-yes
+				command = """
+				wait-for-dpkg-lock || true;
+				apt-get update > /dev/null 2>&1 &&
+				env \
+					DEBIAN_FRONTEND=noninteractive \
+					APT_LISTCHANGES_FRONTEND=none \
+					APT_LISTBUGS_FRONTEND=none \
+					apt-get install \
+						-y --no-install-recommends --only-upgrade \
+						-o Dpkg::Options::=--force-confdef \
+						-o Dpkg::Options::=--force-confold \
+						-- \
+						#{packages |> Enum.map(&inspect/1) |> Enum.join(" ")} &&
+				apt-get autoremove --quiet --assume-yes
 				"""
-				Upgrade of #{hostname} failed with exit code #{exit_code}; output:
+				{output, exit_code} = run_on_machine(hostname, command)
+				if exit_code != 0 do
+					raise UpgradeError, message:
+						"""
+						Upgrade of #{hostname} failed with exit code #{exit_code}; output:
 
-				#{output}
-				"""
+						#{output}
+						"""
+				end
+				# Because packages upgrades can do things we don't like (e.g. install
+				# files in /etc/cron.d), configure immediately after upgrading.
+				configure(hostname)
+				# Probe the machine so that we don't have obsolete 'pending upgrade' list
+				probe(hostname)
+				:upgraded
 		end
-		# Because packages upgrades can do things we don't like (e.g. install
-		# files in /etc/cron.d), configure immediately after upgrading.
-		configure(hostname)
-		# Probe the machine so that we don't have obsolete 'pending upgrade' list
-		probe(hostname)
 	end
 
 	def reboot_many(hostname_regexp, handle_exec_result, handle_waiting) do
