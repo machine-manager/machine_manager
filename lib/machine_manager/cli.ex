@@ -261,6 +261,7 @@ defmodule MachineManager.CLI do
 			"country"          => {"国",               fn row, _ -> if row.country          != nil, do: row.country |> colorize end},
 			"ram_mb"           => {"RAM",              fn row, _ -> row.ram_mb end},
 			"cpu_model_name"   => {"CPU",              fn row, _ -> if row.cpu_model_name   != nil, do: CPU.short_description(row.cpu_model_name) end},
+			"cpu_architecture" => {"ARCH",             fn row, _ -> row.cpu_architecture end},
 			"core_count"       => {"核",               fn row, _ -> row.core_count end},
 			"thread_count"     => {"糸",               fn row, _ -> row.thread_count end},
 			"last_probe_time"  => {"PROBE TIME",       fn row, _ -> if row.last_probe_time  != nil, do: pretty_datetime(row.last_probe_time) |> colorize_time end},

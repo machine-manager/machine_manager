@@ -19,7 +19,7 @@ defmodule MachineManager.Core do
 		# The Ecto below is an the equivalent of the SQL:
 		_ = """
 		SELECT    machines.hostname, ip, ssh_port, t.tags, u.pending_upgrades, last_probe_time, boot_time,
-		          datacenter, country, cpu_model_name, ram_mb, core_count, thread_count, kernel
+		          datacenter, country, cpu_model_name, cpu_architecture, ram_mb, core_count, thread_count, kernel
 		FROM      machines
 		LEFT JOIN (SELECT hostname, array_agg(tag::varchar)     AS tags             FROM machine_tags             GROUP BY 1) t USING (hostname)
 		LEFT JOIN (SELECT hostname, array_agg(package::varchar) AS pending_upgrades FROM machine_pending_upgrades GROUP BY 1) u USING (hostname);
@@ -53,6 +53,7 @@ defmodule MachineManager.Core do
 				datacenter:       m.datacenter,
 				country:          m.country,
 				cpu_model_name:   m.cpu_model_name,
+				cpu_architecture: m.cpu_architecture,
 				ram_mb:           m.ram_mb,
 				core_count:       m.core_count,
 				thread_count:     m.thread_count,
