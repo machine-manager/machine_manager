@@ -175,7 +175,7 @@ defmodule MachineManager.Core do
 		block_on_tasks(task_map, handle_exec_result, handle_waiting, 2000)
 	end
 
-	@spec block_on_tasks(map, (String.t, :ok | :exit, term -> term), (map -> term), integer) :: nil
+	@spec block_on_tasks(map, (String.t, term -> term), (map -> term), integer) :: nil
 	defp block_on_tasks(task_map, completion_fn, waiting_fn, check_interval) do
 		pid_to_task_name =
 			task_map
@@ -259,12 +259,14 @@ defmodule MachineManager.Core do
 		configure(hostname)
 	end
 
-	def reboot(hostname) do
-		{"", 0} = run_on_machine(hostname, "nohup sh -c 'sleep 2; systemctl reboot' > /dev/null 2>&1 < /dev/null &")
+	def reboot_many(hostname_regexp, handle_exec_result, handle_waiting) do
+		command = "nohup sh -c 'sleep 2; systemctl reboot' > /dev/null 2>&1 < /dev/null &"
+		exec(hostname_regexp, command, handle_exec_result, handle_waiting)
 	end
 
-	def shutdown(hostname) do
-		{"", 0} = run_on_machine(hostname, "nohup sh -c 'sleep 2; systemctl poweroff' > /dev/null 2>&1 < /dev/null &")
+	def shutdown_many(hostname_regexp, handle_exec_result, handle_waiting) do
+		command = "nohup sh -c 'sleep 2; systemctl poweroff' > /dev/null 2>&1 < /dev/null &"
+		exec(hostname_regexp, command, handle_exec_result, handle_waiting)
 	end
 
 	def probe(hostname) do

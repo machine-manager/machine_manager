@@ -57,16 +57,16 @@ defmodule MachineManager.CLI do
 				],
 				reboot: [
 					name:  "reboot",
-					about: "Shut down and reboot a machine",
+					about: "Shut down and reboot machines",
 					args: [
-						hostname: [required: true],
+						hostname_regexp: [required: true, help: hostname_regexp_help],
 					],
 				],
 				shutdown: [
 					name:  "shutdown",
-					about: "Shut down and power-off a machine",
+					about: "Shut down and power-off machines",
 					args: [
-						hostname: [required: true],
+						hostname_regexp: [required: true, help: hostname_regexp_help],
 					],
 				],
 				probe: [
@@ -156,8 +156,8 @@ defmodule MachineManager.CLI do
 			:probe        -> probe_many(args.hostname_regexp)
 			:exec         -> exec(args.hostname_regexp, args.command)
 			:upgrade      -> Core.upgrade(args.hostname)
-			:reboot       -> Core.reboot(args.hostname)
-			:shutdown     -> Core.shutdown(args.hostname)
+			:reboot       -> reboot_many(args.hostname_regexp)
+			:shutdown     -> shutdown_many(args.hostname_regexp)
 			:add          -> Core.add(args.hostname, options.ip, options.ssh_port, options.datacenter, options.tag)
 			:rm           -> Core.rm_many(args.hostname_regexp)
 			:tag          -> Core.tag_many(args.hostname_regexp,   all_arguments(args.tag, unknown))
@@ -174,6 +174,14 @@ defmodule MachineManager.CLI do
 			nil -> []
 			_   -> [maybe_first | rest]
 		end
+	end
+
+	def reboot_many(hostname_regexp) do
+		Core.reboot_many(hostname_regexp, &handle_exec_result/2, &handle_waiting/1)
+	end
+
+	def shutdown_many(hostname_regexp) do
+		Core.shutdown_many(hostname_regexp, &handle_exec_result/2, &handle_waiting/1)
 	end
 
 	def exec(hostname_regexp, command) do
