@@ -6,12 +6,12 @@ defmodule MachineManager.UpgradeError do
 	defexception [:message]
 end
 
-defmodule MachineManager.BadDataError do
+defmodule MachineManager.ConfigureError do
 	defexception [:message]
 end
 
 defmodule MachineManager.Core do
-	alias MachineManager.{ScriptWriter, Repo, TooManyRowsError, UpgradeError, BadDataError}
+	alias MachineManager.{ScriptWriter, Parallel, Repo, TooManyRowsError, UpgradeError, ConfigureError}
 	import Ecto.Query
 
 	def list() do
@@ -96,7 +96,7 @@ defmodule MachineManager.Core do
 		"""
 	end
 
-	def configure(hostname) do
+	def configure(hostname, show_progress \\ false) do
 		{:ok, {ip, ssh_port, tags}} = Repo.transaction(fn ->
 			row =
 				machine(hostname)
@@ -117,13 +117,26 @@ defmodule MachineManager.Core do
 		arguments    = [".cache/machine_manager/script"] ++ tags
 		for arg <- arguments do
 			if arg |> String.contains?(" ") do
-				raise BadDataError, message:
-					"""
-					Argument list #{inspect arguments} contains an argument with a space: #{inspect arg}
-					"""
+				raise ConfigureError, message:
+					"Argument list #{inspect arguments} contains an argument with a space: #{inspect arg}"
 			end
 		end
-		0 = ssh_no_capture("root", ip, ssh_port, arguments |> Enum.join(" "))
+		case show_progress do
+			true  ->
+				exit_code = ssh_no_capture("root", ip, ssh_port, arguments |> Enum.join(" "))
+				case exit_code do
+					0 -> nil
+					_ -> raise ConfigureError, message:
+						"Configuring machine #{inspect hostname} failed with exit code #{exit_code}"
+				end
+			false ->
+				{out, exit_code} = ssh("root", ip, ssh_port, arguments |> Enum.join(" "))
+				case exit_code do
+					0 -> nil
+					_ -> raise ConfigureError, message:
+						"Configuring machine #{inspect hostname} failed with exit code #{exit_code}; output:\n\n#{out}"
+				end
+		end
 	end
 
 	# Transfer file `source` using rsync to user@host:dest
@@ -141,6 +154,7 @@ defmodule MachineManager.Core do
 		{"", 0} = System.cmd("rsync", args)
 	end
 
+	# TODO: maybe refactor this to just use exec_many
 	def probe_many(hostname_regexp, log_probe_result, handle_waiting) do
 		hostnames =
 			machines_matching_regexp(hostname_regexp)
@@ -150,20 +164,16 @@ defmodule MachineManager.Core do
 			hostnames
 			|> Enum.map(fn hostname -> {hostname, Task.async(fn -> probe(hostname) end)} end)
 			|> Map.new
-		block_on_tasks(
-			task_map,
-			fn hostname, task_result ->
-				log_probe_result.(hostname, task_result)
-				with {:ok, {:probe_ok, data}} <- task_result do
-					write_probe_data_to_db(hostname, data)
-				end
-			end,
-			handle_waiting,
-			2000
-		)
+		completion_fn = fn hostname, task_result ->
+			log_probe_result.(hostname, task_result)
+			with {:ok, {:probe_ok, data}} <- task_result do
+				write_probe_data_to_db(hostname, data)
+			end
+		end
+		Parallel.block_on_tasks(task_map, completion_fn, handle_waiting, 2000)
 	end
 
-	def exec(hostname_regexp, command, handle_exec_result, handle_waiting) do
+	def exec_many(hostname_regexp, command, handle_exec_result, handle_waiting) do
 		hostnames =
 			machines_matching_regexp(hostname_regexp)
 			|> select([m], m.hostname)
@@ -172,28 +182,7 @@ defmodule MachineManager.Core do
 			hostnames
 			|> Enum.map(fn hostname -> {hostname, Task.async(fn -> run_on_machine(hostname, command) end)} end)
 			|> Map.new
-		block_on_tasks(task_map, handle_exec_result, handle_waiting, 2000)
-	end
-
-	@spec block_on_tasks(map, (String.t, term -> term), (map -> term), integer) :: nil
-	defp block_on_tasks(task_map, completion_fn, waiting_fn, check_interval) do
-		pid_to_task_name =
-			task_map
-			|> Enum.map(fn {task_name, task} -> {task.pid, task_name} end)
-			|> Map.new
-		waiting_task_map = for {task, result} <- Task.yield_many(task_map |> Map.values, check_interval) do
-			task_name = pid_to_task_name[task.pid] || \
-				raise RuntimeError, message: "task_name == nil for #{inspect task}"
-			case result do
-				{:ok, task_result} -> completion_fn.(task_name, {:ok, task_result}); nil
-				{:exit, reason}    -> completion_fn.(task_name, {:exit, reason});    nil
-				nil                -> {task_name, task}
-			end
-		end |> Enum.reject(&is_nil/1) |> Map.new
-		if waiting_task_map != %{} do
-			waiting_fn.(waiting_task_map)
-			block_on_tasks(waiting_task_map, completion_fn, waiting_fn, check_interval)
-		end
+		Parallel.block_on_tasks(task_map, handle_exec_result, handle_waiting, 2000)
 	end
 
 	defp write_probe_data_to_db(hostname, data) do
@@ -223,6 +212,27 @@ defmodule MachineManager.Core do
 				on_conflict: :nothing
 			)
 		end)
+	end
+
+	def upgrade_many(hostname_regexp, handle_exec_result, handle_waiting) do
+		hostnames =
+			machines_matching_regexp(hostname_regexp)
+			|> select([m], m.hostname)
+			|> Repo.all
+		wrapped_upgrade = fn hostname ->
+			try do
+				upgrade(hostname)
+				:upgraded
+			rescue
+				e in UpgradeError   -> {:upgrade_error,   e.message}
+				e in ConfigureError -> {:configure_error, e.message}
+			end
+		end
+		task_map =
+			hostnames
+			|> Enum.map(fn hostname -> {hostname, Task.async(fn -> wrapped_upgrade.(hostname) end)} end)
+			|> Map.new
+		Parallel.block_on_tasks(task_map, handle_exec_result, handle_waiting, 2000)
 	end
 
 	def upgrade(hostname) do
@@ -261,12 +271,12 @@ defmodule MachineManager.Core do
 
 	def reboot_many(hostname_regexp, handle_exec_result, handle_waiting) do
 		command = "nohup sh -c 'sleep 2; systemctl reboot' > /dev/null 2>&1 < /dev/null &"
-		exec(hostname_regexp, command, handle_exec_result, handle_waiting)
+		exec_many(hostname_regexp, command, handle_exec_result, handle_waiting)
 	end
 
 	def shutdown_many(hostname_regexp, handle_exec_result, handle_waiting) do
 		command = "nohup sh -c 'sleep 2; systemctl poweroff' > /dev/null 2>&1 < /dev/null &"
-		exec(hostname_regexp, command, handle_exec_result, handle_waiting)
+		exec_many(hostname_regexp, command, handle_exec_result, handle_waiting)
 	end
 
 	def probe(hostname) do

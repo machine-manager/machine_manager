@@ -50,9 +50,9 @@ defmodule MachineManager.CLI do
 				],
 				upgrade: [
 					name:  "upgrade",
-					about: "Upgrade all packages in our 'pending upgrades' list for a machine",
+					about: "Upgrade all packages in our 'pending upgrades' list for machines",
 					args: [
-						hostname: [required: true],
+						hostname_regexp: [required: true, help: hostname_regexp_help],
 					],
 				],
 				reboot: [
@@ -154,8 +154,8 @@ defmodule MachineManager.CLI do
 			:configure    -> Core.configure(args.hostname)
 			:ssh_config   -> Core.ssh_config()
 			:probe        -> probe_many(args.hostname_regexp)
-			:exec         -> exec(args.hostname_regexp, args.command)
-			:upgrade      -> Core.upgrade(args.hostname)
+			:exec         -> exec_many(args.hostname_regexp, args.command)
+			:upgrade      -> upgrade_many(args.hostname_regexp)
 			:reboot       -> reboot_many(args.hostname_regexp)
 			:shutdown     -> shutdown_many(args.hostname_regexp)
 			:add          -> Core.add(args.hostname, options.ip, options.ssh_port, options.datacenter, options.tag)
@@ -176,6 +176,24 @@ defmodule MachineManager.CLI do
 		end
 	end
 
+	def upgrade_many(hostname_regexp) do
+		Core.upgrade_many(hostname_regexp, &handle_upgrade_result/2, &handle_waiting/1)
+	end
+
+	defp handle_upgrade_result(hostname, task_result) do
+		pretty_hostname = hostname |> String.pad_trailing(16) |> bolded
+		case task_result do
+			{:ok, :upgraded} ->
+				IO.puts("#{pretty_hostname} upgraded")
+			{:ok, {:upgrade_error, message}} ->
+				IO.puts("#{pretty_hostname} upgrade failed: #{message}")
+			{:ok, {:configure_error, message}} ->
+				IO.puts("#{pretty_hostname} configure failed: #{message}")
+			{:exit, reason} ->
+				IO.puts("#{pretty_hostname} upgrade task failed: #{reason}")
+		end
+	end
+
 	def reboot_many(hostname_regexp) do
 		Core.reboot_many(hostname_regexp, &handle_exec_result/2, &handle_waiting/1)
 	end
@@ -184,8 +202,8 @@ defmodule MachineManager.CLI do
 		Core.shutdown_many(hostname_regexp, &handle_exec_result/2, &handle_waiting/1)
 	end
 
-	def exec(hostname_regexp, command) do
-		Core.exec(hostname_regexp, command, &handle_exec_result/2, &handle_waiting/1)
+	def exec_many(hostname_regexp, command) do
+		Core.exec_many(hostname_regexp, command, &handle_exec_result/2, &handle_waiting/1)
 	end
 
 	defp handle_exec_result(hostname, task_result) do
