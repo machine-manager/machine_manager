@@ -306,7 +306,7 @@ defmodule MachineManager.CLI do
 				{header, _} = tuple
 				header
 			end)
-		|> Enum.map(&bolded_unless_cjk/1)
+		|> Enum.map(&bolded/1)
 	end
 
 	defp default_columns() do
@@ -428,13 +428,6 @@ defmodule MachineManager.CLI do
 		case tag |> String.split(":", parts: 2) do
 			[first, rest] -> "#{bolded(first)}:#{rest}"
 			[first]       -> first
-		end
-	end
-
-	defp bolded_unless_cjk(s) do
-		case s =~ ~r/^\p{Han}+$/u do
-			false -> bolded(s)
-			true  -> s
 		end
 	end
 
