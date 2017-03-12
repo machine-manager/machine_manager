@@ -3,13 +3,13 @@ defmodule MachineManager.Mixfile do
 
 	def project do
 		[
-			app: :machine_manager,
-			version: "0.1.0",
-			elixir: "~> 1.4",
-			build_embedded: Mix.env == :prod,
+			app:             :machine_manager,
+			version:         "0.1.0",
+			elixir:          "~> 1.4",
+			build_embedded:  Mix.env == :prod,
 			start_permanent: Mix.env == :prod,
-			escript: [main_module: MachineManager.CLI],
-			deps: deps(),
+			escript:         [main_module: MachineManager.CLI],
+			deps:            deps(),
 		]
 	end
 
