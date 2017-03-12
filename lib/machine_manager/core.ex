@@ -483,10 +483,10 @@ defmodule MachineManager.Core do
 		nil
 	end
 
-	def write_script_for_machine(hostname, output_file) do
+	def write_script_for_machine(hostname, output_file, opts) do
 		tags  = get_tags(hostname)
 		roles = ScriptWriter.roles_for_tags(tags)
-		ScriptWriter.write_script_for_roles(roles, output_file)
+		ScriptWriter.write_script_for_roles(roles, output_file, opts)
 	end
 
 	@spec get_tags(String.t) :: [String.t]

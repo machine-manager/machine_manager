@@ -43,6 +43,9 @@ defmodule MachineManager.CLI do
 						hostname:    [required: true],
 						output_file: [required: true],
 					],
+					flags: [
+						allow_warnings: [long: "--allow-warnings", help: "Write the script even if there are warnings during the build."],
+					]
 				],
 				configure: [
 					name:  "configure",
@@ -156,7 +159,7 @@ defmodule MachineManager.CLI do
 		{[subcommand], %{args: args, options: options, flags: flags, unknown: unknown}} = Optimus.parse!(spec, argv)
 		case subcommand do
 			:ls           -> list(args.hostname_regexp, options.columns, (if flags.no_header, do: false, else: true))
-			:script       -> Core.write_script_for_machine(args.hostname, args.output_file)
+			:script       -> Core.write_script_for_machine(args.hostname, args.output_file, allow_warnings: flags.allow_warnings)
 			:configure    -> configure_many(args.hostname_regexp, flags.show_progress)
 			:ssh_config   -> Core.ssh_config()
 			:probe        -> probe_many(args.hostname_regexp)

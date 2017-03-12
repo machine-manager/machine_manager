@@ -9,16 +9,17 @@ defmodule MachineManager.ScriptWriter do
 
 	# We want to make a script for each combination of roles, not tags,
 	# to avoid compiling a script for each tag combination.
-	@spec write_script_for_roles([String.t], String.t) :: nil
-	def write_script_for_roles(roles, output_filename) do
-		dependencies = [{:converge,    ">= 0.1.0"},
-		                {:base_system, ">= 0.1.0"}] ++ \
-		               (roles |> Enum.map(fn role -> {"role_#{role}" |> String.to_atom, ">= 0.0.0"} end))
-		role_modules = roles |> Enum.map(&module_for_role/1)
-		temp_dir     = FileUtil.temp_dir("multi_role_script")
-		app_name     = "multi_role_script"
-		module       = MultiRoleScript
-		lib          = Path.join([temp_dir, "lib", "#{app_name}.ex"])
+	@spec write_script_for_roles([String.t], String.t, [allow_warnings: boolean]) :: nil
+	def write_script_for_roles(roles, output_filename, opts \\ []) do
+		allow_warnings = opts[:allow_warnings] || false
+		dependencies   = [{:converge,    ">= 0.1.0"},
+		                  {:base_system, ">= 0.1.0"}] ++ \
+		                 (roles |> Enum.map(fn role -> {"role_#{role}" |> String.to_atom, ">= 0.0.0"} end))
+		role_modules   = roles |> Enum.map(&module_for_role/1)
+		temp_dir       = FileUtil.temp_dir("multi_role_script")
+		app_name       = "multi_role_script"
+		module         = MultiRoleScript
+		lib            = Path.join([temp_dir, "lib", "#{app_name}.ex"])
 		Mixmaker.create_project(temp_dir, app_name, module,
 		                        dependencies, [main_module: module])
 		File.write!(lib,
@@ -35,7 +36,7 @@ defmodule MachineManager.ScriptWriter do
 				# Even with --warnings-as-errors, warnings in dependencies don't
 				# result in a non-0 exit from `mix compile`.  Parse the output and
 				# fail the build if there were any warnings.
-				if out |> String.contains?("warning:") do
+				if not allow_warnings and out |> String.contains?("warning:") do
 					raise ScriptCompilationError, message: "mix compile had a warning:\n\n#{out}"
 				end
 			{out, _code} ->
