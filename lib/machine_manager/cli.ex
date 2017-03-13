@@ -7,8 +7,7 @@ defmodule MachineManager.CLI do
 		hostname_regexp_help = "Regular expression used to match hostnames. Automatically wrapped with ^ and $."
 		spec = Optimus.new!(
 			name:               "machine_manager",
-			description:        "Machine Manager",
-			about:              "Manages metadata about machines and probes them",
+			description:        "machine_manager",
 			allow_unknown_args: false,
 			parse_double_dash:  true,
 			subcommands: [
