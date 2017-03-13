@@ -139,8 +139,13 @@ defmodule MachineManager.Core do
 		output_file  = Path.join(script_cache, basename)
 		File.mkdir_p!(script_cache)
 		ScriptWriter.write_script_for_roles(roles, output_file)
-		transfer_file(output_file, "root", hostname, ".cache/machine_manager/script",
-		              before_rsync: "mkdir -p .cache/machine_manager")
+		case transfer_file(output_file, "root", hostname, ".cache/machine_manager/script",
+		                   before_rsync: "mkdir -p .cache/machine_manager") do
+			{"", 0}          -> nil
+			{out, exit_code} ->
+				raise ConfigureError, message:
+					"Uploading configuration script to machine #{inspect hostname} failed with exit code #{exit_code}; output:\n\n#{out}"
+		end
 		arguments    = [".cache/machine_manager/script"] ++ tags
 		for arg <- arguments do
 			if arg |> String.contains?(" ") do
@@ -179,7 +184,7 @@ defmodule MachineManager.Core do
 			_   -> ["--rsync-path", "#{before_rsync} && rsync"]
 		end ++ \
 		["--protect-args", "--executability", source, "#{user}@#{hostname}:#{dest}"]
-		{"", 0} = System.cmd("rsync", args)
+		System.cmd("rsync", args)
 	end
 
 	def probe_many(hostname_regexp, handle_probe_result, handle_waiting) do
