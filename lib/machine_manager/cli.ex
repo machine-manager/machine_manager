@@ -13,7 +13,7 @@ defmodule MachineManager.CLI do
 			subcommands: [
 				ls: [
 					name:    "ls",
-					about:   "List all machines",
+					about:   "List machines",
 					flags:   [
 						no_header: [long: "--no-header", help: "Don't print the column header"],
 					],
@@ -28,7 +28,7 @@ defmodule MachineManager.CLI do
 						],
 					],
 					args: [
-						hostname_regexp: [required: false, help: hostname_regexp_help],
+						hostname_regexp: [required: false, help: hostname_regexp_help <> "  If not given, all machines will be listed."],
 					],
 				],
 				ssh_config: [
