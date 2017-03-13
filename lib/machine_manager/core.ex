@@ -16,6 +16,7 @@ end
 
 defmodule MachineManager.Core do
 	alias MachineManager.{ScriptWriter, Parallel, Repo, TooManyRowsError, UpgradeError, ConfigureError, ProbeError}
+	alias Gears.StringUtil
 	import Ecto.Query
 
 	def list(hostname_regexp) do
@@ -338,10 +339,25 @@ defmodule MachineManager.Core do
 		"""
 		{output, exit_code} = run_on_machine(hostname, command)
 		case exit_code do
-			0 -> Poison.decode!(output, keys: :atoms!)
+			0 ->
+				json = output |> get_json_from_probe_output
+				case Poison.decode(json, keys: :atoms!) do
+					{:ok, data}    -> data
+					{:error, _err} ->
+						raise ProbeError, message:
+							"Probing machine #{inspect hostname} failed because JSON was corrupted:\n\n#{json}"
+				end
 			_ -> raise ProbeError, message:
 				"Probing machine #{inspect hostname} failed with exit code #{exit_code}; output:\n\n#{output}"
 		end
+	end
+
+	defp get_json_from_probe_output(s) do
+		# Skip past any warnings like
+		# "warning: the VM is running with native name encoding of latin1"
+		s
+		|> StringUtil.grep(~r/^\{/)
+		|> hd
 	end
 
 	def _atoms() do
