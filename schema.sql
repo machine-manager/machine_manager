@@ -24,7 +24,8 @@ CREATE DOMAIN cpu_architecture AS character varying(8)  CHECK(VALUE ~ '\A[^\x00-
 CREATE TABLE machines (
 	-- Access information
 	hostname          hostname   NOT NULL PRIMARY KEY,
-	ip                inet       NOT NULL,
+	public_ip         inet       NOT NULL,
+	wireguard_ip      inet       NOT NULL,
 	ssh_port          ssh_port   NOT NULL,
 	datacenter        datacenter NOT NULL,
 	country           country,
@@ -39,11 +40,13 @@ CREATE TABLE machines (
 	-- OS information
 	kernel            kernel,
 	boot_time         timestamp with time zone,
-	needs_reboot      boolean,
 
 	-- Metadata
 	added_time        timestamp with time zone NOT NULL DEFAULT now(),
-	last_probe_time   timestamp with time zone
+	last_probe_time   timestamp with time zone,
+
+	UNIQUE (public_ip, ssh_port),
+	UNIQUE (wireguard_ip)
 );
 -- tags are like
 -- state:mess, boot:ovh_vps, dc:ovh_bhs, role:custom_packages_server

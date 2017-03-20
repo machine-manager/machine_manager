@@ -49,7 +49,8 @@ defmodule MachineManager.Core do
 		machines_matching_regexp(hostname_regexp)
 		|> select([m, t, u], %{
 				hostname:         m.hostname,
-				ip:               m.ip,
+				public_ip:        m.public_ip,
+				wireguard_ip:     m.wireguard_ip,
 				ssh_port:         m.ssh_port,
 				tags:             t.tags,
 				pending_upgrades: u.pending_upgrades,
@@ -86,7 +87,7 @@ defmodule MachineManager.Core do
 		rows =
 			from("machines")
 			|> order_by(asc: :hostname)
-			|> select([:hostname, :ip, :ssh_port])
+			|> select([:hostname, :public_ip, :ssh_port])
 			|> Repo.all
 		for row <- rows do
 			:ok = IO.write(sql_row_to_ssh_config_entry(row) <> "\n")
@@ -96,7 +97,7 @@ defmodule MachineManager.Core do
 	defp sql_row_to_ssh_config_entry(row) do
 		"""
 		Host #{row.hostname}
-		  Hostname #{inet_to_ip(row.ip)}
+		  Hostname #{inet_to_ip(row.public_ip)}
 		  Port #{row.ssh_port}
 		"""
 	end
@@ -127,11 +128,11 @@ defmodule MachineManager.Core do
 		{:ok, {ip, ssh_port, tags}} = Repo.transaction(fn ->
 			row =
 				machine(hostname)
-				|> select([:ip, :ssh_port])
+				|> select([:public_ip, :ssh_port])
 				|> Repo.all
 				|> one_row
 			tags = get_tags(hostname)
-			{inet_to_ip(row.ip), row.ssh_port, tags}
+			{inet_to_ip(row.public_ip), row.ssh_port, tags}
 		end)
 		roles        = ScriptWriter.roles_for_tags(tags)
 		script_cache = Path.expand("~/.cache/machine_manager/script_cache")
@@ -375,10 +376,10 @@ defmodule MachineManager.Core do
 	defp run_on_machine(hostname, command) do
 		row =
 			machine(hostname)
-			|> select([:ip, :ssh_port])
+			|> select([:public_ip, :ssh_port])
 			|> Repo.all
 			|> one_row
-		ssh("root", inet_to_ip(row.ip), row.ssh_port, command)
+		ssh("root", inet_to_ip(row.public_ip), row.ssh_port, command)
 	end
 
 	@doc """
@@ -414,11 +415,11 @@ defmodule MachineManager.Core do
 	Adds a machine from the database.
 	"""
 	@spec add(String.t, String.t, integer, String.t, [String.t]) :: nil
-	def add(hostname, ip, ssh_port, datacenter, tags) do
+	def add(hostname, public_ip, ssh_port, datacenter, tags) do
 		{:ok, _} = Repo.transaction(fn ->
 			Repo.insert_all("machines", [[
 				hostname:   hostname,
-				ip:         ip_to_inet(ip),
+				public_ip:  ip_to_inet(public_ip),
 				datacenter: datacenter,
 				ssh_port:   ssh_port,
 			]])
@@ -489,11 +490,11 @@ defmodule MachineManager.Core do
 		nil
 	end
 
-	@spec set_ip(String.t, String.t) :: nil
-	def set_ip(hostname, ip) do
+	@spec set_public_ip(String.t, String.t) :: nil
+	def set_public_ip(hostname, public_ip) do
 		from("machines")
 		|> where([m], m.hostname == ^hostname)
-		|> Repo.update_all(set: [ip: ip_to_inet(ip)])
+		|> Repo.update_all(set: [public_ip: ip_to_inet(public_ip)])
 		nil
 	end
 

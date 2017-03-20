@@ -99,10 +99,10 @@ defmodule MachineManager.CLI do
 						hostname: [required: true],
 					],
 					options: [
-						ip:         [short: "-i", long: "--ip",       required: true,                    help: "IP address"],
-						datacenter: [short: "-d", long: "--dc",       required: true,                    help: "Datacenter"],
-						ssh_port:   [short: "-p", long: "--ssh-port", required: true,  parser: :integer, help: "SSH port"],
-						tag:        [short: "-t", long: "--tag",      required: false, multiple: true,   help: "Tag"],
+						public_ip:  [short: "-i", long: "--public-ip", required: true,                    help: "Public IP address"],
+						datacenter: [short: "-d", long: "--dc",        required: true,                    help: "Datacenter"],
+						ssh_port:   [short: "-p", long: "--ssh-port",  required: true,  parser: :integer, help: "SSH port"],
+						tag:        [short: "-t", long: "--tag",       required: false, multiple: true,   help: "Tag"],
 					],
 				],
 				rm: [
@@ -137,12 +137,12 @@ defmodule MachineManager.CLI do
 						hostname: [required: true],
 					],
 				],
-				set_ip: [
-					name:  "set-ip",
-					about: "Set new IP for a machine",
+				set_public_ip: [
+					name:  "set-public-ip",
+					about: "Set new public IP for a machine",
 					args: [
-						hostname: [required: true],
-						ip:       [required: true],
+						hostname:  [required: true],
+						public_ip: [required: true],
 					],
 				],
 				set_ssh_port: [
@@ -157,22 +157,22 @@ defmodule MachineManager.CLI do
 		)
 		{[subcommand], %{args: args, options: options, flags: flags, unknown: unknown}} = Optimus.parse!(spec, argv)
 		case subcommand do
-			:ls           -> list(args.hostname_regexp, options.columns, (if flags.no_header, do: false, else: true))
-			:script       -> Core.write_script_for_machine(args.hostname, args.output_file, allow_warnings: flags.allow_warnings)
-			:configure    -> configure_many(args.hostname_regexp, flags.show_progress)
-			:ssh_config   -> Core.ssh_config()
-			:probe        -> probe_many(args.hostname_regexp)
-			:exec         -> exec_many(args.hostname_regexp, args.command)
-			:upgrade      -> upgrade_many(args.hostname_regexp)
-			:reboot       -> reboot_many(args.hostname_regexp)
-			:shutdown     -> shutdown_many(args.hostname_regexp)
-			:add          -> Core.add(args.hostname, options.ip, options.ssh_port, options.datacenter, options.tag)
-			:rm           -> Core.rm_many(args.hostname_regexp)
-			:tag          -> Core.tag_many(args.hostname_regexp,   all_arguments(args.tag, unknown))
-			:untag        -> Core.untag_many(args.hostname_regexp, all_arguments(args.tag, unknown))
-			:get_tags     -> Core.get_tags(args.hostname) |> Enum.join(" ") |> IO.write
-			:set_ip       -> Core.set_ip(args.hostname, args.ip)
-			:set_ssh_port -> Core.set_ssh_port_many(args.hostname_regexp, args.ssh_port)
+			:ls            -> list(args.hostname_regexp, options.columns, (if flags.no_header, do: false, else: true))
+			:script        -> Core.write_script_for_machine(args.hostname, args.output_file, allow_warnings: flags.allow_warnings)
+			:configure     -> configure_many(args.hostname_regexp, flags.show_progress)
+			:ssh_config    -> Core.ssh_config()
+			:probe         -> probe_many(args.hostname_regexp)
+			:exec          -> exec_many(args.hostname_regexp, args.command)
+			:upgrade       -> upgrade_many(args.hostname_regexp)
+			:reboot        -> reboot_many(args.hostname_regexp)
+			:shutdown      -> shutdown_many(args.hostname_regexp)
+			:add           -> Core.add(args.hostname, options.public_ip, options.ssh_port, options.datacenter, options.tag)
+			:rm            -> Core.rm_many(args.hostname_regexp)
+			:tag           -> Core.tag_many(args.hostname_regexp,   all_arguments(args.tag, unknown))
+			:untag         -> Core.untag_many(args.hostname_regexp, all_arguments(args.tag, unknown))
+			:get_tags      -> Core.get_tags(args.hostname) |> Enum.join(" ") |> IO.write
+			:set_public_ip -> Core.set_public_ip(args.hostname, args.public_ip)
+			:set_ssh_port  -> Core.set_ssh_port_many(args.hostname_regexp, args.ssh_port)
 		end
 	end
 
@@ -313,7 +313,7 @@ defmodule MachineManager.CLI do
 
 	defp default_columns() do
 		[
-			"hostname", "ip", "ssh_port", "tags", "datacenter", "country", "ram_mb", "cpu_model_name",
+			"hostname", "public_ip", "ssh_port", "tags", "datacenter", "country", "ram_mb", "cpu_model_name",
 			"core_count", "thread_count", "last_probe_time", "boot_time", "kernel", "pending_upgrades"
 		]
 	end
@@ -321,7 +321,7 @@ defmodule MachineManager.CLI do
 	defp get_column_spec() do
 		%{
 			"hostname"         => {"HOSTNAME",         fn row, _ -> row.hostname end},
-			"ip"               => {"IP",               fn row, _ -> row.ip |> maybe_scramble_ip |> Core.inet_to_ip end},
+			"public_ip"        => {"PUBLIC IP",        fn row, _ -> row.public_ip |> maybe_scramble_ip |> Core.inet_to_ip end},
 			"ssh_port"         => {"SSH",              fn row, _ -> row.ssh_port end},
 			"tags"             => {"TAGS",             &format_tags/2},
 			"datacenter"       => {"DC",               fn row, _ -> row.datacenter |> colorize end},
