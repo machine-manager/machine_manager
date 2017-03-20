@@ -554,10 +554,31 @@ defmodule MachineManager.Core do
 		end
 	end
 
+	defp get_unused_wireguard_ip() do
+		wireguard_ips = from("machines")
+			|> select([m], m.wireguard_ip)
+			|> Repo.all
+		wireguard_start = {10, 10, 0,   0}
+		wireguard_end   = {10, 10, 255, 255}
+
+	end
+
+	@typep ip_tuple :: {integer, integer, integer, integer}
+
+	@spec increment_ip_tuple(ip_tuple) :: ip_tuple
+	def increment_ip_tuple(ip_tuple = {a, b, c, d}) when ip_tuple != {255, 255, 255, 255} do
+		d = d + 1
+		{c, d} = if d == 256, do: {c + 1, 0}, else: {c, d}
+		{b, c} = if c == 256, do: {b + 1, 0}, else: {b, c}
+		{a, b} = if b == 256, do: {a + 1, 0}, else: {a, b}
+		{a, b, c, d}
+	end
+
 	defp ip_to_inet(ip) do
 		%Postgrex.INET{address: ip_to_tuple(ip)}
 	end
 
+	@spec ip_to_tuple(String.t) :: ip_tuple
 	defp ip_to_tuple(ip) do
 		ip
 		|> String.split(".")
