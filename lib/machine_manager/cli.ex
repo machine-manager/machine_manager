@@ -313,15 +313,17 @@ defmodule MachineManager.CLI do
 
 	defp default_columns() do
 		[
-			"hostname", "public_ip", "ssh_port", "tags", "datacenter", "country", "ram_mb", "cpu_model_name",
-			"core_count", "thread_count", "last_probe_time", "boot_time", "kernel", "pending_upgrades"
+			"hostname", "public_ip", "wireguard_ip", "ssh_port", "tags", "datacenter",
+			"country", "ram_mb", "cpu_model_name", "core_count", "thread_count",
+			"last_probe_time", "boot_time", "kernel", "pending_upgrades",
 		]
 	end
 
 	defp get_column_spec() do
 		%{
 			"hostname"         => {"HOSTNAME",         fn row, _ -> row.hostname end},
-			"public_ip"        => {"PUBLIC IP",        fn row, _ -> row.public_ip |> maybe_scramble_ip |> Core.inet_to_ip end},
+			"public_ip"        => {"PUBLIC IP",        fn row, _ -> row.public_ip    |> maybe_scramble_ip |> Core.inet_to_ip end},
+			"wireguard_ip"     => {"WIREGUARD",        fn row, _ -> row.wireguard_ip |> Core.inet_to_ip end},
 			"ssh_port"         => {"SSH",              fn row, _ -> row.ssh_port end},
 			"tags"             => {"TAGS",             &format_tags/2},
 			"datacenter"       => {"DC",               fn row, _ -> row.datacenter |> colorize end},
