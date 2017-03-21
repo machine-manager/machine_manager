@@ -418,10 +418,11 @@ defmodule MachineManager.Core do
 	def add(hostname, public_ip, ssh_port, datacenter, tags) do
 		{:ok, _} = Repo.transaction(fn ->
 			Repo.insert_all("machines", [[
-				hostname:   hostname,
-				public_ip:  ip_to_inet(public_ip),
-				datacenter: datacenter,
-				ssh_port:   ssh_port,
+				hostname:     hostname,
+				public_ip:    ip_to_inet(public_ip),
+				wireguard_ip: ip_to_inet(get_unused_wireguard_ip()),
+				datacenter:   datacenter,
+				ssh_port:     ssh_port,
 			]])
 			tag(hostname, tags)
 		end)
@@ -558,6 +559,7 @@ defmodule MachineManager.Core do
 		existing_ips    = from("machines")
 			|> select([m], m.wireguard_ip)
 			|> Repo.all
+			|> Enum.map(&inet_to_tuple/1)
 			|> MapSet.new
 		wireguard_start = {10, 10, 0,   0}
 		wireguard_end   = {10, 10, 255, 255}
@@ -576,9 +578,8 @@ defmodule MachineManager.Core do
 		{a, b, c, d}
 	end
 
-	defp ip_to_inet(ip) do
-		%Postgrex.INET{address: ip_to_tuple(ip)}
-	end
+	defp ip_to_inet(ip) when is_tuple(ip),  do: %Postgrex.INET{address: ip}
+	defp ip_to_inet(ip) when is_binary(ip), do: %Postgrex.INET{address: ip_to_tuple(ip)}
 
 	@spec ip_to_tuple(String.t) :: ip_tuple
 	defp ip_to_tuple(ip) do
@@ -590,5 +591,9 @@ defmodule MachineManager.Core do
 
 	def inet_to_ip(%Postgrex.INET{address: {a, b, c, d}}) do
 		"#{a}.#{b}.#{c}.#{d}"
+	end
+
+	def inet_to_tuple(%Postgrex.INET{address: {a, b, c, d}}) do
+		{a, b, c, d}
 	end
 end
