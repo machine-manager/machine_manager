@@ -404,7 +404,9 @@ defmodule MachineManager.Core do
 		%Porcelain.Result{status: exit_code} = \
 			Porcelain.exec("ssh", ["-q", "-p", "#{ssh_port}", "#{user}@#{ip}", command],
 			               out: {:file, Process.group_leader},
-			               err: {:file, Process.group_leader},
+			               # "when using `Porcelain.Driver.Basic`, the only supported values
+			               # are `nil` (stderr will be printed to the terminal) and `:out`."
+			               err: nil,
 			               # Make sure DISPLAY and SSH_ASKPASS are unset so that
 			               # ssh-askpass or similar doesn't pop up.
 			               env: [{"DISPLAY", ""}, {"SSH_ASKPASS", ""}])
