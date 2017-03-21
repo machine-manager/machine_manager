@@ -418,13 +418,17 @@ defmodule MachineManager.Core do
 	"""
 	@spec add(String.t, String.t, integer, String.t, [String.t]) :: nil
 	def add(hostname, public_ip, ssh_port, datacenter, tags) do
+		wireguard_privkey = make_wireguard_privkey()
+		wireguard_pubkey  = get_wireguard_pubkey(wireguard_privkey)
 		{:ok, _} = Repo.transaction(fn ->
 			Repo.insert_all("machines", [[
-				hostname:     hostname,
-				public_ip:    ip_to_inet(public_ip),
-				wireguard_ip: ip_to_inet(get_unused_wireguard_ip()),
-				datacenter:   datacenter,
-				ssh_port:     ssh_port,
+				hostname:          hostname,
+				public_ip:         ip_to_inet(public_ip),
+				wireguard_ip:      ip_to_inet(get_unused_wireguard_ip()),
+				wireguard_privkey: wireguard_privkey,
+				wireguard_pubkey:  wireguard_pubkey,
+				datacenter:        datacenter,
+				ssh_port:          ssh_port,
 			]])
 			tag(hostname, tags)
 		end)
