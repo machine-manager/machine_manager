@@ -569,14 +569,24 @@ defmodule MachineManager.Core do
 		Enum.find(ip_candidates, fn ip -> not MapSet.member?(existing_ips, ip) end)
 	end
 
+	@doc """
+	Generate a new 32-byte private key for wireguard.
+	"""
 	def make_wireguard_privkey() do
 		{privkey_base64, 0} = System.cmd("wg", ["genkey"])
-		privkey_base64
+		privkey = privkey_base64
 			|> String.trim_trailing("\n")
 			|> Base.decode64!
+		if byte_size(privkey) != 32 do
+			raise RuntimeError, message: "Key from `wg genkey` was of the wrong size"
+		end
+		privkey
 	end
 
-	def make_wireguard_pubkey(privkey) do
+	@doc """
+	Get the 32-byte public key associated with wireguard private key `privkey`.
+	"""
+	def get_wireguard_pubkey(privkey) when byte_size(privkey) == 32 do
 		# `wg pubkey` waits for EOF, but Erlang can't close stdin, so use some
 		# bash that reads a single line and pipes it into `wg pubkey`.
 		# https://github.com/alco/porcelain/issues/37

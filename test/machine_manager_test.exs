@@ -24,12 +24,12 @@ defmodule MachineManager.CoreTest do
 		assert privkey |> byte_size == 32
 	end
 
-	test "make_wireguard_pubkey" do
+	test "get_wireguard_pubkey" do
 		privkey = Core.make_wireguard_privkey()
-		pubkey  = Core.make_wireguard_pubkey(privkey)
+		pubkey  = Core.get_wireguard_pubkey(privkey)
 		assert pubkey |> byte_size == 32
 		assert pubkey != privkey
-		assert pubkey == Core.make_wireguard_pubkey(privkey)
+		assert pubkey == Core.get_wireguard_pubkey(privkey)
 	end
 end
 
