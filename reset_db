@@ -20,7 +20,7 @@ make_backup() {
 	# change, we still typically will not need to edit backup.sql for the restore.
 	create_backup_subset="\
 	DROP TABLE IF EXISTS machines__backup;
-	CREATE TABLE         machines__backup AS SELECT hostname, public_ip, ssh_port, datacenter, added_time FROM machines;
+	CREATE TABLE         machines__backup AS SELECT hostname, public_ip, wireguard_ip, ssh_port, datacenter, added_time FROM machines;
 
 	DROP TABLE IF EXISTS machine_tags__backup;
 	CREATE TABLE         machine_tags__backup AS SELECT hostname, tag FROM machine_tags;

@@ -20,12 +20,15 @@ CREATE DOMAIN package          AS character varying     CHECK(VALUE ~ '\A[^\x00-
 CREATE DOMAIN kernel           AS character varying(64) CHECK(VALUE ~ '\A[^\x00-\x1F]+\Z');
 CREATE DOMAIN cpu_model_name   AS character varying(64) CHECK(VALUE ~ '\A[^\x00-\x1F]+\Z');
 CREATE DOMAIN cpu_architecture AS character varying(8)  CHECK(VALUE ~ '\A[^\x00-\x20]+\Z');
+CREATE DOMAIN wireguard_key    AS bytea                 CHECK(length(VALUE) = 32);
 
 CREATE TABLE machines (
 	-- Access information
 	hostname          hostname   NOT NULL PRIMARY KEY,
 	public_ip         inet       NOT NULL,
 	wireguard_ip      inet       NOT NULL,
+	wireguard_privkey wireguard_key,
+	wireguard_pubkey  wireguard_key,
 	ssh_port          ssh_port   NOT NULL,
 	datacenter        datacenter NOT NULL,
 	country           country,
@@ -46,7 +49,9 @@ CREATE TABLE machines (
 	last_probe_time   timestamp with time zone,
 
 	UNIQUE (public_ip, ssh_port),
-	UNIQUE (wireguard_ip)
+	UNIQUE (wireguard_ip),
+	UNIQUE (wireguard_privkey),
+	UNIQUE (wireguard_pubkey)
 );
 -- tags are like
 -- state:mess, boot:ovh_vps, dc:ovh_bhs, role:custom_packages_server
