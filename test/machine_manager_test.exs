@@ -14,6 +14,10 @@ defmodule MachineManager.CoreTest do
 			fn -> Core.increment_ip_tuple({255, 255, 255, 255}) end
 		)
 	end
+
+	test "get_unused_wireguard_ip" do
+		{_, _, _, _} = Core.get_unused_wireguard_ip()
+	end
 end
 
 defmodule MachineManager.CPUTest do
