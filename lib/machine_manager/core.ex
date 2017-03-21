@@ -340,7 +340,6 @@ defmodule MachineManager.Core do
 		command = """
 		wait-for-dpkg-lock || true;
 		apt-get update > /dev/null 2>&1;
-		apt-get install -y --upgrade machine_probe > /dev/null 2>&1;
 		machine_probe
 		"""
 		{output, exit_code} = run_on_machine(hostname, command)
