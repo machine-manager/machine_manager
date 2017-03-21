@@ -578,7 +578,7 @@ defmodule MachineManager.Core do
 
 	def make_wireguard_pubkey(privkey) do
 		%Porcelain.Result{status: 0, out: pubkey_base64} =
-			Porcelain.exec("wg", ["pubkey"], in: (privkey |> Base.encode64) <> "\n")
+			Porcelain.exec("bash", ["-c", ~s(IFS="" read -r line; echo -E "$line" | wg pubkey)], in: (privkey |> Base.encode64) <> "\n")
 		pubkey_base64
 			|> String.trim_trailing("\n")
 			|> Base.decode64!
