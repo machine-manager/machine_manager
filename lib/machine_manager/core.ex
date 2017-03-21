@@ -567,6 +567,21 @@ defmodule MachineManager.Core do
 		Enum.find(ip_candidates, fn ip -> not MapSet.member?(existing_ips, ip) end)
 	end
 
+	def make_wireguard_privkey() do
+		{privkey_base64, 0} = System.cmd("wg", ["genkey"])
+		privkey_base64
+			|> String.trim_trailing("\n")
+			|> Base.decode64!
+	end
+
+	def make_wireguard_pubkey(privkey) do
+		%Porcelain.Result{status: 0, out: pubkey_base64} =
+			Porcelain.exec("wg", ["pubkey"], in: (privkey |> Base.encode64) <> "\n")
+		pubkey_base64
+			|> String.trim_trailing("\n")
+			|> Base.decode64!
+	end
+
 	@typep ip_tuple :: {integer, integer, integer, integer}
 
 	@spec increment_ip_tuple(ip_tuple, ip_tuple) :: ip_tuple

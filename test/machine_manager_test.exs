@@ -18,7 +18,19 @@ defmodule MachineManager.CoreTest do
 	test "get_unused_wireguard_ip" do
 		{_, _, _, _} = Core.get_unused_wireguard_ip()
 	end
+
+	test "make_wireguard_privkey" do
+		privkey = Core.make_wireguard_privkey()
+		assert privkey |> byte_size == 32
+	end
+
+	test "make_wireguard_pubkey" do
+		privkey = Core.make_wireguard_privkey()
+		pubkey  = Core.make_wireguard_pubkey(privkey)
+		assert pubkey |> byte_size == 32
+	end
 end
+
 
 defmodule MachineManager.CPUTest do
 	use ExUnit.Case
@@ -34,6 +46,7 @@ defmodule MachineManager.CPUTest do
 		assert CPU.short_description("Intel Core Processor (Haswell, no TSX)")     == "Mystery Haswell"
 	end
 end
+
 
 defmodule MachineManager.ScriptWriterTest do
 	use ExUnit.Case
