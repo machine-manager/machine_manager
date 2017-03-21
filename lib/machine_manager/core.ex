@@ -560,16 +560,15 @@ defmodule MachineManager.Core do
 			|> Repo.all
 			|> MapSet.new
 		wireguard_start = {10, 10, 0,   0}
-		_wireguard_end  = {10, 10, 255, 255}
-		# TODO: stop at wireguard_end
-		ip_candidates   = Stream.iterate(wireguard_start, &increment_ip_tuple/1)
+		wireguard_end   = {10, 10, 255, 255}
+		ip_candidates   = Stream.iterate(wireguard_start, fn ip -> increment_ip_tuple(ip, wireguard_end) end)
 		Enum.find(ip_candidates, fn ip -> not MapSet.member?(existing_ips, ip) end)
 	end
 
 	@typep ip_tuple :: {integer, integer, integer, integer}
 
-	@spec increment_ip_tuple(ip_tuple) :: ip_tuple
-	def increment_ip_tuple(ip_tuple = {a, b, c, d}) when ip_tuple != {255, 255, 255, 255} do
+	@spec increment_ip_tuple(ip_tuple, ip_tuple) :: ip_tuple
+	def increment_ip_tuple(ip_tuple = {a, b, c, d}, maximum \\ {255, 255, 255, 255}) when ip_tuple != maximum do
 		d = d + 1
 		{c, d} = if d == 256, do: {c + 1, 0}, else: {c, d}
 		{b, c} = if c == 256, do: {b + 1, 0}, else: {b, c}
