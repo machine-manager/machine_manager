@@ -581,7 +581,7 @@ defmodule MachineManager.Core do
 		# bash that reads a single line and pipes it into `wg pubkey`.
 		# https://github.com/alco/porcelain/issues/37
 		%Porcelain.Result{status: 0, out: pubkey_base64} =
-			Porcelain.exec("bash", ["-c", ~s(IFS="" read -r line; echo -E "$line" | wg pubkey)], in: (privkey |> Base.encode64) <> "\n")
+			Porcelain.exec("bash", ["-c", "head -n 1 | wg pubkey"], in: (privkey |> Base.encode64) <> "\n")
 		pubkey_base64
 			|> String.trim_trailing("\n")
 			|> Base.decode64!
