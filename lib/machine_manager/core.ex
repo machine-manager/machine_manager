@@ -558,12 +558,12 @@ defmodule MachineManager.Core do
 	end
 
 	def get_unused_wireguard_ip() do
-		existing_ips    = from("machines")
+		existing_ips = from("machines")
 			|> select([m], m.wireguard_ip)
 			|> Repo.all
 			|> Enum.map(&inet_to_tuple/1)
 			|> MapSet.new
-		wireguard_start = {10, 10, 0,   0}
+		wireguard_start = {10, 10, 0, 0}
 		wireguard_end   = {10, 10, 255, 255}
 		ip_candidates   = Stream.iterate(wireguard_start, fn ip -> increment_ip_tuple(ip, wireguard_end) end)
 		Enum.find(ip_candidates, fn ip -> not MapSet.member?(existing_ips, ip) end)
