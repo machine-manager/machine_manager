@@ -508,6 +508,29 @@ defmodule MachineManager.Core do
 		nil
 	end
 
+	@spec rekey_wireguard_many(String.t) :: nil
+	def rekey_wireguard_many(hostname_regexp) do
+		Repo.transaction(fn ->
+			hostnames =
+				machines_matching_regexp(hostname_regexp)
+				|> select([m], m.hostname)
+				|> Repo.all
+			for hostname <- hostnames do
+				rekey_wireguard(hostname)
+			end
+		end)
+		nil
+	end
+
+	@spec rekey_wireguard(String.t) :: nil
+	def rekey_wireguard(hostname) do
+		privkey = make_wireguard_privkey()
+		pubkey  = get_wireguard_pubkey(privkey)
+		machine(hostname)
+		|> Repo.update_all(set: [wireguard_privkey: privkey, wireguard_pubkey: pubkey])
+		nil
+	end
+
 	def write_script_for_machine(hostname, output_file, opts) do
 		tags  = get_tags(hostname)
 		roles = ScriptWriter.roles_for_tags(tags)

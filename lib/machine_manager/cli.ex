@@ -153,26 +153,34 @@ defmodule MachineManager.CLI do
 						ssh_port:        [required: true, parser: :integer],
 					],
 				],
+				rekey_wireguard: [
+					name:  "rekey-wireguard",
+					about: "Regenerate WireGuard keys for machines",
+					args: [
+						hostname_regexp: [required: true, help: hostname_regexp_help],
+					],
+				],
 			],
 		)
 		{[subcommand], %{args: args, options: options, flags: flags, unknown: unknown}} = Optimus.parse!(spec, argv)
 		case subcommand do
-			:ls            -> list(args.hostname_regexp, options.columns, (if flags.no_header, do: false, else: true))
-			:script        -> Core.write_script_for_machine(args.hostname, args.output_file, allow_warnings: flags.allow_warnings)
-			:configure     -> configure_many(args.hostname_regexp, flags.show_progress)
-			:ssh_config    -> Core.ssh_config()
-			:probe         -> probe_many(args.hostname_regexp)
-			:exec          -> exec_many(args.hostname_regexp, args.command)
-			:upgrade       -> upgrade_many(args.hostname_regexp)
-			:reboot        -> reboot_many(args.hostname_regexp)
-			:shutdown      -> shutdown_many(args.hostname_regexp)
-			:add           -> Core.add(args.hostname, options.public_ip, options.ssh_port, options.datacenter, options.tag)
-			:rm            -> Core.rm_many(args.hostname_regexp)
-			:tag           -> Core.tag_many(args.hostname_regexp,   all_arguments(args.tag, unknown))
-			:untag         -> Core.untag_many(args.hostname_regexp, all_arguments(args.tag, unknown))
-			:get_tags      -> Core.get_tags(args.hostname) |> Enum.join(" ") |> IO.write
-			:set_public_ip -> Core.set_public_ip(args.hostname, args.public_ip)
-			:set_ssh_port  -> Core.set_ssh_port_many(args.hostname_regexp, args.ssh_port)
+			:ls              -> list(args.hostname_regexp, options.columns, (if flags.no_header, do: false, else: true))
+			:script          -> Core.write_script_for_machine(args.hostname, args.output_file, allow_warnings: flags.allow_warnings)
+			:configure       -> configure_many(args.hostname_regexp, flags.show_progress)
+			:ssh_config      -> Core.ssh_config()
+			:probe           -> probe_many(args.hostname_regexp)
+			:exec            -> exec_many(args.hostname_regexp, args.command)
+			:upgrade         -> upgrade_many(args.hostname_regexp)
+			:reboot          -> reboot_many(args.hostname_regexp)
+			:shutdown        -> shutdown_many(args.hostname_regexp)
+			:add             -> Core.add(args.hostname, options.public_ip, options.ssh_port, options.datacenter, options.tag)
+			:rm              -> Core.rm_many(args.hostname_regexp)
+			:tag             -> Core.tag_many(args.hostname_regexp,   all_arguments(args.tag, unknown))
+			:untag           -> Core.untag_many(args.hostname_regexp, all_arguments(args.tag, unknown))
+			:get_tags        -> Core.get_tags(args.hostname) |> Enum.join(" ") |> IO.write
+			:set_public_ip   -> Core.set_public_ip(args.hostname, args.public_ip)
+			:set_ssh_port    -> Core.set_ssh_port_many(args.hostname_regexp, args.ssh_port)
+			:rekey_wireguard -> Core.rekey_wireguard_many(args.hostname_regexp)
 		end
 	end
 
