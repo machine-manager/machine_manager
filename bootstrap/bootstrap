@@ -9,9 +9,9 @@ set -eu -o pipefail
 
 SELF=$(dirname "${BASH_SOURCE[0]}")
 CUSTOM_PACKAGES_CLIENT_DEB_PATH=$(/bin/ls -1 /var/custom-packages/custom-packages-client_*_all.deb | sort | tail -n 1)
-CUSTOM_PACKAGES_APT_KEY_FILE=/var/custom-packages/keyFile
-CUSTOM_PACKAGES_CLIENT_SPIPED_KEY_FILE=~/code/erlang/role_custom_packages_server/files/etc/custom-packages-server/spiped_key
-CUSTOM_PACKAGES_PASSWORD=$(cat ~/code/erlang/role_custom_packages_server/files/etc/custom-packages-server/unencrypted_password)
+CUSTOM_PACKAGES_APT_KEY_FILE="../role_custom_packages/files/apt_keys/2AAA29C8 Custom Packages.txt"
+CUSTOM_PACKAGES_CLIENT_SPIPED_KEY_FILE=../role_custom_packages_server/files/etc/custom-packages-server/spiped_key
+CUSTOM_PACKAGES_PASSWORD=$(cat ../role_custom_packages_server/files/etc/custom-packages-server/unencrypted_password)
 USER_AT_HOST="$1"
 
 # We install rsync because the machine may not have it yet.
