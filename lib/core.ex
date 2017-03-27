@@ -224,7 +224,7 @@ defmodule MachineManager.Core do
 				transfer_file(
 					custom_packages_client_deb_filename(), "root", hostname,
 					".machine_manager/bootstrap/custom-packages-client.deb"),
-			{"", 0} <- 
+			{"", 0} <-
 				transfer_content(
 					bootstrap_setup(), "root", hostname,
 					".machine_manager/bootstrap/setup"),
@@ -234,7 +234,7 @@ defmodule MachineManager.Core do
 					".machine_manager/bootstrap/custom-packages-apt-key"),
 			{_, 0} <-
 				run_on_machine(
-					hostname, 
+					hostname,
 					"""
 					chattr -i /etc/apt/trusted.gpg &&
 					apt-key add ~/.machine_manager/bootstrap/custom-packages-apt-key &&
@@ -337,7 +337,7 @@ defmodule MachineManager.Core do
 	end
 
 	defp write_probe_data_to_db(hostname, data) do
-		Repo.transaction(fn -> 
+		Repo.transaction(fn ->
 			machine(hostname)
 			|> Repo.update_all(set: [
 				ram_mb:           data.ram_mb,
