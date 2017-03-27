@@ -238,6 +238,8 @@ defmodule MachineManager.CLI do
 				IO.puts("#{pretty_hostname} configured")
 			{:ok, {:configure_error, message}} ->
 				IO.puts("#{pretty_hostname} configure failed: #{message}")
+			{:ok, {:bootstrap_error, message}} ->
+				IO.puts("#{pretty_hostname} bootstrap failed: #{message}")
 			{:exit, reason} ->
 				IO.puts("#{pretty_hostname} configure task failed: #{reason}")
 		end
@@ -258,6 +260,8 @@ defmodule MachineManager.CLI do
 				IO.puts("#{pretty_hostname} upgrade failed: #{message}")
 			{:ok, {:configure_error, message}} ->
 				IO.puts("#{pretty_hostname} configure failed: #{message}")
+			{:ok, {:bootstrap_error, message}} ->
+				IO.puts("#{pretty_hostname} bootstrap failed: #{message}")
 			{:exit, reason} ->
 				IO.puts("#{pretty_hostname} upgrade task failed: #{reason}")
 		end

@@ -119,6 +119,7 @@ defmodule MachineManager.Core do
 				configure(hostname, show_progress)
 			rescue
 				e in ConfigureError -> {:configure_error, e.message}
+				e in BootstrapError -> {:bootstrap_error, e.message}
 			end
 		end
 		task_map =
@@ -128,7 +129,8 @@ defmodule MachineManager.Core do
 		Parallel.block_on_tasks(task_map, handle_configure_result, handle_waiting, 2000)
 	end
 
-	def configure(hostname, show_progress \\ false) do
+	# Can raise ConfigureError or BootstrapError
+	def configure(hostname, show_progress \\ false, already_tried_bootstrap \\ false) do
 		{:ok, {ip, ssh_port, tags}} = Repo.transaction(fn ->
 			row =
 				machine(hostname)
@@ -170,11 +172,23 @@ defmodule MachineManager.Core do
 				{out, exit_code} = ssh("root", ip, ssh_port, arguments |> Enum.join(" "))
 				case exit_code do
 					0 -> nil
-					_ -> raise ConfigureError, message:
-						"Configuring machine #{inspect hostname} failed with exit code #{exit_code}; output:\n\n#{out}"
+					_ ->
+						case erlang_missing_error?(out) and not already_tried_bootstrap do
+							true  ->
+								# Machine seems to be missing erlang, so bootstrap it, then try configure again.
+								bootstrap(hostname)
+								configure(hostname, show_progress, true)
+							false ->
+								raise ConfigureError, message:
+									"Configuring machine #{inspect hostname} failed with exit code #{exit_code}; output:\n\n#{out}"
+						end
 				end
 		end
 		:configured
+	end
+
+	defp erlang_missing_error?(out) do
+		out =~ ~r"/usr/bin/env:.*escript.*: No such file or directory"
 	end
 
 	defmacro content(filename) do
@@ -376,6 +390,7 @@ defmodule MachineManager.Core do
 			rescue
 				e in UpgradeError   -> {:upgrade_error,   e.message}
 				e in ConfigureError -> {:configure_error, e.message}
+				e in BootstrapError -> {:bootstrap_error, e.message}
 			end
 		end
 		task_map =
@@ -385,6 +400,7 @@ defmodule MachineManager.Core do
 		Parallel.block_on_tasks(task_map, handle_upgrade_result, handle_waiting, 2000)
 	end
 
+	# Can raise UpgradeError, ConfigureError, or BootstrapError
 	def upgrade(hostname) do
 		packages = get_pending_upgrades_for_machine(hostname)
 		case packages do
