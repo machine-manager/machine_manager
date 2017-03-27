@@ -46,11 +46,23 @@ defmodule MachineManager.CLI do
 						allow_warnings: [long: "--allow-warnings", help: "Write the script even if there are warnings during the build."],
 					]
 				],
+				bootstrap: [
+					name:  "bootstrap",
+					about: "Bootstrap machines so that configure can be run on them",
+					args: [
+						hostname_regexp: [required: true, help: hostname_regexp_help],
+					],
+				],
 				configure: [
 					name:  "configure",
 					about: "Configure machines",
 					flags: [
-						show_progress: [long: "--progress", help: "Show configure progress.  Works only when configuring a single server."],
+						show_progress: [long: "--progress", help:
+							"""
+							Show configure progress.  Works only when configuring a single server.
+							Will not automatically bootstrap as needed.
+							"""
+						],
 					],
 					args: [
 						hostname_regexp: [required: true, help: hostname_regexp_help],
@@ -166,6 +178,7 @@ defmodule MachineManager.CLI do
 		case subcommand do
 			:ls              -> list(args.hostname_regexp, options.columns, (if flags.no_header, do: false, else: true))
 			:script          -> Core.write_script_for_machine(args.hostname, args.output_file, allow_warnings: flags.allow_warnings)
+			:bootstrap       -> bootstrap_many(args.hostname_regexp)
 			:configure       -> configure_many(args.hostname_regexp, flags.show_progress)
 			:ssh_config      -> Core.ssh_config()
 			:probe           -> probe_many(args.hostname_regexp)
@@ -189,6 +202,22 @@ defmodule MachineManager.CLI do
 		case maybe_first do
 			nil -> []
 			_   -> [maybe_first | rest]
+		end
+	end
+
+	def bootstrap_many(hostname_regexp) do
+		Core.bootstrap_many(hostname_regexp, &handle_bootstrap_result/2, &handle_waiting/1)
+	end
+
+	defp handle_bootstrap_result(hostname, task_result) do
+		pretty_hostname = hostname |> String.pad_trailing(16) |> bolded
+		case task_result do
+			{:ok, :bootstrapped} ->
+				IO.puts("#{pretty_hostname} bootstrapped")
+			{:ok, {:bootstrap_error, message}} ->
+				IO.puts("#{pretty_hostname} bootstrap failed: #{message}")
+			{:exit, reason} ->
+				IO.puts("#{pretty_hostname} bootstrap task failed: #{reason}")
 		end
 	end
 

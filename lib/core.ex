@@ -6,6 +6,10 @@ defmodule MachineManager.UpgradeError do
 	defexception [:message]
 end
 
+defmodule MachineManager.BootstrapError do
+	defexception [:message]
+end
+
 defmodule MachineManager.ConfigureError do
 	defexception [:message]
 end
@@ -15,8 +19,8 @@ defmodule MachineManager.ProbeError do
 end
 
 defmodule MachineManager.Core do
-	alias MachineManager.{ScriptWriter, Parallel, Repo, TooManyRowsError, UpgradeError, ConfigureError, ProbeError}
-	alias Gears.StringUtil
+	alias MachineManager.{ScriptWriter, Parallel, Repo, TooManyRowsError, UpgradeError, BootstrapError, ConfigureError, ProbeError}
+	alias Gears.{StringUtil, FileUtil}
 	import Ecto.Query
 
 	def list(hostname_regexp) do
@@ -147,7 +151,7 @@ defmodule MachineManager.Core do
 				raise ConfigureError, message:
 					"Uploading configuration script to machine #{inspect hostname} failed with exit code #{exit_code}; output:\n\n#{out}"
 		end
-		arguments    = [".cache/machine_manager/script"] ++ tags
+		arguments = [".cache/machine_manager/script"] ++ tags
 		for arg <- arguments do
 			if arg |> String.contains?(" ") do
 				raise ConfigureError, message:
@@ -173,12 +177,125 @@ defmodule MachineManager.Core do
 		:configured
 	end
 
+	defmacro content(filename) do
+		File.read!(filename)
+	end
+
+	def bootstrap_many(hostname_regexp, handle_bootstrap_result, handle_waiting) do
+		hostnames =
+			machines_matching_regexp(hostname_regexp)
+			|> select([m], m.hostname)
+			|> Repo.all
+		wrapped_bootstrap = fn hostname ->
+			try do
+				bootstrap(hostname)
+			rescue
+				e in BootstrapError -> {:bootstrap_error, e.message}
+			end
+		end
+		task_map =
+			hostnames
+			|> Enum.map(fn hostname -> {hostname, Task.async(fn -> wrapped_bootstrap.(hostname) end)} end)
+			|> Map.new
+		Parallel.block_on_tasks(task_map, handle_bootstrap_result, handle_waiting, 2000)
+	end
+
+	@doc """
+	Prepare a system so that it can be configured with erlang escripts.  To do this,
+	install erlang + curl + ar, but get erlang from our custom-packages repository,
+	so first install custom-packages-client and the spiped_key, along with the
+	custom-packages apt key and a suitable apt/sources.list.
+	"""
+	def bootstrap(hostname) do
+		with \
+			{_, 0} <-
+				run_on_machine(
+					hostname,
+					"""
+					apt-get update -q &&
+					env DEBIAN_FRONTEND=noninteractive apt-get --quiet --assume-yes install rsync &&
+					mkdir -p /etc/custom-packages-client ~/.machine_manager/bootstrap
+					"""),
+			{"", 0} <-
+				transfer_content(
+					custom_packages_spiped_key(), "root", hostname,
+					"/etc/custom-packages-client/spiped_key"),
+			{"", 0} <-
+				transfer_file(
+					custom_packages_client_deb_filename(), "root", hostname,
+					".machine_manager/bootstrap/custom-packages-client.deb"),
+			{"", 0} <- 
+				transfer_content(
+					bootstrap_setup(), "root", hostname,
+					".machine_manager/bootstrap/setup"),
+			{"", 0} <-
+				transfer_content(
+					custom_packages_apt_key(), "root", hostname,
+					".machine_manager/bootstrap/custom-packages-apt-key"),
+			{_, 0} <-
+				run_on_machine(
+					hostname, 
+					"""
+					chattr -i /etc/apt/trusted.gpg &&
+					apt-key add ~/.machine_manager/bootstrap/custom-packages-apt-key &&
+					chmod +x ~/.machine_manager/bootstrap/setup &&
+					CUSTOM_PACKAGES_PASSWORD=#{custom_packages_password()} ~/.machine_manager/bootstrap/setup
+					""")
+		do
+			:bootstrapped
+		else
+			{out, exit_code} ->
+				raise BootstrapError, message: "Bootstrapping machine #{inspect hostname} failed with exit code #{exit_code}; output:\n\n#{out}"
+		end
+	end
+
+	defp custom_packages_apt_key() do
+		content("../role_custom_packages/files/apt_keys/2AAA29C8 Custom Packages.txt")
+	end
+
+	defp custom_packages_spiped_key() do
+		content("../role_custom_packages_server/files/etc/custom-packages-server/spiped_key")
+	end
+
+	defp custom_packages_password() do
+		content("../role_custom_packages_server/files/etc/custom-packages-server/unencrypted_password")
+	end
+
+	defp bootstrap_setup() do
+		content("bootstrap/setup")
+	end
+
+	defp custom_packages_client_deb_filename() do
+		packages_directory = "/var/custom-packages"
+		{:ok, list} = File.ls(packages_directory)
+		deb = list
+			|> Enum.filter(fn filename -> filename =~ ~r/^custom-packages-client_.*_all\.deb$/ end)
+			|> Enum.sort
+			|> List.last
+		Path.join(packages_directory, deb)
+	end
+
+	# Transfer content `content` using rsync to user@host:dest
+	#
+	# Returns {rsync_out, rsync_exit_code}
+	defp transfer_content(content, user, hostname, dest, opts \\ []) do
+		temp = FileUtil.temp_path("machine_manager_transfer_content")
+		File.write!(temp, content)
+		try do
+			transfer_file(temp, user, hostname, dest, opts)
+		after
+			FileUtil.rm_f!(temp)
+		end
+	end
+
 	# Transfer file `source` using rsync to user@host:dest
 	#
 	# If opts[:before_rsync] is non-nil, the given command is executed on the
 	# remote before the rsync transfer.  This can be used to create a directory
 	# needed for the transfer to succeed.
-	defp transfer_file(source, user, hostname, dest, opts) do
+	#
+	# Returns {rsync_out, rsync_exit_code}
+	defp transfer_file(source, user, hostname, dest, opts \\ []) do
 		before_rsync = opts[:before_rsync]
 		args = case before_rsync do
 			nil -> []
