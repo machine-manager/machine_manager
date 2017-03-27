@@ -130,7 +130,7 @@ defmodule MachineManager.Core do
 	end
 
 	# Can raise ConfigureError or BootstrapError
-	def configure(hostname, show_progress \\ false, already_tried_bootstrap \\ false) do
+	def configure(hostname, show_progress \\ false) do
 		{:ok, {ip, ssh_port, tags}} = Repo.transaction(fn ->
 			row =
 				machine(hostname)
@@ -161,30 +161,36 @@ defmodule MachineManager.Core do
 			end
 		end
 		case show_progress do
-			true  ->
+			true ->
 				exit_code = ssh_no_capture("root", ip, ssh_port, arguments |> Enum.join(" "))
 				case exit_code do
-					0 -> nil
+					0 -> :configured
 					_ -> raise ConfigureError, message:
 						"Configuring machine #{inspect hostname} failed with exit code #{exit_code}"
 				end
 			false ->
 				{out, exit_code} = ssh("root", ip, ssh_port, arguments |> Enum.join(" "))
 				case exit_code do
-					0 -> nil
+					0 -> :configured
 					_ ->
-						case erlang_missing_error?(out) and not already_tried_bootstrap do
-							true  ->
-								# Machine seems to be missing erlang, so bootstrap it, then try configure again.
+						case erlang_missing_error?(out) do
+							true ->
+								# Machine seems to be missing erlang, so bootstrap it, then try running the script again.
 								bootstrap(hostname)
-								configure(hostname, show_progress, true)
-							false ->
-								raise ConfigureError, message:
-									"Configuring machine #{inspect hostname} failed with exit code #{exit_code}; output:\n\n#{out}"
+								{out, exit_code} = ssh("root", ip, ssh_port, arguments |> Enum.join(" "))
+								case exit_code do
+									0 -> :configured
+									_ -> raise_configure_error(hostname, out, exit_code)
+								end
+							false -> raise_configure_error(hostname, out, exit_code)
 						end
 				end
 		end
-		:configured
+	end
+
+	defp raise_configure_error(hostname, out, exit_code) do
+		raise ConfigureError, message:
+			"Configuring machine #{inspect hostname} failed with exit code #{exit_code}; output:\n\n#{out}"
 	end
 
 	defp erlang_missing_error?(out) do
