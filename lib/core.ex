@@ -142,7 +142,10 @@ defmodule MachineManager.Core do
 		end)
 		roles        = ScriptWriter.roles_for_tags(tags)
 		script_cache = Path.expand("~/.cache/machine_manager/script_cache")
-		basename     = roles |> Enum.sort |> Enum.join(",")
+		basename     = case roles do
+			[] -> "__no_roles__"
+			_  -> roles |> Enum.sort |> Enum.join(",")
+		end
 		output_file  = Path.join(script_cache, basename)
 		File.mkdir_p!(script_cache)
 		ScriptWriter.write_script_for_roles(roles, output_file)
