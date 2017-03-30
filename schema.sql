@@ -9,18 +9,18 @@
 
 SET ROLE machine_manager;
 
-CREATE DOMAIN hostname         AS character varying(32) CHECK(VALUE ~ '\A[-_a-z0-9]+\Z');
-CREATE DOMAIN datacenter       AS character varying(32) CHECK(VALUE ~ '\A[-_a-z0-9]+\Z');
-CREATE DOMAIN country          AS character(2)          CHECK(VALUE ~ '\A[a-z]{2}\Z');
-CREATE DOMAIN ssh_port         AS integer               CHECK(VALUE > 0 AND VALUE <= 65536);
-CREATE DOMAIN int4_gt0         AS integer               CHECK(VALUE > 0);
-CREATE DOMAIN int2_gt0         AS integer               CHECK(VALUE > 0);
-CREATE DOMAIN tag              AS character varying     CHECK(VALUE ~ '\A[^\x00-\x20]+\Z');
-CREATE DOMAIN package          AS character varying     CHECK(VALUE ~ '\A[^\x00-\x20]+\Z');
-CREATE DOMAIN kernel           AS character varying(64) CHECK(VALUE ~ '\A[^\x00-\x1F]+\Z');
-CREATE DOMAIN cpu_model_name   AS character varying(64) CHECK(VALUE ~ '\A[^\x00-\x1F]+\Z');
-CREATE DOMAIN cpu_architecture AS character varying(8)  CHECK(VALUE ~ '\A[^\x00-\x20]+\Z');
-CREATE DOMAIN wireguard_key    AS bytea                 CHECK(length(VALUE) = 32);
+CREATE DOMAIN hostname         AS varchar(32)  CHECK(VALUE ~ '\A[-_a-z0-9]+\Z');
+CREATE DOMAIN datacenter       AS varchar(32)  CHECK(VALUE ~ '\A[-_a-z0-9]+\Z');
+CREATE DOMAIN country          AS character(2) CHECK(VALUE ~ '\A[a-z]{2}\Z');
+CREATE DOMAIN ssh_port         AS integer      CHECK(VALUE > 0 AND VALUE <= 65536);
+CREATE DOMAIN int4_gt0         AS integer      CHECK(VALUE > 0);
+CREATE DOMAIN int2_gt0         AS integer      CHECK(VALUE > 0);
+CREATE DOMAIN tag              AS varchar      CHECK(VALUE ~ '\A[^\x00-\x20]+\Z');
+CREATE DOMAIN package          AS varchar      CHECK(VALUE ~ '\A[^\x00-\x20]+\Z');
+CREATE DOMAIN kernel           AS varchar(64)  CHECK(VALUE ~ '\A[^\x00-\x1F]+\Z');
+CREATE DOMAIN cpu_model_name   AS varchar(64)  CHECK(VALUE ~ '\A[^\x00-\x1F]+\Z');
+CREATE DOMAIN cpu_architecture AS varchar(8)   CHECK(VALUE ~ '\A[^\x00-\x20]+\Z');
+CREATE DOMAIN wireguard_key    AS bytea        CHECK(length(VALUE) = 32);
 
 CREATE TABLE machines (
 	-- Access information
