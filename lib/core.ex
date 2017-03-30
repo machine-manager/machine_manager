@@ -46,7 +46,7 @@ defmodule MachineManager.Core do
 			from("machine_pending_upgrades")
 			|> select([u], %{
 					hostname:         u.hostname,
-					pending_upgrades: fragment("array_agg(?::varchar)", u.package)
+					pending_upgrades: fragment("array_agg(array[?::varchar, ?, ?])", u.package, u.old_version, u.new_version)
 				})
 			|> group_by([u], u.hostname)
 
@@ -380,8 +380,8 @@ defmodule MachineManager.Core do
 			|> Repo.delete_all
 
 			Repo.insert_all("machine_pending_upgrades",
-				data.pending_upgrades |> Enum.map(fn package ->
-					[hostname: hostname, package: package]
+				data.pending_upgrades |> Enum.map(fn %{name: name, old_version: old_version, new_version: new_version} ->
+					[hostname: hostname, package: name, old_version: old_version, new_version: new_version]
 				end),
 				on_conflict: :nothing
 			)
@@ -509,8 +509,12 @@ defmodule MachineManager.Core do
 
 	def _atoms() do
 		# Make sure these atoms are in the atom table for our Poison.decode!
-		[:ram_mb, :cpu_model_name, :cpu_architecture, :core_count, :thread_count,
-		 :datacenter, :country, :kernel, :boot_time_ms, :pending_upgrades]
+		[
+			:ram_mb, :cpu_model_name, :cpu_architecture, :core_count, :thread_count,
+			:datacenter, :country, :kernel, :boot_time_ms, :pending_upgrades,
+			# :pending_upgrades
+			:name, :old_version, :new_version, :origin, :architecture
+		]
 	end
 
 	@spec run_on_machine(String.t, String.t) :: {String.t, integer}

@@ -64,7 +64,9 @@ CREATE TABLE machine_tags (
 );
 
 CREATE TABLE machine_pending_upgrades (
-	hostname  hostname NOT NULL REFERENCES machines,
-	package   package  NOT NULL,
+	hostname    hostname NOT NULL REFERENCES machines,
+	package     package  NOT NULL,
+	old_version varchar  NOT NULL,
+	new_version varchar  NOT NULL,
 	PRIMARY KEY(hostname, package)
 );
