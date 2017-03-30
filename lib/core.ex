@@ -400,6 +400,7 @@ defmodule MachineManager.Core do
 				e in UpgradeError   -> {:upgrade_error,   e.message}
 				e in ConfigureError -> {:configure_error, e.message}
 				e in BootstrapError -> {:bootstrap_error, e.message}
+				e in ProbeError     -> {:probe_error,     e.message}
 			end
 		end
 		task_map =
