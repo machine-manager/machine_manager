@@ -377,8 +377,16 @@ defmodule MachineManager.CLI do
 			"last_probe_time"  => {"PROBE TIME",       fn row, _ -> if row.last_probe_time  != nil, do: row.last_probe_time |> pretty_datetime |> colorize_time end},
 			"boot_time"        => {"BOOT TIME",        fn row, _ -> if row.boot_time        != nil, do: row.boot_time       |> pretty_datetime |> colorize_time end},
 			"kernel"           => {"KERNEL",           fn row, _ -> if row.kernel           != nil, do: row.kernel |> String.replace_prefix("Linux ", "🐧  ") |> colorize end},
-			"pending_upgrades" => {"PENDING UPGRADES", fn row, _ -> if row.pending_upgrades != nil, do: row.pending_upgrades |> Enum.map(&hd/1) |> Enum.join(" ") end},
+			"pending_upgrades" => {"PENDING UPGRADES", &format_pending_upgrades/2},
 		}
+	end
+
+	defp format_pending_upgrades(row, _tag_frequency) do
+		if row.pending_upgrades != nil do
+			row.pending_upgrades
+			|> Enum.map(fn [name, _old_version, new_version] -> "#{name} (#{new_version})" end)
+			|> Enum.join(", ")
+		end
 	end
 
 	defp format_tags(row, tag_frequency) do
