@@ -378,9 +378,20 @@ defmodule MachineManager.CLI do
 			"thread_count"     => {"TH",               fn row, _ -> row.thread_count end},
 			"last_probe_time"  => {"PROBE TIME",       fn row, _ -> if row.last_probe_time  != nil, do: row.last_probe_time |> pretty_datetime |> colorize_time end},
 			"boot_time"        => {"BOOT TIME",        fn row, _ -> if row.boot_time        != nil, do: row.boot_time       |> pretty_datetime |> colorize_time end},
-			"kernel"           => {"KERNEL",           fn row, _ -> if row.kernel           != nil, do: row.kernel |> String.replace_prefix("Linux ", "🐧  ") |> colorize end},
+			"kernel"           => {"KERNEL",           &format_kernel/2},
 			"pending_upgrades" => {"PENDING UPGRADES", &format_pending_upgrades/2},
 		}
+	end
+
+	defp format_kernel(row, _tag_frequency) do
+		if row.kernel != nil do
+			row.kernel
+			|> String.split(" ")
+			|> Enum.take(3) # take "Linux 4.4.0-NN-generic #NN" but ignore "SMP" and the build date
+			|> Enum.join(" ")
+			|> String.replace_prefix("Linux ", "🐧  ")
+			|> colorize
+		end
 	end
 
 	defp format_pending_upgrades(row, _tag_frequency) do
