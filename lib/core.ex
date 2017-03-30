@@ -411,10 +411,13 @@ defmodule MachineManager.Core do
 
 	# Can raise UpgradeError, ConfigureError, or BootstrapError
 	def upgrade(hostname) do
-		packages = get_pending_upgrades_for_machine(hostname)
-		case packages do
+		upgrades = get_pending_upgrades_for_machine(hostname)
+		case upgrades do
 			[] -> :no_pending_upgrades
 			_  ->
+				upgrade_args =
+					upgrades
+					|> Enum.map(fn upgrade -> "#{upgrade.name}=#{upgrade.new_version}" end)
 				# TODO: if disk is very low, first run
 				# apt-get clean
 				# apt-get autoremove --quiet --assume-yes
@@ -430,7 +433,7 @@ defmodule MachineManager.Core do
 						-o Dpkg::Options::=--force-confdef \
 						-o Dpkg::Options::=--force-confold \
 						-- \
-						#{packages |> Enum.map(&inspect/1) |> Enum.join(" ")} &&
+						#{upgrade_args |> Enum.map(&inspect/1) |> Enum.join(" ")} &&
 				apt-get autoremove --quiet --assume-yes
 				"""
 				{output, exit_code} = run_on_machine(hostname, command)
@@ -698,7 +701,7 @@ defmodule MachineManager.Core do
 	def get_pending_upgrades_for_machine(hostname) do
 		from("machine_pending_upgrades")
 		|> where([hostname: ^hostname])
-		|> select([m], m.package)
+		|> select([m], %{name: m.package, old_version: m.old_version, new_version: m.new_version})
 		|> Repo.all
 	end
 
