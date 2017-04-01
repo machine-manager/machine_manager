@@ -110,11 +110,8 @@ defmodule MachineManager.Core do
 	end
 
 	def configure_many(queryable, handle_configure_result, handle_waiting, show_progress) do
-		hostnames =
-			queryable
-			|> select([m], m.hostname)
-			|> Repo.all
-		if show_progress and hostnames |> length > 1 do
+		rows = list(queryable)
+		if show_progress and rows |> length > 1 do
 			raise ConfigureError, message: "Can't show progress when configuring more than one machine"
 		end
 		wrapped_configure = fn hostname ->
@@ -126,8 +123,8 @@ defmodule MachineManager.Core do
 			end
 		end
 		task_map =
-			hostnames
-			|> Enum.map(fn hostname -> {hostname, Task.async(fn -> wrapped_configure.(hostname) end)} end)
+			rows
+			|> Enum.map(fn row -> {row.hostname, Task.async(fn -> wrapped_configure.(row.hostname) end)} end)
 			|> Map.new
 		Parallel.block_on_tasks(task_map, handle_configure_result, handle_waiting, 2000)
 	end
