@@ -328,7 +328,7 @@ defmodule MachineManager.CLI do
 			[] -> default_columns()
 			_  -> columns
 		end
-		rows          = Core.list(hostname_regexp)
+		rows          = Core.list(Core.machines_matching_regexp(hostname_regexp))
 		column_spec   = get_column_spec()
 		header        = get_column_header(column_spec, columns)
 		tag_frequency = make_tag_frequency(rows)

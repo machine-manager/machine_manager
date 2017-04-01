@@ -26,7 +26,7 @@ defmodule MachineManager.Core do
 	alias Gears.{StringUtil, FileUtil}
 	import Ecto.Query
 
-	def list(hostname_regexp) do
+	def list(queryable) do
 		# We need to do our aggregations in subqueries to prevent rows from multiplying.
 		# The Ecto below is an the equivalent of the SQL:
 		_ = """
@@ -53,7 +53,7 @@ defmodule MachineManager.Core do
 				})
 			|> group_by([u], u.hostname)
 
-		machines_matching_regexp(hostname_regexp)
+		queryable
 		|> select([m, t, u], %{
 				hostname:         m.hostname,
 				public_ip:        m.public_ip,
@@ -721,12 +721,12 @@ defmodule MachineManager.Core do
 		|> Repo.all
 	end
 
-	defp machine(hostname) do
+	def machine(hostname) do
 		from("machines")
 		|> where([hostname: ^hostname])
 	end
 
-	defp machines_matching_regexp(hostname_regexp) do
+	def machines_matching_regexp(hostname_regexp) do
 		from("machines")
 		|> hostname_matching_regexp(hostname_regexp)
 	end
