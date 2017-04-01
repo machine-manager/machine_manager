@@ -458,14 +458,14 @@ defmodule MachineManager.Core do
 		end
 	end
 
-	def reboot_many(hostname_regexp, handle_exec_result, handle_waiting) do
+	def reboot_many(queryable, handle_exec_result, handle_waiting) do
 		command = "nohup sh -c 'sleep 2; systemctl reboot' > /dev/null 2>&1 < /dev/null &"
-		exec_many(hostname_regexp, command, handle_exec_result, handle_waiting)
+		exec_many(queryable, command, handle_exec_result, handle_waiting)
 	end
 
-	def shutdown_many(hostname_regexp, handle_exec_result, handle_waiting) do
+	def shutdown_many(queryable, handle_exec_result, handle_waiting) do
 		command = "nohup sh -c 'sleep 2; systemctl poweroff' > /dev/null 2>&1 < /dev/null &"
-		exec_many(hostname_regexp, command, handle_exec_result, handle_waiting)
+		exec_many(queryable, command, handle_exec_result, handle_waiting)
 	end
 
 	@doc """

@@ -270,11 +270,11 @@ defmodule MachineManager.CLI do
 	end
 
 	def reboot_many(hostname_regexp) do
-		Core.reboot_many(hostname_regexp, &handle_exec_result/2, &handle_waiting/1)
+		Core.reboot_many(Core.machines_matching_regexp(hostname_regexp), &handle_exec_result/2, &handle_waiting/1)
 	end
 
 	def shutdown_many(hostname_regexp) do
-		Core.shutdown_many(hostname_regexp, &handle_exec_result/2, &handle_waiting/1)
+		Core.shutdown_many(Core.machines_matching_regexp(hostname_regexp), &handle_exec_result/2, &handle_waiting/1)
 	end
 
 	def exec_many(hostname_regexp, command) do
