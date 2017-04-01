@@ -70,7 +70,7 @@ defmodule MachineManager.CLI do
 				],
 				upgrade: [
 					name:  "upgrade",
-					about: "Upgrade all packages in our 'pending upgrades' list for machines",
+					about: "Upgrade all packages to the new versions in our 'pending upgrades' list for machines",
 					args: [
 						hostname_regexp: [required: true, help: hostname_regexp_help],
 					],
