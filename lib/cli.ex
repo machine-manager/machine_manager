@@ -397,8 +397,8 @@ defmodule MachineManager.CLI do
 	defp format_pending_upgrades(row, _tag_frequency) do
 		if row.pending_upgrades != nil do
 			row.pending_upgrades
-			|> Enum.map(fn upgrade -> "#{upgrade["package"]} (#{upgrade["new_version"]})" end)
-			|> Enum.join(", ")
+			|> Enum.map(fn upgrade -> "#{upgrade["package"]}#{with_fgcolor("=", {150, 150, 150})}#{bolded(upgrade["new_version"])}" end)
+			|> Enum.join(" ")
 		end
 	end
 
