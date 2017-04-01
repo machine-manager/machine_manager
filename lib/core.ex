@@ -21,7 +21,7 @@ end
 defmodule MachineManager.Core do
 	alias MachineManager.{
 		ScriptWriter, Parallel, Repo, TooManyRowsError, UpgradeError,
-		BootstrapError, ConfigureError, ProbeError, Wireguard
+		BootstrapError, ConfigureError, ProbeError, WireGuard
 	}
 	alias Gears.{StringUtil, FileUtil}
 	import Ecto.Query
@@ -570,8 +570,8 @@ defmodule MachineManager.Core do
 	"""
 	@spec add(String.t, String.t, integer, String.t, [String.t]) :: nil
 	def add(hostname, public_ip, ssh_port, datacenter, tags) do
-		wireguard_privkey = Wireguard.make_wireguard_privkey()
-		wireguard_pubkey  = Wireguard.get_wireguard_pubkey(wireguard_privkey)
+		wireguard_privkey = WireGuard.make_wireguard_privkey()
+		wireguard_pubkey  = WireGuard.get_wireguard_pubkey(wireguard_privkey)
 		{:ok, _} = Repo.transaction(fn ->
 			Repo.insert_all("machines", [[
 				hostname:          hostname,
@@ -692,8 +692,8 @@ defmodule MachineManager.Core do
 
 	@spec rekey_wireguard(String.t) :: nil
 	def rekey_wireguard(hostname) do
-		privkey = Wireguard.make_wireguard_privkey()
-		pubkey  = Wireguard.get_wireguard_pubkey(privkey)
+		privkey = WireGuard.make_wireguard_privkey()
+		pubkey  = WireGuard.get_wireguard_pubkey(privkey)
 		machine(hostname)
 		|> Repo.update_all(set: [wireguard_privkey: privkey, wireguard_pubkey: pubkey])
 		nil

@@ -1,7 +1,8 @@
-alias MachineManager.{Core, CPU, ScriptWriter}
+alias MachineManager.{Core, CPU, ScriptWriter, WireGuard}
 
 defmodule MachineManager.CoreTest do
 	use ExUnit.Case
+
 	test "increment_ip_tuple" do
 		assert Core.increment_ip_tuple({0, 0,   0,   0})       == {0, 0, 0,   1}
 		assert Core.increment_ip_tuple({0, 0,   0,   1})       == {0, 0, 0,   2}
@@ -18,18 +19,23 @@ defmodule MachineManager.CoreTest do
 	test "get_unused_wireguard_ip" do
 		{_, _, _, _} = Core.get_unused_wireguard_ip()
 	end
+end
+
+
+defmodule MachineManager.WireGuardTest do
+	use ExUnit.Case
 
 	test "make_wireguard_privkey" do
-		privkey = Core.make_wireguard_privkey()
+		privkey = WireGuard.make_wireguard_privkey()
 		assert privkey |> byte_size == 32
 	end
 
 	test "get_wireguard_pubkey" do
-		privkey = Core.make_wireguard_privkey()
-		pubkey  = Core.get_wireguard_pubkey(privkey)
+		privkey = WireGuard.make_wireguard_privkey()
+		pubkey  = WireGuard.get_wireguard_pubkey(privkey)
 		assert pubkey |> byte_size == 32
 		assert pubkey != privkey
-		assert pubkey == Core.get_wireguard_pubkey(privkey)
+		assert pubkey == WireGuard.get_wireguard_pubkey(privkey)
 	end
 end
 

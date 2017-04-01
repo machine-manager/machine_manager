@@ -1,4 +1,4 @@
-defmodule MachineManager.Wireguard do
+defmodule MachineManager.WireGuard do
 	@doc """
 	Generate a new 32-byte private key for wireguard.
 	"""
