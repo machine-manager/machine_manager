@@ -350,9 +350,9 @@ defmodule MachineManager.Core do
 		Parallel.block_on_tasks(task_map, handle_probe_result, handle_waiting, 2000)
 	end
 
-	def exec_many(hostname_regexp, command, handle_exec_result, handle_waiting) do
+	def exec_many(queryable, command, handle_exec_result, handle_waiting) do
 		hostnames =
-			machines_matching_regexp(hostname_regexp)
+			queryable
 			|> select([m], m.hostname)
 			|> Repo.all
 		task_map =

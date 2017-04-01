@@ -278,7 +278,7 @@ defmodule MachineManager.CLI do
 	end
 
 	def exec_many(hostname_regexp, command) do
-		Core.exec_many(hostname_regexp, command, &handle_exec_result/2, &handle_waiting/1)
+		Core.exec_many(Core.machines_matching_regexp(hostname_regexp), command, &handle_exec_result/2, &handle_waiting/1)
 	end
 
 	defp handle_exec_result(hostname, task_result) do
