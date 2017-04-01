@@ -109,9 +109,9 @@ defmodule MachineManager.Core do
 		"""
 	end
 
-	def configure_many(hostname_regexp, handle_configure_result, handle_waiting, show_progress) do
+	def configure_many(queryable, handle_configure_result, handle_waiting, show_progress) do
 		hostnames =
-			machines_matching_regexp(hostname_regexp)
+			queryable
 			|> select([m], m.hostname)
 			|> Repo.all
 		if show_progress and hostnames |> length > 1 do

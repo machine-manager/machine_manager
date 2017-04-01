@@ -228,7 +228,7 @@ defmodule MachineManager.CLI do
 			true  -> fn _ -> nil end
 			false -> &handle_waiting/1
 		end
-		Core.configure_many(hostname_regexp, &handle_configure_result/2, handle_waiting, show_progress)
+		Core.configure_many(Core.machines_matching_regexp(hostname_regexp), &handle_configure_result/2, handle_waiting, show_progress)
 	end
 
 	defp handle_configure_result(hostname, task_result) do
