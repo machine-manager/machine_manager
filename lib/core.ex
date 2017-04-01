@@ -19,7 +19,10 @@ defmodule MachineManager.ProbeError do
 end
 
 defmodule MachineManager.Core do
-	alias MachineManager.{ScriptWriter, Parallel, Repo, TooManyRowsError, UpgradeError, BootstrapError, ConfigureError, ProbeError}
+	alias MachineManager.{
+		ScriptWriter, Parallel, Repo, TooManyRowsError, UpgradeError,
+		BootstrapError, ConfigureError, ProbeError, Wireguard
+	}
 	alias Gears.{StringUtil, FileUtil}
 	import Ecto.Query
 
@@ -567,8 +570,8 @@ defmodule MachineManager.Core do
 	"""
 	@spec add(String.t, String.t, integer, String.t, [String.t]) :: nil
 	def add(hostname, public_ip, ssh_port, datacenter, tags) do
-		wireguard_privkey = make_wireguard_privkey()
-		wireguard_pubkey  = get_wireguard_pubkey(wireguard_privkey)
+		wireguard_privkey = Wireguard.make_wireguard_privkey()
+		wireguard_pubkey  = Wireguard.get_wireguard_pubkey(wireguard_privkey)
 		{:ok, _} = Repo.transaction(fn ->
 			Repo.insert_all("machines", [[
 				hostname:          hostname,
@@ -581,6 +584,18 @@ defmodule MachineManager.Core do
 			]])
 			tag(hostname, tags)
 		end)
+	end
+
+	def get_unused_wireguard_ip() do
+		existing_ips = from("machines")
+			|> select([m], m.wireguard_ip)
+			|> Repo.all
+			|> Enum.map(&inet_to_tuple/1)
+			|> MapSet.new
+		wireguard_start = {10, 10, 0, 0}
+		wireguard_end   = {10, 10, 255, 255}
+		ip_candidates   = Stream.iterate(wireguard_start, fn ip -> increment_ip_tuple(ip, wireguard_end) end)
+		Enum.find(ip_candidates, fn ip -> not MapSet.member?(existing_ips, ip) end)
 	end
 
 	@doc """
@@ -677,8 +692,8 @@ defmodule MachineManager.Core do
 
 	@spec rekey_wireguard(String.t) :: nil
 	def rekey_wireguard(hostname) do
-		privkey = make_wireguard_privkey()
-		pubkey  = get_wireguard_pubkey(privkey)
+		privkey = Wireguard.make_wireguard_privkey()
+		pubkey  = Wireguard.get_wireguard_pubkey(privkey)
 		machine(hostname)
 		|> Repo.update_all(set: [wireguard_privkey: privkey, wireguard_pubkey: pubkey])
 		nil
@@ -731,53 +746,6 @@ defmodule MachineManager.Core do
 			[row] -> row
 			_     -> raise TooManyRowsError, message: "Expected just one row, got #{rows |> length} rows"
 		end
-	end
-
-	def get_unused_wireguard_ip() do
-		existing_ips = from("machines")
-			|> select([m], m.wireguard_ip)
-			|> Repo.all
-			|> Enum.map(&inet_to_tuple/1)
-			|> MapSet.new
-		wireguard_start = {10, 10, 0, 0}
-		wireguard_end   = {10, 10, 255, 255}
-		ip_candidates   = Stream.iterate(wireguard_start, fn ip -> increment_ip_tuple(ip, wireguard_end) end)
-		Enum.find(ip_candidates, fn ip -> not MapSet.member?(existing_ips, ip) end)
-	end
-
-	@doc """
-	Generate a new 32-byte private key for wireguard.
-	"""
-	def make_wireguard_privkey() do
-		{privkey_base64, 0} = System.cmd("wg", ["genkey"])
-		privkey = privkey_base64
-			|> String.trim_trailing("\n")
-			|> Base.decode64!
-		if byte_size(privkey) != 32 do
-			raise RuntimeError, message: "Private key from `wg genkey` was of the wrong size"
-		end
-		privkey
-	end
-
-	@doc """
-	Get the 32-byte public key associated with wireguard private key `privkey`.
-	"""
-	def get_wireguard_pubkey(privkey) when byte_size(privkey) == 32 do
-		# `wg pubkey` waits for EOF, but Erlang can't close stdin, so use some
-		# bash that reads a single line and pipes it into `wg pubkey`.
-		# https://github.com/alco/porcelain/issues/37
-		%Porcelain.Result{status: 0, out: pubkey_base64} =
-			Porcelain.exec("bash", ["-c", "head -n 1 | wg pubkey"], in: (privkey |> Base.encode64) <> "\n")
-		pubkey = pubkey_base64
-			|> String.trim_trailing("\n")
-			|> Base.decode64!
-		if byte_size(pubkey) != 32 do
-			raise RuntimeError, message: "Public key from `wg pubkey` was of the wrong size"
-		end
-		if pubkey == privkey do
-			raise RuntimeError, message: "Public key from `wg pubkey` was equal to the private key"
-		end
-		pubkey
 	end
 
 	@typep ip_tuple :: {integer, integer, integer, integer}
