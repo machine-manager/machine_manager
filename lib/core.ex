@@ -675,18 +675,18 @@ defmodule MachineManager.Core do
 		nil
 	end
 
-	@spec set_ssh_port_many(String.t, integer) :: nil
-	def set_ssh_port_many(hostname_regexp, ssh_port) do
-		machines_matching_regexp(hostname_regexp)
+	@spec set_ssh_port_many(Ecto.Queryable.t, integer) :: nil
+	def set_ssh_port_many(queryable, ssh_port) do
+		queryable
 		|> Repo.update_all(set: [ssh_port: ssh_port])
 		nil
 	end
 
-	@spec rekey_wireguard_many(String.t) :: nil
-	def rekey_wireguard_many(hostname_regexp) do
+	@spec rekey_wireguard_many(Ecto.Queryable.t) :: nil
+	def rekey_wireguard_many(queryable) do
 		{:ok, _} = Repo.transaction(fn ->
 			hostnames =
-				machines_matching_regexp(hostname_regexp)
+				queryable
 				|> select([m], m.hostname)
 				|> Repo.all
 			for hostname <- hostnames do
