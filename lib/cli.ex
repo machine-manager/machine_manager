@@ -188,8 +188,8 @@ defmodule MachineManager.CLI do
 			:shutdown        -> shutdown_many(args.hostname_regexp)
 			:add             -> Core.add(args.hostname, options.public_ip, options.ssh_port, options.datacenter, options.tag)
 			:rm              -> Core.rm_many(args.hostname_regexp)
-			:tag             -> Core.tag_many(args.hostname_regexp,   all_arguments(args.tag, unknown))
-			:untag           -> Core.untag_many(args.hostname_regexp, all_arguments(args.tag, unknown))
+			:tag             -> tag_many(args.hostname_regexp,   all_arguments(args.tag, unknown))
+			:untag           -> untag_many(args.hostname_regexp, all_arguments(args.tag, unknown))
 			:get_tags        -> Core.get_tags(args.hostname) |> Enum.join(" ") |> IO.write
 			:set_public_ip   -> Core.set_public_ip(args.hostname, args.public_ip)
 			:set_ssh_port    -> Core.set_ssh_port_many(args.hostname_regexp, args.ssh_port)
@@ -535,5 +535,13 @@ defmodule MachineManager.CLI do
 			second: sec, microsecond: {usec, 6}, zone_abbr: "UTC", time_zone: "Etc/UTC",
 			utc_offset: 0, std_offset: 0
 		}
+	end
+
+	def tag_many(hostname_regexp, tags) do
+		Core.tag_many(Core.machines_matching_regexp(hostname_regexp), tags)
+	end
+
+	def untag_many(hostname_regexp, tags) do
+		Core.untag_many(Core.machines_matching_regexp(hostname_regexp), tags)
 	end
 end

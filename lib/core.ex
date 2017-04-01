@@ -363,7 +363,7 @@ defmodule MachineManager.Core do
 	end
 
 	defp write_probe_data_to_db(hostname, data) do
-		Repo.transaction(fn ->
+		{:ok, _} = Repo.transaction(fn ->
 			machine(hostname)
 			|> Repo.update_all(set: [
 				ram_mb:           data.ram_mb,
@@ -624,13 +624,13 @@ defmodule MachineManager.Core do
 	end
 
 	@doc """
-	Add tags in enumerable `new_tags` to machine with hostnames matching `hostname_regexp`.
+	Add tags in enumerable `new_tags` to machines matching `queryable`.
 	"""
-	@spec tag_many(String.t, [String.t]) :: nil
-	def tag_many(hostname_regexp, new_tags) do
-		Repo.transaction(fn ->
+	@spec tag_many(Ecto.Queryable.t, [String.t]) :: nil
+	def tag_many(queryable, new_tags) do
+		{:ok, _} = Repo.transaction(fn ->
 			hostnames =
-				machines_matching_regexp(hostname_regexp)
+				queryable
 				|> select([m], m.hostname)
 				|> Repo.all
 			Repo.insert_all("machine_tags",
@@ -650,15 +650,21 @@ defmodule MachineManager.Core do
 	end
 
 	@doc """
-	Remove tags in enumerable `remove_tags` from machine with hostnames matching `hostname_regexp`.
+	Remove tags in enumerable `remove_tags` from machines matching `queryable`.
 	"""
-	@spec untag_many(String.t, [String.t]) :: nil
-	def untag_many(hostname_regexp, remove_tags) do
-		from("machine_tags")
-		|> hostname_matching_regexp(hostname_regexp)
-		|> where([t], t.tag in ^remove_tags)
-		|> Repo.delete_all
-		nil
+	@spec untag_many(Ecto.Queryable.t, [String.t]) :: nil
+	def untag_many(queryable, remove_tags) do
+		{:ok, _} = Repo.transaction(fn ->
+			hostnames =
+				queryable
+				|> select([m], m.hostname)
+				|> Repo.all
+			from("machine_tags")
+			|> where([t], t.hostname in ^hostnames)
+			|> where([t], t.tag      in ^remove_tags)
+			|> Repo.delete_all
+			nil
+		end)
 	end
 
 	@spec set_public_ip(String.t, String.t) :: nil
@@ -678,7 +684,7 @@ defmodule MachineManager.Core do
 
 	@spec rekey_wireguard_many(String.t) :: nil
 	def rekey_wireguard_many(hostname_regexp) do
-		Repo.transaction(fn ->
+		{:ok, _} = Repo.transaction(fn ->
 			hostnames =
 				machines_matching_regexp(hostname_regexp)
 				|> select([m], m.hostname)
