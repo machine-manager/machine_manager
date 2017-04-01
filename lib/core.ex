@@ -205,10 +205,7 @@ defmodule MachineManager.Core do
 	end
 
 	def bootstrap_many(queryable, handle_bootstrap_result, handle_waiting) do
-		hostnames =
-			queryable
-			|> select([m], m.hostname)
-			|> Repo.all
+		rows = list(queryable)
 		wrapped_bootstrap = fn hostname ->
 			try do
 				bootstrap(hostname)
@@ -217,8 +214,8 @@ defmodule MachineManager.Core do
 			end
 		end
 		task_map =
-			hostnames
-			|> Enum.map(fn hostname -> {hostname, Task.async(fn -> wrapped_bootstrap.(hostname) end)} end)
+			rows
+			|> Enum.map(fn row -> {row.hostname, Task.async(fn -> wrapped_bootstrap.(row.hostname) end)} end)
 			|> Map.new
 		Parallel.block_on_tasks(task_map, handle_bootstrap_result, handle_waiting, 2000)
 	end
