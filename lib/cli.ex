@@ -37,7 +37,7 @@ defmodule MachineManager.CLI do
 				],
 				script: [
 					name:  "script",
-					about: "Write a configuration script suitable for a particular machine.  Note that tags must be passed in to the script as arguments.",
+					about: "Write a configuration script suitable for a particular machine.  Note that tags must be passed to the script as arguments when it is run on the target machine.",
 					args: [
 						hostname:    [required: true],
 						output_file: [required: true],
