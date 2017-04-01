@@ -16,7 +16,7 @@ defmodule MachineManager.Parallel do
 			|> Map.new
 		waiting_task_map = for {task, result} <- Task.yield_many(task_map |> Map.values, check_interval) do
 			task_name = pid_to_task_name[task.pid] || \
-				raise RuntimeError, message: "task_name == nil for #{inspect task}"
+				raise(RuntimeError, "task_name == nil for #{inspect task}")
 			case result do
 				{:ok, task_result} -> completion_fn.(task_name, {:ok, task_result}); nil
 				{:exit, reason}    -> completion_fn.(task_name, {:exit, reason});    nil

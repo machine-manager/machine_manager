@@ -346,7 +346,7 @@ defmodule MachineManager.CLI do
 		|> Enum.map(fn column ->
 				tuple = column_spec[column]
 				if tuple == nil do
-					raise RuntimeError, message: "No such column #{inspect column}"
+					raise(RuntimeError, "No such column #{inspect column}")
 				end
 				{header, _} = tuple
 				header

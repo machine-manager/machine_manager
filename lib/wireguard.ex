@@ -8,7 +8,7 @@ defmodule MachineManager.WireGuard do
 			|> String.trim_trailing("\n")
 			|> Base.decode64!
 		if byte_size(privkey) != 32 do
-			raise RuntimeError, message: "Private key from `wg genkey` was of the wrong size"
+			raise(RuntimeError, "Private key from `wg genkey` was of the wrong size")
 		end
 		privkey
 	end
@@ -26,10 +26,10 @@ defmodule MachineManager.WireGuard do
 			|> String.trim_trailing("\n")
 			|> Base.decode64!
 		if byte_size(pubkey) != 32 do
-			raise RuntimeError, message: "Public key from `wg pubkey` was of the wrong size"
+			raise(RuntimeError, "Public key from `wg pubkey` was of the wrong size")
 		end
 		if pubkey == privkey do
-			raise RuntimeError, message: "Public key from `wg pubkey` was equal to the private key"
+			raise(RuntimeError, "Public key from `wg pubkey` was equal to the private key")
 		end
 		pubkey
 	end

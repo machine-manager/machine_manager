@@ -105,7 +105,7 @@ defmodule MachineManager.Core do
 	def configure_many(queryable, handle_configure_result, handle_waiting, show_progress) do
 		rows = list(queryable)
 		if show_progress and rows |> length > 1 do
-			raise ConfigureError, message: "Can't show progress when configuring more than one machine"
+			raise(ConfigureError, "Can't show progress when configuring more than one machine")
 		end
 		wrapped_configure = fn row ->
 			try do
@@ -137,14 +137,19 @@ defmodule MachineManager.Core do
 		                   before_rsync: "mkdir -p .cache/machine_manager") do
 			{"", 0}          -> nil
 			{out, exit_code} ->
-				raise ConfigureError, message:
-					"Uploading configuration script to machine #{inspect row.hostname} failed with exit code #{exit_code}; output:\n\n#{out}"
+				raise(ConfigureError,
+					"""
+					Uploading configuration script to machine #{inspect row.hostname} \
+					failed with exit code #{exit_code}; output:
+
+					#{out}
+					""")
 		end
 		arguments = [".cache/machine_manager/script"] ++ row.tags
 		for arg <- arguments do
 			if arg |> String.contains?(" ") do
-				raise ConfigureError, message:
-					"Argument list #{inspect arguments} contains an argument with a space: #{inspect arg}"
+				raise(ConfigureError,
+					"Argument list #{inspect arguments} contains an argument with a space: #{inspect arg}")
 			end
 		end
 		case show_progress do
@@ -152,8 +157,8 @@ defmodule MachineManager.Core do
 				exit_code = run_on_machine(row, arguments |> Enum.join(" "), false)
 				case exit_code do
 					0 -> :configured
-					_ -> raise ConfigureError, message:
-						"Configuring machine #{inspect row.hostname} failed with exit code #{exit_code}"
+					_ -> raise(ConfigureError,
+						"Configuring machine #{inspect row.hostname} failed with exit code #{exit_code}")
 				end
 			false ->
 				{out, exit_code} = run_on_machine(row, arguments |> Enum.join(" "))
@@ -176,8 +181,12 @@ defmodule MachineManager.Core do
 	end
 
 	defp raise_configure_error(hostname, out, exit_code) do
-		raise ConfigureError, message:
-			"Configuring machine #{inspect hostname} failed with exit code #{exit_code}; output:\n\n#{out}"
+		raise(ConfigureError,
+			"""
+			Configuring machine #{inspect hostname} failed with exit code #{exit_code}; output:
+
+			#{out}
+			""")
 	end
 
 	defp erlang_missing_error?(out) do
@@ -243,7 +252,12 @@ defmodule MachineManager.Core do
 			:bootstrapped
 		else
 			{out, exit_code} ->
-				raise BootstrapError, message: "Bootstrapping machine #{inspect row.hostname} failed with exit code #{exit_code}; output:\n\n#{out}"
+				raise(BootstrapError,
+					"""
+					Bootstrapping machine #{inspect row.hostname} failed with exit code #{exit_code}; output:
+
+					#{out}
+					""")
 		end
 	end
 
@@ -407,12 +421,12 @@ defmodule MachineManager.Core do
 				"""
 				{output, exit_code} = run_on_machine(row, command)
 				if exit_code != 0 do
-					raise UpgradeError, message:
+					raise(UpgradeError,
 						"""
 						Upgrade of #{row.hostname} failed with exit code #{exit_code}; output:
 
 						#{output}
-						"""
+						""")
 				end
 				# Because packages upgrades can do things we don't like (e.g. install
 				# files in /etc/cron.d), configure immediately after upgrading.
@@ -464,11 +478,19 @@ defmodule MachineManager.Core do
 				case Poison.decode(json, keys: :atoms!) do
 					{:ok, data}    -> data
 					{:error, _err} ->
-						raise ProbeError, message:
-							"Probing machine #{inspect row.hostname} failed because JSON was corrupted:\n\n#{json}"
+						raise(ProbeError,
+							"""
+							Probing machine #{inspect row.hostname} failed because JSON was corrupted:
+
+							#{json}
+							""")
 				end
-			_ -> raise ProbeError, message:
-				"Probing machine #{inspect row.hostname} failed with exit code #{exit_code}; output:\n\n#{output}"
+			_ -> raise(ProbeError,
+				"""
+				Probing machine #{inspect row.hostname} failed with exit code #{exit_code}; output:
+
+				#{output}
+				""")
 		end
 	end
 
