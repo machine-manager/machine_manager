@@ -246,7 +246,7 @@ defmodule MachineManager.CLI do
 	end
 
 	def upgrade_many(hostname_regexp) do
-		Core.upgrade_many(hostname_regexp, &handle_upgrade_result/2, &handle_waiting/1)
+		Core.upgrade_many(Core.machines_matching_regexp(hostname_regexp), &handle_upgrade_result/2, &handle_waiting/1)
 	end
 
 	defp handle_upgrade_result(hostname, task_result) do

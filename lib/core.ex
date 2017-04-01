@@ -391,9 +391,9 @@ defmodule MachineManager.Core do
 		end)
 	end
 
-	def upgrade_many(hostname_regexp, handle_upgrade_result, handle_waiting) do
+	def upgrade_many(queryable, handle_upgrade_result, handle_waiting) do
 		hostnames =
-			machines_matching_regexp(hostname_regexp)
+			queryable
 			|> select([m], m.hostname)
 			|> Repo.all
 		wrapped_upgrade = fn hostname ->
