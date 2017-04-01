@@ -560,6 +560,17 @@ defmodule MachineManager.Core do
 		Enum.find(ip_candidates, fn ip -> not MapSet.member?(existing_ips, ip) end)
 	end
 
+	@typep ip_tuple :: {integer, integer, integer, integer}
+
+	@spec increment_ip_tuple(ip_tuple, ip_tuple) :: ip_tuple
+	def increment_ip_tuple(ip_tuple = {a, b, c, d}, maximum \\ {255, 255, 255, 255}) when ip_tuple != maximum do
+		d = d + 1
+		{c, d} = if d == 256, do: {c + 1, 0}, else: {c, d}
+		{b, c} = if c == 256, do: {b + 1, 0}, else: {b, c}
+		{a, b} = if b == 256, do: {a + 1, 0}, else: {a, b}
+		{a, b, c, d}
+	end
+
 	@doc """
 	Remove machines from the database.
 	"""
@@ -699,17 +710,6 @@ defmodule MachineManager.Core do
 
 	defp anchor_regexp(hostname_regexp) do
 		"^#{hostname_regexp}$"
-	end
-
-	@typep ip_tuple :: {integer, integer, integer, integer}
-
-	@spec increment_ip_tuple(ip_tuple, ip_tuple) :: ip_tuple
-	def increment_ip_tuple(ip_tuple = {a, b, c, d}, maximum \\ {255, 255, 255, 255}) when ip_tuple != maximum do
-		d = d + 1
-		{c, d} = if d == 256, do: {c + 1, 0}, else: {c, d}
-		{b, c} = if c == 256, do: {b + 1, 0}, else: {b, c}
-		{a, b} = if b == 256, do: {a + 1, 0}, else: {a, b}
-		{a, b, c, d}
 	end
 
 	defp ip_to_inet(ip) when is_tuple(ip),  do: %Postgrex.INET{address: ip}
