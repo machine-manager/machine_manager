@@ -207,9 +207,9 @@ defmodule MachineManager.Core do
 		File.read!(filename)
 	end
 
-	def bootstrap_many(hostname_regexp, handle_bootstrap_result, handle_waiting) do
+	def bootstrap_many(queryable, handle_bootstrap_result, handle_waiting) do
 		hostnames =
-			machines_matching_regexp(hostname_regexp)
+			queryable
 			|> select([m], m.hostname)
 			|> Repo.all
 		wrapped_bootstrap = fn hostname ->

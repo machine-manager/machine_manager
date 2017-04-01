@@ -206,7 +206,7 @@ defmodule MachineManager.CLI do
 	end
 
 	def bootstrap_many(hostname_regexp) do
-		Core.bootstrap_many(hostname_regexp, &handle_bootstrap_result/2, &handle_waiting/1)
+		Core.bootstrap_many(Core.machines_matching_regexp(hostname_regexp), &handle_bootstrap_result/2, &handle_waiting/1)
 	end
 
 	defp handle_bootstrap_result(hostname, task_result) do
