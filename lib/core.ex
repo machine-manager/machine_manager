@@ -386,7 +386,7 @@ defmodule MachineManager.Core do
 			upgrades ->
 				upgrade_args =
 					upgrades
-					|> Enum.map(fn upgrade -> "#{upgrade["name"]}=#{upgrade["new_version"]}" end)
+					|> Enum.map(fn upgrade -> "#{upgrade["package"]}=#{upgrade["new_version"]}" end)
 				# TODO: if disk is very low, first run
 				# apt-get clean
 				# apt-get autoremove --quiet --assume-yes
