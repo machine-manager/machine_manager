@@ -574,12 +574,16 @@ defmodule MachineManager.Core do
 	@doc """
 	Remove machines from the database.
 	"""
-	@spec rm_many(String.t) :: nil
-	def rm_many(hostname_regexp) do
+	@spec rm_many(Ecto.Queryable.t) :: nil
+	def rm_many(queryable) do
 		{:ok, _} = Repo.transaction(fn ->
-			from("machine_tags")             |> hostname_matching_regexp(hostname_regexp) |> Repo.delete_all
-			from("machine_pending_upgrades") |> hostname_matching_regexp(hostname_regexp) |> Repo.delete_all
-			machines_matching_regexp(hostname_regexp) |> Repo.delete_all
+			hostnames =
+				queryable
+				|> select([m], m.hostname)
+				|> Repo.all
+			from("machine_tags")             |> where([t], t.hostname in ^hostnames) |> Repo.delete_all
+			from("machine_pending_upgrades") |> where([u], u.hostname in ^hostnames) |> Repo.delete_all
+			from("machines")                 |> where([m], m.hostname in ^hostnames) |> Repo.delete_all
 		end)
 	end
 

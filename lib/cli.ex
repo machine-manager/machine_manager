@@ -187,7 +187,7 @@ defmodule MachineManager.CLI do
 			:reboot          -> reboot_many(args.hostname_regexp)
 			:shutdown        -> shutdown_many(args.hostname_regexp)
 			:add             -> Core.add(args.hostname, options.public_ip, options.ssh_port, options.datacenter, options.tag)
-			:rm              -> Core.rm_many(args.hostname_regexp)
+			:rm              -> Core.rm_many(Core.machines_matching_regexp(args.hostname_regexp))
 			:tag             -> Core.tag_many(Core.machines_matching_regexp(args.hostname_regexp),   all_arguments(args.tag, unknown))
 			:untag           -> Core.untag_many(Core.machines_matching_regexp(args.hostname_regexp), all_arguments(args.tag, unknown))
 			:get_tags        -> Core.get_tags(args.hostname) |> Enum.join(" ") |> IO.write
