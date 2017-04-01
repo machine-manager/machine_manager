@@ -297,7 +297,7 @@ defmodule MachineManager.CLI do
 	end
 
 	def probe_many(hostname_regexp) do
-		Core.probe_many(hostname_regexp, &handle_probe_result/2, &handle_waiting/1)
+		Core.probe_many(Core.machines_matching_regexp(hostname_regexp), &handle_probe_result/2, &handle_waiting/1)
 	end
 
 	defp handle_probe_result(hostname, task_result) do

@@ -331,9 +331,9 @@ defmodule MachineManager.Core do
 		System.cmd("rsync", args)
 	end
 
-	def probe_many(hostname_regexp, handle_probe_result, handle_waiting) do
+	def probe_many(queryable, handle_probe_result, handle_waiting) do
 		hostnames =
-			machines_matching_regexp(hostname_regexp)
+			queryable
 			|> select([m], m.hostname)
 			|> Repo.all
 		wrapped_probe = fn hostname ->
