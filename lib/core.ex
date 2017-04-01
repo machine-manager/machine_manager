@@ -1,7 +1,3 @@
-defmodule MachineManager.TooManyRowsError do
-	defexception [:message]
-end
-
 defmodule MachineManager.UpgradeError do
 	defexception [:message]
 end
@@ -19,10 +15,7 @@ defmodule MachineManager.ProbeError do
 end
 
 defmodule MachineManager.Core do
-	alias MachineManager.{
-		ScriptWriter, Parallel, Repo, TooManyRowsError, UpgradeError,
-		BootstrapError, ConfigureError, ProbeError, WireGuard
-	}
+	alias MachineManager.{ScriptWriter, Parallel, Repo, UpgradeError, BootstrapError, ConfigureError, ProbeError, WireGuard}
 	alias Gears.{StringUtil, FileUtil}
 	import Ecto.Query
 
@@ -49,7 +42,7 @@ defmodule MachineManager.Core do
 			from("machine_pending_upgrades")
 			|> select([u], %{
 					hostname:         u.hostname,
-					pending_upgrades: fragment("array_agg(array[?::varchar, ?, ?])", u.package, u.old_version, u.new_version)
+					pending_upgrades: fragment("array_agg(json_build_object('package', ?::varchar, 'old_version', ?, 'new_version', ?))", u.package, u.old_version, u.new_version)
 				})
 			|> group_by([u], u.hostname)
 
@@ -114,9 +107,9 @@ defmodule MachineManager.Core do
 		if show_progress and rows |> length > 1 do
 			raise ConfigureError, message: "Can't show progress when configuring more than one machine"
 		end
-		wrapped_configure = fn hostname ->
+		wrapped_configure = fn row ->
 			try do
-				configure(hostname, show_progress)
+				configure(row, show_progress)
 			rescue
 				e in ConfigureError -> {:configure_error, e.message}
 				e in BootstrapError -> {:bootstrap_error, e.message}
@@ -124,23 +117,14 @@ defmodule MachineManager.Core do
 		end
 		task_map =
 			rows
-			|> Enum.map(fn row -> {row.hostname, Task.async(fn -> wrapped_configure.(row.hostname) end)} end)
+			|> Enum.map(fn row -> {row.hostname, Task.async(fn -> wrapped_configure.(row) end)} end)
 			|> Map.new
 		Parallel.block_on_tasks(task_map, handle_configure_result, handle_waiting, 2000)
 	end
 
 	# Can raise ConfigureError or BootstrapError
-	def configure(hostname, show_progress \\ false) do
-		{:ok, {ip, ssh_port, tags}} = Repo.transaction(fn ->
-			row =
-				machine(hostname)
-				|> select([:public_ip, :ssh_port])
-				|> Repo.all
-				|> one_row
-			tags = get_tags(hostname)
-			{inet_to_ip(row.public_ip), row.ssh_port, tags}
-		end)
-		roles        = ScriptWriter.roles_for_tags(tags)
+	def configure(row, show_progress \\ false) do
+		roles        = ScriptWriter.roles_for_tags(row.tags)
 		script_cache = Path.expand("~/.cache/machine_manager/script_cache")
 		basename     = case roles do
 			[] -> "__no_roles__"
@@ -149,14 +133,14 @@ defmodule MachineManager.Core do
 		output_file  = Path.join(script_cache, basename)
 		File.mkdir_p!(script_cache)
 		ScriptWriter.write_script_for_roles(roles, output_file)
-		case transfer_file(output_file, "root", hostname, ".cache/machine_manager/script",
+		case transfer_file(output_file, row, ".cache/machine_manager/script",
 		                   before_rsync: "mkdir -p .cache/machine_manager") do
 			{"", 0}          -> nil
 			{out, exit_code} ->
 				raise ConfigureError, message:
-					"Uploading configuration script to machine #{inspect hostname} failed with exit code #{exit_code}; output:\n\n#{out}"
+					"Uploading configuration script to machine #{inspect row.hostname} failed with exit code #{exit_code}; output:\n\n#{out}"
 		end
-		arguments = [".cache/machine_manager/script"] ++ tags
+		arguments = [".cache/machine_manager/script"] ++ row.tags
 		for arg <- arguments do
 			if arg |> String.contains?(" ") do
 				raise ConfigureError, message:
@@ -165,27 +149,27 @@ defmodule MachineManager.Core do
 		end
 		case show_progress do
 			true ->
-				exit_code = ssh_no_capture("root", ip, ssh_port, arguments |> Enum.join(" "))
+				exit_code = run_on_machine(row, arguments |> Enum.join(" "), false)
 				case exit_code do
 					0 -> :configured
 					_ -> raise ConfigureError, message:
-						"Configuring machine #{inspect hostname} failed with exit code #{exit_code}"
+						"Configuring machine #{inspect row.hostname} failed with exit code #{exit_code}"
 				end
 			false ->
-				{out, exit_code} = ssh("root", ip, ssh_port, arguments |> Enum.join(" "))
+				{out, exit_code} = run_on_machine(row, arguments |> Enum.join(" "))
 				case exit_code do
 					0 -> :configured
 					_ ->
 						case erlang_missing_error?(out) do
 							true ->
 								# Machine seems to be missing erlang, so bootstrap it, then try running the script again.
-								bootstrap(hostname)
-								{out, exit_code} = ssh("root", ip, ssh_port, arguments |> Enum.join(" "))
+								bootstrap(row)
+								{out, exit_code} = run_on_machine(row, arguments |> Enum.join(" "))
 								case exit_code do
 									0 -> :configured
-									_ -> raise_configure_error(hostname, out, exit_code)
+									_ -> raise_configure_error(row.hostname, out, exit_code)
 								end
-							false -> raise_configure_error(hostname, out, exit_code)
+							false -> raise_configure_error(row.hostname, out, exit_code)
 						end
 				end
 		end
@@ -206,16 +190,16 @@ defmodule MachineManager.Core do
 
 	def bootstrap_many(queryable, handle_bootstrap_result, handle_waiting) do
 		rows = list(queryable)
-		wrapped_bootstrap = fn hostname ->
+		wrapped_bootstrap = fn row ->
 			try do
-				bootstrap(hostname)
+				bootstrap(row)
 			rescue
 				e in BootstrapError -> {:bootstrap_error, e.message}
 			end
 		end
 		task_map =
 			rows
-			|> Enum.map(fn row -> {row.hostname, Task.async(fn -> wrapped_bootstrap.(row.hostname) end)} end)
+			|> Enum.map(fn row -> {row.hostname, Task.async(fn -> wrapped_bootstrap.(row) end)} end)
 			|> Map.new
 		Parallel.block_on_tasks(task_map, handle_bootstrap_result, handle_waiting, 2000)
 	end
@@ -226,35 +210,29 @@ defmodule MachineManager.Core do
 	so first install custom-packages-client and the spiped_key, along with the
 	custom-packages apt key and a suitable apt/sources.list.
 	"""
-	def bootstrap(hostname) do
+	def bootstrap(row) do
 		with \
 			{_, 0} <-
-				run_on_machine(
-					hostname,
+				run_on_machine(row,
 					"""
 					apt-get update -q &&
 					env DEBIAN_FRONTEND=noninteractive apt-get --quiet --assume-yes install rsync &&
 					mkdir -p /etc/custom-packages-client ~/.machine_manager/bootstrap
 					"""),
 			{"", 0} <-
-				transfer_content(
-					custom_packages_spiped_key(), "root", hostname,
+				transfer_content(custom_packages_spiped_key(), row,
 					"/etc/custom-packages-client/spiped_key"),
 			{"", 0} <-
-				transfer_file(
-					custom_packages_client_deb_filename(), "root", hostname,
+				transfer_file(custom_packages_client_deb_filename(), row,
 					".machine_manager/bootstrap/custom-packages-client.deb"),
 			{"", 0} <-
-				transfer_content(
-					bootstrap_setup(), "root", hostname,
+				transfer_content(bootstrap_setup(), row,
 					".machine_manager/bootstrap/setup"),
 			{"", 0} <-
-				transfer_content(
-					custom_packages_apt_key(), "root", hostname,
+				transfer_content(custom_packages_apt_key(), row,
 					".machine_manager/bootstrap/custom-packages-apt-key"),
 			{_, 0} <-
-				run_on_machine(
-					hostname,
+				run_on_machine(row,
 					"""
 					chattr -i /etc/apt/trusted.gpg &&
 					apt-key add ~/.machine_manager/bootstrap/custom-packages-apt-key &&
@@ -265,7 +243,7 @@ defmodule MachineManager.Core do
 			:bootstrapped
 		else
 			{out, exit_code} ->
-				raise BootstrapError, message: "Bootstrapping machine #{inspect hostname} failed with exit code #{exit_code}; output:\n\n#{out}"
+				raise BootstrapError, message: "Bootstrapping machine #{inspect row.hostname} failed with exit code #{exit_code}; output:\n\n#{out}"
 		end
 	end
 
@@ -295,63 +273,60 @@ defmodule MachineManager.Core do
 		Path.join(packages_directory, deb)
 	end
 
-	# Transfer content `content` using rsync to user@host:dest
+	# Transfer content `content` using rsync to machine described by `row` to `dest`
 	#
 	# Returns {rsync_out, rsync_exit_code}
-	defp transfer_content(content, user, hostname, dest, opts \\ []) do
+	defp transfer_content(content, row, dest, opts \\ []) do
 		temp = FileUtil.temp_path("machine_manager_transfer_content")
 		File.write!(temp, content)
 		try do
-			transfer_file(temp, user, hostname, dest, opts)
+			transfer_file(temp, row, dest, opts)
 		after
 			FileUtil.rm_f!(temp)
 		end
 	end
 
-	# Transfer file `source` using rsync to user@host:dest
+	# Transfer file `source` using rsync to machine described by `row` to `dest`
 	#
 	# If opts[:before_rsync] is non-nil, the given command is executed on the
 	# remote before the rsync transfer.  This can be used to create a directory
 	# needed for the transfer to succeed.
 	#
 	# Returns {rsync_out, rsync_exit_code}
-	defp transfer_file(source, user, hostname, dest, opts \\ []) do
+	defp transfer_file(source, row, dest, opts \\ []) do
 		before_rsync = opts[:before_rsync]
 		args = case before_rsync do
 			nil -> []
 			_   -> ["--rsync-path", "#{before_rsync} && rsync"]
 		end ++ \
-		["--protect-args", "--executability", source, "#{user}@#{hostname}:#{dest}"]
+		[
+			"-e", "ssh -p #{row.ssh_port}", "--protect-args", "--executability",
+			source, "root@#{inet_to_ip(row.public_ip)}:#{dest}"
+		]
 		System.cmd("rsync", args)
 	end
 
 	def probe_many(queryable, handle_probe_result, handle_waiting) do
-		hostnames =
-			queryable
-			|> select([m], m.hostname)
-			|> Repo.all
-		wrapped_probe = fn hostname ->
+		rows = list(queryable)
+		wrapped_probe = fn row ->
 			try do
-				{:probed, probe(hostname)}
+				{:probed, probe(row)}
 			rescue
 				e in ProbeError -> {:probe_error, e.message}
 			end
 		end
 		task_map =
-			hostnames
-			|> Enum.map(fn hostname -> {hostname, Task.async(fn -> wrapped_probe.(hostname) end)} end)
+			rows
+			|> Enum.map(fn row -> {row.hostname, Task.async(fn -> wrapped_probe.(row) end)} end)
 			|> Map.new
 		Parallel.block_on_tasks(task_map, handle_probe_result, handle_waiting, 2000)
 	end
 
 	def exec_many(queryable, command, handle_exec_result, handle_waiting) do
-		hostnames =
-			queryable
-			|> select([m], m.hostname)
-			|> Repo.all
+		rows = list(queryable)
 		task_map =
-			hostnames
-			|> Enum.map(fn hostname -> {hostname, Task.async(fn -> run_on_machine(hostname, command) end)} end)
+			rows
+			|> Enum.map(fn row -> {row.hostname, Task.async(fn -> run_on_machine(row, command) end)} end)
 			|> Map.new
 		Parallel.block_on_tasks(task_map, handle_exec_result, handle_waiting, 2000)
 	end
@@ -386,13 +361,10 @@ defmodule MachineManager.Core do
 	end
 
 	def upgrade_many(queryable, handle_upgrade_result, handle_waiting) do
-		hostnames =
-			queryable
-			|> select([m], m.hostname)
-			|> Repo.all
-		wrapped_upgrade = fn hostname ->
+		rows = list(queryable)
+		wrapped_upgrade = fn row ->
 			try do
-				upgrade(hostname)
+				upgrade(row)
 			rescue
 				e in UpgradeError   -> {:upgrade_error,   e.message}
 				e in ConfigureError -> {:configure_error, e.message}
@@ -401,21 +373,20 @@ defmodule MachineManager.Core do
 			end
 		end
 		task_map =
-			hostnames
-			|> Enum.map(fn hostname -> {hostname, Task.async(fn -> wrapped_upgrade.(hostname) end)} end)
+			rows
+			|> Enum.map(fn row -> {row.hostname, Task.async(fn -> wrapped_upgrade.(row) end)} end)
 			|> Map.new
 		Parallel.block_on_tasks(task_map, handle_upgrade_result, handle_waiting, 2000)
 	end
 
 	# Can raise UpgradeError, ConfigureError, or BootstrapError
-	def upgrade(hostname) do
-		upgrades = get_pending_upgrades_for_machine(hostname)
-		case upgrades do
-			[] -> :no_pending_upgrades
-			_  ->
+	def upgrade(row) do
+		case row.pending_upgrades do
+			[]       -> :no_pending_upgrades
+			upgrades ->
 				upgrade_args =
 					upgrades
-					|> Enum.map(fn upgrade -> "#{upgrade.name}=#{upgrade.new_version}" end)
+					|> Enum.map(fn upgrade -> "#{upgrade["name"]}=#{upgrade["new_version"]}" end)
 				# TODO: if disk is very low, first run
 				# apt-get clean
 				# apt-get autoremove --quiet --assume-yes
@@ -434,20 +405,20 @@ defmodule MachineManager.Core do
 						#{upgrade_args |> Enum.map(&inspect/1) |> Enum.join(" ")} &&
 				apt-get autoremove --quiet --assume-yes
 				"""
-				{output, exit_code} = run_on_machine(hostname, command)
+				{output, exit_code} = run_on_machine(row, command)
 				if exit_code != 0 do
 					raise UpgradeError, message:
 						"""
-						Upgrade of #{hostname} failed with exit code #{exit_code}; output:
+						Upgrade of #{row.hostname} failed with exit code #{exit_code}; output:
 
 						#{output}
 						"""
 				end
 				# Because packages upgrades can do things we don't like (e.g. install
 				# files in /etc/cron.d), configure immediately after upgrading.
-				configure(hostname)
+				configure(row)
 				# Probe the machine so that we don't have obsolete 'pending upgrade' list
-				probe(hostname)
+				probe(row)
 				:upgraded
 		end
 	end
@@ -465,16 +436,17 @@ defmodule MachineManager.Core do
 	@doc """
 	Probe a machine and write the probe data to the database.
 	"""
-	def probe(hostname) do
-		data = get_probe_data(hostname)
-		write_probe_data_to_db(hostname, data)
+	def probe(row) do
+		data = get_probe_data(row)
+		# TODO: don't assume that it's the same machine; make sure some unique ID is the same
+		write_probe_data_to_db(row.hostname, data)
 		nil
 	end
 
 	@doc """
 	Get probe data from a machine.
 	"""
-	def get_probe_data(hostname) do
+	def get_probe_data(row) do
 		# machine_probe expects that we already ran an `apt-get update` when
 		# it determines which packages can be upgraded.
 		#
@@ -485,7 +457,7 @@ defmodule MachineManager.Core do
 		apt-get update > /dev/null 2>&1;
 		machine_probe
 		"""
-		{output, exit_code} = run_on_machine(hostname, command)
+		{output, exit_code} = run_on_machine(row, command)
 		case exit_code do
 			0 ->
 				json = output |> get_json_from_probe_output
@@ -493,10 +465,10 @@ defmodule MachineManager.Core do
 					{:ok, data}    -> data
 					{:error, _err} ->
 						raise ProbeError, message:
-							"Probing machine #{inspect hostname} failed because JSON was corrupted:\n\n#{json}"
+							"Probing machine #{inspect row.hostname} failed because JSON was corrupted:\n\n#{json}"
 				end
 			_ -> raise ProbeError, message:
-				"Probing machine #{inspect hostname} failed with exit code #{exit_code}; output:\n\n#{output}"
+				"Probing machine #{inspect row.hostname} failed with exit code #{exit_code}; output:\n\n#{output}"
 		end
 	end
 
@@ -518,14 +490,10 @@ defmodule MachineManager.Core do
 		]
 	end
 
-	@spec run_on_machine(String.t, String.t) :: {String.t, integer}
-	defp run_on_machine(hostname, command) do
-		row =
-			machine(hostname)
-			|> select([:public_ip, :ssh_port])
-			|> Repo.all
-			|> one_row
-		ssh("root", inet_to_ip(row.public_ip), row.ssh_port, command)
+	@spec run_on_machine(%{public_ip: Postgrex.INET.t, ssh_port: integer}, String.t) :: {String.t, integer}
+	defp run_on_machine(row, command, capture \\ true) do
+		func = if capture, do: &ssh/4, else: &ssh_no_capture/4
+		func.("root", inet_to_ip(row.public_ip), row.ssh_port, command)
 	end
 
 	@doc """
@@ -713,14 +681,6 @@ defmodule MachineManager.Core do
 		|> Repo.all
 	end
 
-	@spec get_pending_upgrades_for_machine(String.t) :: [String.t]
-	def get_pending_upgrades_for_machine(hostname) do
-		from("machine_pending_upgrades")
-		|> where([hostname: ^hostname])
-		|> select([m], %{name: m.package, old_version: m.old_version, new_version: m.new_version})
-		|> Repo.all
-	end
-
 	def machine(hostname) do
 		from("machines")
 		|> where([hostname: ^hostname])
@@ -739,13 +699,6 @@ defmodule MachineManager.Core do
 
 	defp anchor_regexp(hostname_regexp) do
 		"^#{hostname_regexp}$"
-	end
-
-	defp one_row(rows) do
-		case rows do
-			[row] -> row
-			_     -> raise TooManyRowsError, message: "Expected just one row, got #{rows |> length} rows"
-		end
 	end
 
 	@typep ip_tuple :: {integer, integer, integer, integer}
