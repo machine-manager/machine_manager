@@ -226,27 +226,27 @@ defmodule MachineManager.Core do
 					"""
 					apt-get update -q &&
 					env DEBIAN_FRONTEND=noninteractive apt-get --quiet --assume-yes install rsync &&
-					mkdir -p /etc/custom-packages-client ~/.machine_manager/bootstrap
+					mkdir -p /etc/custom-packages-client ~/.cache/machine_manager/bootstrap
 					"""),
 			{"", 0} <-
 				transfer_content(custom_packages_spiped_key(), row,
 					"/etc/custom-packages-client/spiped_key"),
 			{"", 0} <-
 				transfer_file(custom_packages_client_deb_filename(), row,
-					".machine_manager/bootstrap/custom-packages-client.deb"),
+					".cache/machine_manager/bootstrap/custom-packages-client.deb"),
 			{"", 0} <-
 				transfer_content(bootstrap_setup(), row,
-					".machine_manager/bootstrap/setup"),
+					".cache/machine_manager/bootstrap/setup"),
 			{"", 0} <-
 				transfer_content(custom_packages_apt_key(), row,
-					".machine_manager/bootstrap/custom-packages-apt-key"),
+					".cache/machine_manager/bootstrap/custom-packages-apt-key"),
 			{_, 0} <-
 				run_on_machine(row,
 					"""
 					chattr -i /etc/apt/trusted.gpg &&
-					apt-key add ~/.machine_manager/bootstrap/custom-packages-apt-key &&
-					chmod +x ~/.machine_manager/bootstrap/setup &&
-					CUSTOM_PACKAGES_PASSWORD=#{custom_packages_password()} ~/.machine_manager/bootstrap/setup
+					apt-key add ~/.cache/machine_manager/bootstrap/custom-packages-apt-key &&
+					chmod +x ~/.cache/machine_manager/bootstrap/setup &&
+					CUSTOM_PACKAGES_PASSWORD=#{custom_packages_password()} ~/.cache/machine_manager/bootstrap/setup
 					""")
 		do
 			:bootstrapped

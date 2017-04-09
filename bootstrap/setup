@@ -22,7 +22,7 @@ chmod a+r /etc/apt/sources.list &&
 wait_for_dpkg_lock &&
 apt-get update &&
 wait_for_dpkg_lock &&
-apt-get install -y --reinstall ~/.machine_manager/bootstrap/custom-packages-client.deb &&
+apt-get install -y --reinstall ~/.cache/machine_manager/bootstrap/custom-packages-client.deb &&
 chown root:custom-packages-client /etc/custom-packages-client/spiped_key &&
 systemctl unmask custom-packages-client.service &&
 echo Stopping service... && (systemctl stop custom-packages-client.service || true) &&
