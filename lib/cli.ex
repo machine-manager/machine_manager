@@ -1,7 +1,25 @@
 alias Gears.{TableFormatter, StringUtil}
 
+defmodule MachineManager.Counter do
+	defstruct pid: nil
+
+	def new() do
+		{:ok, pid} = Agent.start_link(fn -> 0 end)
+		%MachineManager.Counter{pid: pid}
+	end
+
+	def increment(ec) do
+		Agent.update(ec.pid, fn count -> count + 1 end)
+	end
+
+	def get(ec) do
+		Agent.get(ec.pid, fn count -> count end)
+	end
+end
+
+
 defmodule MachineManager.CLI do
-	alias MachineManager.{Core, CPU}
+	alias MachineManager.{Core, CPU, Counter}
 
 	def main(argv) do
 		hostname_regexp_help = "Regular expression used to match hostnames. Automatically wrapped with ^ and $."
@@ -297,18 +315,28 @@ defmodule MachineManager.CLI do
 	end
 
 	def probe_many(hostname_regexp) do
-		Core.probe_many(Core.machines_matching_regexp(hostname_regexp), &handle_probe_result/2, &handle_waiting/1)
+		error_counter = Counter.new()
+		Core.probe_many(
+			Core.machines_matching_regexp(hostname_regexp),
+			fn hostname, task_result -> handle_probe_result(hostname, task_result, error_counter) end,
+			&handle_waiting/1
+		)
+		if error_counter |> Counter.get() > 0 do
+			System.halt(1)
+		end
 	end
 
-	defp handle_probe_result(hostname, task_result) do
+	defp handle_probe_result(hostname, task_result, error_counter) do
 		pretty_hostname = hostname |> String.pad_trailing(16) |> bolded
 		case task_result do
 			{:ok, {:probed, nil}} ->
 				IO.puts("#{pretty_hostname} probed")
 			{:ok, {:probe_error, message}} ->
 				IO.puts("#{pretty_hostname} probe failed: #{message}")
+				error_counter |> Counter.increment()
 			{:exit, reason} ->
 				IO.puts("#{pretty_hostname} probe task failed: #{reason}")
+				error_counter |> Counter.increment()
 		end
 	end
 
