@@ -224,50 +224,74 @@ defmodule MachineManager.CLI do
 	end
 
 	def bootstrap_many(hostname_regexp) do
-		Core.bootstrap_many(Core.machines_matching_regexp(hostname_regexp), &handle_bootstrap_result/2, &handle_waiting/1)
+		error_counter = Counter.new()
+		Core.bootstrap_many(
+			Core.machines_matching_regexp(hostname_regexp),
+			with_error_counter(&handle_bootstrap_result/3, error_counter),
+			&handle_waiting/1
+		)
+		nonzero_exit_if_errors(error_counter)
 	end
 
-	defp handle_bootstrap_result(hostname, task_result) do
+	defp handle_bootstrap_result(hostname, task_result, error_counter) do
 		pretty_hostname = hostname |> String.pad_trailing(16) |> bolded
 		case task_result do
 			{:ok, :bootstrapped} ->
 				IO.puts("#{pretty_hostname} bootstrapped")
 			{:ok, {:bootstrap_error, message}} ->
 				IO.puts("#{pretty_hostname} bootstrap failed: #{message}")
+				Counter.increment(error_counter)
 			{:exit, reason} ->
 				IO.puts("#{pretty_hostname} bootstrap task failed: #{reason}")
+				Counter.increment(error_counter)
 		end
 	end
 
 	def configure_many(hostname_regexp, show_progress) do
+		error_counter = Counter.new()
 		# If Core.configure is printing converge output to the terminal, we don't
 		# want to overlap it with "# Waiting on host" output.
 		handle_waiting = case show_progress do
 			true  -> fn _ -> nil end
 			false -> &handle_waiting/1
 		end
-		Core.configure_many(Core.machines_matching_regexp(hostname_regexp), &handle_configure_result/2, handle_waiting, show_progress)
+		Core.configure_many(
+			Core.machines_matching_regexp(hostname_regexp),
+			with_error_counter(&handle_configure_result/3, error_counter),
+			handle_waiting,
+			show_progress
+		)
+		nonzero_exit_if_errors(error_counter)
 	end
 
-	defp handle_configure_result(hostname, task_result) do
+	defp handle_configure_result(hostname, task_result, error_counter) do
 		pretty_hostname = hostname |> String.pad_trailing(16) |> bolded
 		case task_result do
 			{:ok, :configured} ->
 				IO.puts("#{pretty_hostname} configured")
 			{:ok, {:configure_error, message}} ->
 				IO.puts("#{pretty_hostname} configure failed: #{message}")
+				Counter.increment(error_counter)
 			{:ok, {:bootstrap_error, message}} ->
 				IO.puts("#{pretty_hostname} bootstrap failed: #{message}")
+				Counter.increment(error_counter)
 			{:exit, reason} ->
 				IO.puts("#{pretty_hostname} configure task failed: #{reason}")
+				Counter.increment(error_counter)
 		end
 	end
 
 	def upgrade_many(hostname_regexp) do
-		Core.upgrade_many(Core.machines_matching_regexp(hostname_regexp), &handle_upgrade_result/2, &handle_waiting/1)
+		error_counter = Counter.new()
+		Core.upgrade_many(
+			Core.machines_matching_regexp(hostname_regexp),
+			with_error_counter(&handle_upgrade_result/3, error_counter),
+			&handle_waiting/1
+		)
+		nonzero_exit_if_errors(error_counter)
 	end
 
-	defp handle_upgrade_result(hostname, task_result) do
+	defp handle_upgrade_result(hostname, task_result, error_counter) do
 		pretty_hostname = hostname |> String.pad_trailing(16) |> bolded
 		case task_result do
 			{:ok, :upgraded} ->
@@ -276,30 +300,54 @@ defmodule MachineManager.CLI do
 				IO.puts("#{pretty_hostname} had no pending upgrades in database; probe again if needed")
 			{:ok, {:upgrade_error, message}} ->
 				IO.puts("#{pretty_hostname} upgrade failed: #{message}")
+				Counter.increment(error_counter)
 			{:ok, {:configure_error, message}} ->
 				IO.puts("#{pretty_hostname} configure failed: #{message}")
+				Counter.increment(error_counter)
 			{:ok, {:bootstrap_error, message}} ->
 				IO.puts("#{pretty_hostname} bootstrap failed: #{message}")
+				Counter.increment(error_counter)
 			{:ok, {:probe_error, message}} ->
 				IO.puts("#{pretty_hostname} probe failed: #{message}")
+				Counter.increment(error_counter)
 			{:exit, reason} ->
 				IO.puts("#{pretty_hostname} upgrade task failed: #{reason}")
+				Counter.increment(error_counter)
 		end
 	end
 
 	def reboot_many(hostname_regexp) do
-		Core.reboot_many(Core.machines_matching_regexp(hostname_regexp), &handle_exec_result/2, &handle_waiting/1)
+		error_counter = Counter.new()
+		Core.reboot_many(
+			Core.machines_matching_regexp(hostname_regexp),
+			with_error_counter(&handle_exec_result/3, error_counter),
+			&handle_waiting/1
+		)
+		nonzero_exit_if_errors(error_counter)
 	end
 
 	def shutdown_many(hostname_regexp) do
-		Core.shutdown_many(Core.machines_matching_regexp(hostname_regexp), &handle_exec_result/2, &handle_waiting/1)
+		error_counter = Counter.new()
+		Core.shutdown_many(
+			Core.machines_matching_regexp(hostname_regexp),
+			with_error_counter(&handle_exec_result/3, error_counter),
+			&handle_waiting/1
+		)
+		nonzero_exit_if_errors(error_counter)
 	end
 
 	def exec_many(hostname_regexp, command) do
-		Core.exec_many(Core.machines_matching_regexp(hostname_regexp), command, &handle_exec_result/2, &handle_waiting/1)
+		error_counter = Counter.new()
+		Core.exec_many(
+			Core.machines_matching_regexp(hostname_regexp),
+			command,
+			with_error_counter(&handle_exec_result/3, error_counter),
+			&handle_waiting/1
+		)
+		nonzero_exit_if_errors(error_counter)
 	end
 
-	defp handle_exec_result(hostname, task_result) do
+	defp handle_exec_result(hostname, task_result, error_counter) do
 		pretty_hostname = hostname |> String.pad_trailing(16) |> bolded
 		green           = {24,  154, 0}
 		red             = {187, 10,  0}
@@ -308,9 +356,13 @@ defmodule MachineManager.CLI do
 				code_color = if exit_code == 0, do: green, else: red
 				code_text  = "code=#{exit_code |> to_string |> String.pad_trailing(3)}" |> with_fgcolor(code_color)
 				IO.puts("#{pretty_hostname} #{code_text} #{inspect output}")
+				if exit_code != 0 do
+					Counter.increment(error_counter)
+				end
 			{:exit, reason} ->
 				code_text  = "code=nil" |> with_fgcolor(red)
 				IO.puts("#{pretty_hostname} #{code_text} #{inspect reason}")
+				Counter.increment(error_counter)
 		end
 	end
 
@@ -318,12 +370,10 @@ defmodule MachineManager.CLI do
 		error_counter = Counter.new()
 		Core.probe_many(
 			Core.machines_matching_regexp(hostname_regexp),
-			fn hostname, task_result -> handle_probe_result(hostname, task_result, error_counter) end,
+			with_error_counter(&handle_probe_result/3, error_counter),
 			&handle_waiting/1
 		)
-		if error_counter |> Counter.get() > 0 do
-			System.halt(1)
-		end
+		nonzero_exit_if_errors(error_counter)
 	end
 
 	defp handle_probe_result(hostname, task_result, error_counter) do
@@ -333,10 +383,10 @@ defmodule MachineManager.CLI do
 				IO.puts("#{pretty_hostname} probed")
 			{:ok, {:probe_error, message}} ->
 				IO.puts("#{pretty_hostname} probe failed: #{message}")
-				error_counter |> Counter.increment()
+				Counter.increment(error_counter)
 			{:exit, reason} ->
 				IO.puts("#{pretty_hostname} probe task failed: #{reason}")
-				error_counter |> Counter.increment()
+				Counter.increment(error_counter)
 		end
 	end
 
@@ -345,6 +395,17 @@ defmodule MachineManager.CLI do
 			"# Waiting on: #{waiting_task_map |> Map.keys |> Enum.join(" ")}"
 			|> with_fgcolor({150, 150, 150})
 		)
+	end
+
+	# Curry error_counter at the end of a two-arity function
+	defp with_error_counter(func, error_counter) do
+		fn hostname, task_result -> func.(hostname, task_result, error_counter) end
+	end
+
+	defp nonzero_exit_if_errors(error_counter) do
+		if Counter.get(error_counter) > 0 do
+			System.halt(1)
+		end
 	end
 
 	def list(hostname_regexp, columns, print_header) do
