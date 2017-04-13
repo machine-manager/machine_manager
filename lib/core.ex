@@ -48,22 +48,23 @@ defmodule MachineManager.Core do
 
 		queryable
 		|> select([m, t, u], %{
-				hostname:         m.hostname,
-				public_ip:        m.public_ip,
-				wireguard_ip:     m.wireguard_ip,
-				ssh_port:         m.ssh_port,
-				tags:             t.tags,
-				pending_upgrades: u.pending_upgrades,
-				last_probe_time:  m.last_probe_time,
-				boot_time:        m.boot_time,
-				datacenter:       m.datacenter,
-				country:          m.country,
-				cpu_model_name:   m.cpu_model_name,
-				cpu_architecture: m.cpu_architecture,
-				ram_mb:           m.ram_mb,
-				core_count:       m.core_count,
-				thread_count:     m.thread_count,
-				kernel:           m.kernel,
+				hostname:          m.hostname,
+				public_ip:         m.public_ip,
+				wireguard_ip:      m.wireguard_ip,
+				wireguard_privkey: m.wireguard_privkey,
+				ssh_port:          m.ssh_port,
+				tags:              t.tags,
+				pending_upgrades:  u.pending_upgrades,
+				last_probe_time:   m.last_probe_time,
+				boot_time:         m.boot_time,
+				datacenter:        m.datacenter,
+				country:           m.country,
+				cpu_model_name:    m.cpu_model_name,
+				cpu_architecture:  m.cpu_architecture,
+				ram_mb:            m.ram_mb,
+				core_count:        m.core_count,
+				thread_count:      m.thread_count,
+				kernel:            m.kernel,
 			})
 		|> join(:left, [m], t in subquery(tags_aggregate),             t.hostname == m.hostname)
 		|> join(:left, [m], u in subquery(pending_upgrades_aggregate), u.hostname == m.hostname)
@@ -146,17 +147,15 @@ defmodule MachineManager.Core do
 		output_file  = Path.join(script_cache, basename)
 		File.mkdir_p!(script_cache)
 		ScriptWriter.write_script_for_roles(roles, output_file)
+		wireguard_config = WireGuard.make_wireguard_config(row.wireguard_privkey, inet_to_ip(row.wireguard_ip), 51820, [])
 		case transfer_file(output_file, row, ".cache/machine_manager/script",
 		                   before_rsync: "mkdir -p .cache/machine_manager") do
 			{"", 0}          -> nil
-			{out, exit_code} ->
-				raise(ConfigureError,
-					"""
-					Uploading configuration script to machine #{inspect row.hostname} \
-					failed with exit code #{exit_code}; output:
-
-					#{out}
-					""")
+			{out, exit_code} -> raise_upload_error(row.hostname, out, exit_code, "configuration script")
+		end
+		case transfer_content(wireguard_config, row, ".cache/machine_manager/wg0.conf") do
+			{"", 0}          -> nil
+			{out, exit_code} -> raise_upload_error(row.hostname, out, exit_code, "WireGuard configuration")
 		end
 		arguments = [".cache/machine_manager/script"] ++ row.tags
 		for arg <- arguments do
@@ -191,6 +190,16 @@ defmodule MachineManager.Core do
 						end
 				end
 		end
+	end
+
+	defp raise_upload_error(hostname, out, exit_code, upload_description) do
+		raise(ConfigureError,
+			"""
+			Uploading #{upload_description} to machine #{inspect hostname} \
+			failed with exit code #{exit_code}; output:
+
+			#{out}
+			""")
 	end
 
 	defp raise_configure_error(hostname, out, exit_code) do
@@ -313,23 +322,25 @@ defmodule MachineManager.Core do
 		end
 	end
 
-	# Transfer file `source` using rsync to machine described by `row` to `dest`
+	defp transfer_file(source_file, row, dest, opts \\ []) do
+		transfer_files([source_file], row, dest, opts)
+	end
+
+	# Transfer files `source_files` using rsync to machine described by `row` to `dest`
 	#
 	# If opts[:before_rsync] is non-nil, the given command is executed on the
 	# remote before the rsync transfer.  This can be used to create a directory
 	# needed for the transfer to succeed.
 	#
 	# Returns {rsync_out, rsync_exit_code}
-	defp transfer_file(source, row, dest, opts \\ []) do
+	defp transfer_files(source_files, row, dest, opts) do
 		before_rsync = opts[:before_rsync]
 		args = case before_rsync do
 			nil -> []
 			_   -> ["--rsync-path", "#{before_rsync} && rsync"]
-		end ++ \
-		[
-			"-e", "ssh -p #{row.ssh_port}", "--protect-args", "--executability",
-			source, "root@#{inet_to_ip(row.public_ip)}:#{dest}"
-		]
+		end ++
+		["-e", "ssh -p #{row.ssh_port}", "--protect-args", "--executability"] ++
+		source_files ++ ["root@#{inet_to_ip(row.public_ip)}:#{dest}"]
 		System.cmd("rsync", args)
 	end
 
