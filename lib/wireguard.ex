@@ -39,12 +39,12 @@ defmodule MachineManager.WireGuard do
 	@doc """
 	Return a wireguard config file as a string.
 	"""
-	@spec make_wireguard_config(String.t, String.t, [map]) :: String.t
-	def make_wireguard_config(private_key, address, peers) do
+	@spec make_wireguard_config(String.t, String.t, integer, [map]) :: String.t
+	def make_wireguard_config(private_key, address, listen_port, peers) do
 		"""
 		[Interface]
 		PrivateKey = #{private_key |> Base.encode64}
-		ListenPort = 51820
+		ListenPort = #{listen_port}
 		Address    = #{address}
 
 		""" <> (

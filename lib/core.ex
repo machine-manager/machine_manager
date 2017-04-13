@@ -102,8 +102,9 @@ defmodule MachineManager.Core do
 			|> where([m], m.hostname == ^hostname)
 			|> Repo.all
 			|> hd
-		peers = []
-		WireGuard.make_wireguard_config(row.wireguard_privkey, inet_to_ip(row.wireguard_ip), peers)
+		listen_port = 51820
+		peers       = []
+		WireGuard.make_wireguard_config(row.wireguard_privkey, inet_to_ip(row.wireguard_ip), listen_port, peers)
 	end
 
 	defp sql_row_to_ssh_config_entry(row) do
