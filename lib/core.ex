@@ -90,8 +90,20 @@ defmodule MachineManager.Core do
 			|> select([:hostname, :public_ip, :ssh_port])
 			|> Repo.all
 		for row <- rows do
-			:ok = IO.write(sql_row_to_ssh_config_entry(row) <> "\n")
+			sql_row_to_ssh_config_entry(row)
 		end
+		|> Enum.join("\n")
+	end
+
+	def wireguard_config(hostname) do
+		row =
+			from("machines")
+			|> select([:wireguard_privkey, :wireguard_ip])
+			|> where([m], m.hostname == ^hostname)
+			|> Repo.all
+			|> hd
+		peers = []
+		WireGuard.make_wireguard_config(row.wireguard_privkey, inet_to_ip(row.wireguard_ip), peers)
 	end
 
 	defp sql_row_to_ssh_config_entry(row) do
