@@ -557,6 +557,26 @@ defmodule MachineManager.Core do
 		|> erlexec_ret_to_tuple
 	end
 
+	@doc """
+	Runs `command` on machine at `ip` and `ssh_port` with user `user`; outputs
+	command's stdout and stderr to stdout in this terminal.  Returns `exit_code`.
+	"""
+	@spec ssh_no_capture(String.t, String.t, integer, String.t) :: integer
+	def ssh_no_capture(user, ip, ssh_port, command) do
+		echo = fn _stream, _os_pid, data -> IO.write(data) end
+		args = ["-q", "-p", "#{ssh_port}", "#{user}@#{ip}", command]
+		{"", exit_code} =
+			Exexec.run(
+				["/usr/bin/ssh" | args],
+				stdout: echo,
+				stderr: echo,
+				sync:   true,
+				env:    env_for_ssh()
+			)
+			|> erlexec_ret_to_tuple
+		exit_code
+	end
+
 	defp erlexec_ret_to_tuple(ret) do
 		case ret do
 			{:ok,    []}                                    -> {"",                         0}
@@ -565,28 +585,6 @@ defmodule MachineManager.Core do
 			{:error, [exit_status: exit_code]}              -> {"",                         exit_code}
 			{:error, [exit_status: exit_code, stdout: out]} -> {out |> IO.iodata_to_binary, exit_code}
 		end
-	end
-
-	@doc """
-	Runs `command` on machine at `ip` and `ssh_port` with user `user`; outputs
-	command's stdout and stderr to stdout in this terminal.  Returns `exit_code`.
-	"""
-	@spec ssh_no_capture(String.t, String.t, integer, String.t) :: integer
-	def ssh_no_capture(user, ip, ssh_port, command) do
-		# We use Porcelain instead of erlexec for this because erlexec doesn't
-		# seem to have the equivalent of out: {:file, Process.group_leader} or
-		# some other convenient way to send output to the terminal.  We might
-		# still be able to do this by starting a process that writes out the
-		# messages it receives.
-		%Porcelain.Result{status: exit_code} = \
-			Porcelain.exec("ssh",
-				["-q", "-p", "#{ssh_port}", "#{user}@#{ip}", command],
-				out: {:file, Process.group_leader},
-				# "when using `Porcelain.Driver.Basic`, the only supported values
-				# are `nil` (stderr will be printed to the terminal) and `:out`."
-				err: nil,
-				env: env_for_ssh())
-		exit_code
 	end
 
 	defp env_for_ssh() do
