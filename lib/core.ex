@@ -166,7 +166,7 @@ defmodule MachineManager.Core do
 		end
 		case show_progress do
 			true ->
-				exit_code = run_on_machine(row, arguments |> Enum.join(" "), false)
+				{"", exit_code} = run_on_machine(row, arguments |> Enum.join(" "), false)
 				case exit_code do
 					0 -> :configured
 					_ -> raise(ConfigureError,
@@ -536,45 +536,31 @@ defmodule MachineManager.Core do
 		]
 	end
 
-	@spec run_on_machine(%{public_ip: Postgrex.INET.t, ssh_port: integer}, String.t) :: {String.t, integer}
+	@spec run_on_machine(%{public_ip: Postgrex.INET.t, ssh_port: integer}, String.t, boolean) :: {String.t, integer}
 	defp run_on_machine(row, command, capture \\ true) do
-		func = if capture, do: &ssh/4, else: &ssh_no_capture/4
-		func.("root", inet_to_ip(row.public_ip), row.ssh_port, command)
+		ssh("root", inet_to_ip(row.public_ip), row.ssh_port, command, capture)
 	end
 
 	@doc """
 	Runs `command` on machine at `ip` and `ssh_port` with user `user`, returns
-	`{output, exit_code}`.  Output includes both stdout and stderr.
+	`{output, exit_code}`.  If `capture` is `true`, `output` includes both
+	stdout and stderr; if `false`, both stdout and stderr are echoed to the
+	terminal and `output` is `""`.
 	"""
-	@spec ssh(String.t, String.t, integer, String.t) :: {String.t, integer}
-	def ssh(user, ip, ssh_port, command) do
+	@spec ssh(String.t, String.t, integer, String.t, boolean) :: {String.t, integer}
+	def ssh(user, ip, ssh_port, command, capture) do
+		echo = fn _stream, _os_pid, data -> IO.write(data) end
+		{stdout, stderr} = case capture do
+			true ->  {true, :stdout}
+			false -> {echo, echo}
+		end
 		# We use erlexec instead of System.cmd or Porcelain because Erlang's
 		# open_port({spawn_executable, ...}, ...) breaks with ssh ControlMaster:
 		# it waits for the daemonized ssh [mux] process to exit before returning.
 		# erlexec doesn't have this problem.
 		args = ["-q", "-p", "#{ssh_port}", "#{user}@#{ip}", command]
-		Exexec.run(["/usr/bin/ssh" | args], stdout: true, stderr: :stdout, sync: true, env: env_for_ssh())
+		Exexec.run(["/usr/bin/ssh" | args], stdout: stdout, stderr: stderr, sync: true, env: env_for_ssh())
 		|> erlexec_ret_to_tuple
-	end
-
-	@doc """
-	Runs `command` on machine at `ip` and `ssh_port` with user `user`; outputs
-	command's stdout and stderr to stdout in this terminal.  Returns `exit_code`.
-	"""
-	@spec ssh_no_capture(String.t, String.t, integer, String.t) :: integer
-	def ssh_no_capture(user, ip, ssh_port, command) do
-		echo = fn _stream, _os_pid, data -> IO.write(data) end
-		args = ["-q", "-p", "#{ssh_port}", "#{user}@#{ip}", command]
-		{"", exit_code} =
-			Exexec.run(
-				["/usr/bin/ssh" | args],
-				stdout: echo,
-				stderr: echo,
-				sync:   true,
-				env:    env_for_ssh()
-			)
-			|> erlexec_ret_to_tuple
-		exit_code
 	end
 
 	defp erlexec_ret_to_tuple(ret) do
