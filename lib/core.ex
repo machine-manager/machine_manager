@@ -553,11 +553,15 @@ defmodule MachineManager.Core do
 		# it waits for the daemonized ssh [mux] process to exit before returning.
 		# erlexec doesn't have this problem.
 		args = ["-q", "-p", "#{ssh_port}", "#{user}@#{ip}", command]
-		# Make sure DISPLAY and SSH_ASKPASS are unset so that ssh-askpass or similar doesn't pop up.
-		env = %{"DISPLAY" => "", "SSH_ASKPASS" => ""}
-		case Exexec.run(["/usr/bin/ssh" | args], stdout: true, stderr: :stdout, sync: true, env: env) do
+		Exexec.run(["/usr/bin/ssh" | args], stdout: true, stderr: :stdout, sync: true, env: env_for_ssh())
+		|> erlexec_ret_to_tuple
+	end
+
+	defp erlexec_ret_to_tuple(ret) do
+		case ret do
 			{:ok,    []}                                    -> {"",                         0}
 			{:ok,    [stdout: out]}                         -> {out |> IO.iodata_to_binary, 0}
+			{:ok,    [exit_status: exit_code]}              -> {"",                         exit_code}
 			{:error, [exit_status: exit_code]}              -> {"",                         exit_code}
 			{:error, [exit_status: exit_code, stdout: out]} -> {out |> IO.iodata_to_binary, exit_code}
 		end
@@ -569,16 +573,26 @@ defmodule MachineManager.Core do
 	"""
 	@spec ssh_no_capture(String.t, String.t, integer, String.t) :: integer
 	def ssh_no_capture(user, ip, ssh_port, command) do
+		# We use Porcelain instead of erlexec for this because erlexec doesn't
+		# seem to have the equivalent of out: {:file, Process.group_leader} or
+		# some other convenient way to send output to the terminal.  We might
+		# still be able to do this by starting a process that writes out the
+		# messages it receives.
 		%Porcelain.Result{status: exit_code} = \
-			Porcelain.exec("ssh", ["-q", "-p", "#{ssh_port}", "#{user}@#{ip}", command],
-			               out: {:file, Process.group_leader},
-			               # "when using `Porcelain.Driver.Basic`, the only supported values
-			               # are `nil` (stderr will be printed to the terminal) and `:out`."
-			               err: nil,
-			               # Make sure DISPLAY and SSH_ASKPASS are unset so that
-			               # ssh-askpass or similar doesn't pop up.
-			               env: [{"DISPLAY", ""}, {"SSH_ASKPASS", ""}])
+			Porcelain.exec("ssh",
+				["-q", "-p", "#{ssh_port}", "#{user}@#{ip}", command],
+				out: {:file, Process.group_leader},
+				# "when using `Porcelain.Driver.Basic`, the only supported values
+				# are `nil` (stderr will be printed to the terminal) and `:out`."
+				err: nil,
+				env: env_for_ssh())
 		exit_code
+	end
+
+	defp env_for_ssh() do
+		# Make sure DISPLAY and SSH_ASKPASS are unset so that ssh-askpass
+		# or similar doesn't pop up.
+		%{"DISPLAY" => "", "SSH_ASKPASS" => ""}
 	end
 
 	@doc """
