@@ -15,7 +15,9 @@ defmodule MachineManager.ProbeError do
 end
 
 defmodule MachineManager.Core do
-	alias MachineManager.{ScriptWriter, Parallel, Repo, UpgradeError, BootstrapError, ConfigureError, ProbeError, WireGuard}
+	alias MachineManager.{
+		ScriptWriter, Parallel, Repo, UpgradeError, BootstrapError,
+		ConfigureError, ProbeError, WireGuard, ErlExecUtil}
 	alias Gears.{StringUtil, FileUtil}
 	import Ecto.Query
 
@@ -559,21 +561,11 @@ defmodule MachineManager.Core do
 		# erlexec doesn't have this problem.
 		args = ["-q", "-p", "#{ssh_port}", "#{user}@#{ip}", command]
 		Exexec.run(["/usr/bin/ssh" | args], stdout: stdout, stderr: stderr, sync: true, env: env_for_ssh())
-		|> erlexec_ret_to_tuple
+		|> ErlExecUtil.ret_to_tuple
 	end
 
-	defp echo(_stream, _os_pid, data) do
+	def echo(_stream, _os_pid, data) do
 		IO.write(data)
-	end
-
-	defp erlexec_ret_to_tuple(ret) do
-		case ret do
-			{:ok,    []}                                    -> {"",                         0}
-			{:ok,    [stdout: out]}                         -> {out |> IO.iodata_to_binary, 0}
-			{:ok,    [exit_status: exit_code]}              -> {"",                         exit_code}
-			{:error, [exit_status: exit_code]}              -> {"",                         exit_code}
-			{:error, [exit_status: exit_code, stdout: out]} -> {out |> IO.iodata_to_binary, exit_code}
-		end
 	end
 
 	defp env_for_ssh() do

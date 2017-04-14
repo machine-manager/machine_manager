@@ -4,7 +4,7 @@ defmodule MachineManager.WireGuard do
 	"""
 	@spec make_wireguard_privkey() :: String.t
 	def make_wireguard_privkey() do
-		{privkey_base64, 0} = System.cmd("wg", ["genkey"])
+		{privkey_base64, 0} = System.cmd("/usr/bin/wg", ["genkey"])
 		privkey = privkey_base64
 			|> String.trim_trailing("\n")
 			|> Base.decode64!
@@ -19,11 +19,16 @@ defmodule MachineManager.WireGuard do
 	"""
 	@spec get_wireguard_pubkey(String.t) :: String.t
 	def get_wireguard_pubkey(privkey) when byte_size(privkey) == 32 do
-		# `wg pubkey` waits for EOF, but Erlang can't close stdin, so use some
-		# bash that reads a single line and pipes it into `wg pubkey`.
-		# https://github.com/alco/porcelain/issues/37
-		%Porcelain.Result{status: 0, out: pubkey_base64} =
-			Porcelain.exec("bash", ["-c", "head -n 1 | wg pubkey"], in: (privkey |> Base.encode64) <> "\n")
+		# `wg pubkey` waits for EOF, but Erlang can't close stdin, so use erlexec.
+		{:ok, pid, os_pid} =
+			Exexec.run(["/usr/bin/wg", "pubkey"], stdin: true, stdout: true)
+		Exexec.send(pid, (privkey |> Base.encode64) <> "\n")
+		Exexec.send(pid, :eof)
+		{:ok, pubkey_base64} = receive do
+			{:stdout, ^os_pid, stdout} -> {:ok, stdout}
+		after
+			5000 -> raise(RuntimeError, "No stdout from `wg pubkey` after 5 seconds")
+		end
 		pubkey = pubkey_base64
 			|> String.trim_trailing("\n")
 			|> Base.decode64!
