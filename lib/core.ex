@@ -549,10 +549,9 @@ defmodule MachineManager.Core do
 	"""
 	@spec ssh(String.t, String.t, integer, String.t, boolean) :: {String.t, integer}
 	def ssh(user, ip, ssh_port, command, capture) do
-		echo = fn _stream, _os_pid, data -> IO.write(data) end
 		{stdout, stderr} = case capture do
-			true ->  {true, :stdout}
-			false -> {echo, echo}
+			true  -> {true,    :stdout}
+			false -> {&echo/3, &echo/3}
 		end
 		# We use erlexec instead of System.cmd or Porcelain because Erlang's
 		# open_port({spawn_executable, ...}, ...) breaks with ssh ControlMaster:
@@ -561,6 +560,10 @@ defmodule MachineManager.Core do
 		args = ["-q", "-p", "#{ssh_port}", "#{user}@#{ip}", command]
 		Exexec.run(["/usr/bin/ssh" | args], stdout: stdout, stderr: stderr, sync: true, env: env_for_ssh())
 		|> erlexec_ret_to_tuple
+	end
+
+	defp echo(_stream, _os_pid, data) do
+		IO.write(data)
 	end
 
 	defp erlexec_ret_to_tuple(ret) do
