@@ -548,11 +548,19 @@ defmodule MachineManager.Core do
 	"""
 	@spec ssh(String.t, String.t, integer, String.t) :: {String.t, integer}
 	def ssh(user, ip, ssh_port, command) do
-		System.cmd("ssh", ["-q", "-p", "#{ssh_port}", "#{user}@#{ip}", command],
-		           stderr_to_stdout: true,
-		           # Make sure DISPLAY and SSH_ASKPASS are unset so that
-		           # ssh-askpass or similar doesn't pop up.
-		           env: [{"DISPLAY", ""}, {"SSH_ASKPASS", ""}])
+		# We use erlexec instead of System.cmd or Porcelain because Erlang's
+		# open_port({spawn_executable, ...}, ...) breaks with ssh ControlMaster:
+		# it waits for the daemonized ssh [mux] process to exit before returning.
+		# erlexec doesn't have this problem.
+		args = ["-q", "-p", "#{ssh_port}", "#{user}@#{ip}", command]
+		# Make sure DISPLAY and SSH_ASKPASS are unset so that ssh-askpass or similar doesn't pop up.
+		env = %{"DISPLAY" => "", "SSH_ASKPASS" => ""}
+		case Exexec.run(["/usr/bin/ssh" | args], stdout: true, stderr: :stdout, sync: true, env: env) do
+			{:ok,    []}                                    -> {"",                         0}
+			{:ok,    [stdout: out]}                         -> {out |> IO.iodata_to_binary, 0}
+			{:error, [exit_status: exit_code]}              -> {"",                         exit_code}
+			{:error, [exit_status: exit_code, stdout: out]} -> {out |> IO.iodata_to_binary, exit_code}
+		end
 	end
 
 	@doc """

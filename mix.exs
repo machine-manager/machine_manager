@@ -15,7 +15,7 @@ defmodule MachineManager.Mixfile do
 
 	def application do
 		[
-			extra_applications: [:logger],
+			extra_applications: [:logger, :exexec, :erlexec],
 			mod: {MachineManager.Application, []}
 		]
 	end
@@ -29,6 +29,7 @@ defmodule MachineManager.Mixfile do
 			{:optimus,   ">= 0.1.0"},
 			{:poison,    ">= 3.1.0"},
 			{:porcelain, ">= 2.0.3"},
+			{:exexec,    ">= 0.1.0"},
 		]
 	end
 end
