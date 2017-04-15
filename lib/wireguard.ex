@@ -21,13 +21,20 @@ defmodule MachineManager.WireGuard do
 	def get_wireguard_pubkey(privkey) when byte_size(privkey) == 32 do
 		# `wg pubkey` waits for EOF, but Erlang can't close stdin, so use erlexec.
 		{:ok, pid, os_pid} =
-			Exexec.run(["/usr/bin/wg", "pubkey"], stdin: true, stdout: true)
+			Exexec.run(["/usr/bin/wg", "pubkey"], stdin: true, stdout: true, monitor: true)
 		Exexec.send(pid, (privkey |> Base.encode64) <> "\n")
 		Exexec.send(pid, :eof)
 		{:ok, pubkey_base64} = receive do
 			{:stdout, ^os_pid, stdout} -> {:ok, stdout}
 		after
 			5000 -> raise(RuntimeError, "No stdout from `wg pubkey` after 5 seconds")
+		end
+		receive do
+			{:DOWN, ^os_pid, :process, ^pid, :normal}                   -> nil
+			{:DOWN, ^os_pid, :process, ^pid, {:exit_status, exit_code}} ->
+				raise(RuntimeError, "Got exit code #{exit_code} from `wg pubkey`")
+		after
+			5000 -> raise(RuntimeError, "`wg pubkey` did not exit after 5 seconds")
 		end
 		pubkey = pubkey_base64
 			|> String.trim_trailing("\n")
