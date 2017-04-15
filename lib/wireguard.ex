@@ -24,8 +24,8 @@ defmodule MachineManager.WireGuard do
 			Exexec.run(["/usr/bin/wg", "pubkey"], stdin: true, stdout: true, monitor: true)
 		Exexec.send(pid, (privkey |> Base.encode64) <> "\n")
 		Exexec.send(pid, :eof)
-		{:ok, pubkey_base64} = receive do
-			{:stdout, ^os_pid, stdout} -> {:ok, stdout}
+		pubkey_base64 = receive do
+			{:stdout, ^os_pid, stdout} -> stdout
 		after
 			5000 -> raise(RuntimeError, "No stdout from `wg pubkey` after 5 seconds")
 		end
