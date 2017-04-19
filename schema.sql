@@ -20,7 +20,7 @@ CREATE DOMAIN package          AS varchar      CHECK(VALUE ~ '\A[^\x00-\x20]+\Z'
 CREATE DOMAIN kernel           AS varchar(80)  CHECK(VALUE ~ '\A[^\x00-\x1F]+\Z');
 CREATE DOMAIN cpu_model_name   AS varchar(64)  CHECK(VALUE ~ '\A[^\x00-\x1F]+\Z');
 CREATE DOMAIN cpu_architecture AS varchar(8)   CHECK(VALUE ~ '\A[^\x00-\x20]+\Z');
-CREATE DOMAIN wireguard_key    AS bytea        CHECK(length(VALUE) = 32);
+CREATE DOMAIN wireguard_key    AS bytea        CHECK(length(VALUE) = 44);
 
 CREATE TABLE machines (
 	-- Access information
