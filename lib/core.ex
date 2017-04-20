@@ -671,6 +671,27 @@ defmodule MachineManager.Core do
 		nil
 	end
 
+	@doc """
+	Add connections in enumerable `new_connections` to machines matching `queryable`.
+	"""
+	@spec connect_many(Ecto.Queryable.t, [String.t]) :: nil
+	def connect_many(queryable, new_connections) do
+		{:ok, _} = Repo.transaction(fn ->
+			hostnames =
+				queryable
+				|> select([m], m.hostname)
+				|> Repo.all
+			Repo.insert_all("machine_connections",
+				cartesian_product(hostnames, new_connections)
+				|> Enum.map(fn {hostname, connection} ->
+					[hostname: hostname, connection: connection]
+				end),
+				on_conflict: :nothing
+			)
+		end)
+		nil
+	end
+
 	@spec cartesian_product(Enum.t, Enum.t) :: [{term, term}]
 	defp cartesian_product(a, b) do
 		for x <- a, y <- b, do: {x, y}
@@ -689,6 +710,24 @@ defmodule MachineManager.Core do
 			from("machine_tags")
 			|> where([t], t.hostname in ^hostnames)
 			|> where([t], t.tag      in ^remove_tags)
+			|> Repo.delete_all
+			nil
+		end)
+	end
+
+	@doc """
+	Remove tags in enumerable `remove_tags` from machines matching `queryable`.
+	"""
+	@spec disconnect_many(Ecto.Queryable.t, [String.t]) :: nil
+	def disconnect_many(queryable, remove_connections) do
+		{:ok, _} = Repo.transaction(fn ->
+			hostnames =
+				queryable
+				|> select([m], m.hostname)
+				|> Repo.all
+			from("machine_connections")
+			|> where([c], c.hostname   in ^hostnames)
+			|> where([c], c.connection in ^remove_connections)
 			|> Repo.delete_all
 			nil
 		end)
