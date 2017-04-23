@@ -535,7 +535,7 @@ defmodule MachineManager.Core do
 			:ram_mb, :cpu_model_name, :cpu_architecture, :core_count, :thread_count,
 			:datacenter, :country, :kernel, :boot_time_ms, :pending_upgrades,
 			# Keys in :pending_upgrades
-			:name, :old_version, :new_version, :origin, :architecture
+			:name, :old_version, :new_version, :origins, :architecture
 		]
 	end
 
