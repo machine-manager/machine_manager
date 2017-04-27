@@ -513,7 +513,7 @@ defmodule MachineManager.CLI do
 
 	defp format_time_offset(row, _tag_frequency) do
 		if row.time_offset != nil do
-			case row.time_offset |> to_string do
+			case row.time_offset |> Decimal.to_string(:normal) do
 				"-" <> s -> "-" <> s
 				s        -> "+" <> s
 			end
