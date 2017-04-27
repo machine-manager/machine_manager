@@ -29,6 +29,7 @@ defmodule MachineManager.Mixfile do
 			{:optimus,   ">= 0.1.0"},
 			{:poison,    ">= 3.1.0"},
 			{:exexec,    ">= 0.1.0"},
+			{:decimal,   ">= 1.3.1"},
 		]
 	end
 end

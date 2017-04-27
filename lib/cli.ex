@@ -484,7 +484,7 @@ defmodule MachineManager.CLI do
 			"hostname", "public_ip", "wireguard_ip", "ssh_port", "tags",
 			"connections", "datacenter", "country", "ram_mb", "cpu_model_name",
 			"core_count", "thread_count", "last_probe_time", "boot_time",
-			"kernel", "pending_upgrades",
+			"time_offset", "kernel", "pending_upgrades",
 		]
 	end
 
@@ -505,6 +505,7 @@ defmodule MachineManager.CLI do
 			"thread_count"     => {"TH",               fn row, _ -> row.thread_count end},
 			"last_probe_time"  => {"PROBE TIME",       fn row, _ -> if row.last_probe_time  != nil, do: row.last_probe_time |> pretty_datetime |> colorize_time end},
 			"boot_time"        => {"BOOT TIME",        fn row, _ -> if row.boot_time        != nil, do: row.boot_time       |> pretty_datetime |> colorize_time end},
+			"time_offset"      => {"TIME OFFSET",      fn row, _ -> if row.time_offset      != nil, do: row.time_offset     |> to_string end},
 			"kernel"           => {"KERNEL",           &format_kernel/2},
 			"pending_upgrades" => {"PENDING UPGRADES", &format_pending_upgrades/2},
 		}

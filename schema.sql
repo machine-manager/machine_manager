@@ -43,6 +43,7 @@ CREATE TABLE machines (
 	kernel            kernel,
 	boot_time         timestamp with time zone,
 	last_probe_time   timestamp with time zone,
+	time_offset       decimal,
 
 	-- Metadata
 	added_time        timestamp with time zone NOT NULL DEFAULT now(),

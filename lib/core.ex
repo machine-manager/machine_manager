@@ -65,6 +65,7 @@ defmodule MachineManager.Core do
 				ram_mb:            m.ram_mb,
 				core_count:        m.core_count,
 				thread_count:      m.thread_count,
+				time_offset:       m.time_offset,
 				kernel:            m.kernel,
 			})
 		|> join(:left, [m], t in subquery(tags_aggregate),             t.hostname == m.hostname)
@@ -384,6 +385,7 @@ defmodule MachineManager.Core do
 				country:          data.country,
 				kernel:           data.kernel,
 				boot_time:        data.boot_time_ms |> DateTime.from_unix!(:millisecond),
+				time_offset:      data.time_offset  |> Decimal.new,
 				last_probe_time:  DateTime.utc_now(),
 			])
 
@@ -533,7 +535,7 @@ defmodule MachineManager.Core do
 		# Make sure these atoms are in the atom table for our Poison.decode!
 		[
 			:ram_mb, :cpu_model_name, :cpu_architecture, :core_count, :thread_count,
-			:datacenter, :country, :kernel, :boot_time_ms, :pending_upgrades,
+			:datacenter, :country, :kernel, :boot_time_ms, :pending_upgrades, :time_offset,
 			# Keys in :pending_upgrades
 			:name, :old_version, :new_version, :origins, :architecture
 		]
