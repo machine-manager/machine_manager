@@ -505,10 +505,20 @@ defmodule MachineManager.CLI do
 			"thread_count"     => {"TH",               fn row, _ -> row.thread_count end},
 			"last_probe_time"  => {"PROBE TIME",       fn row, _ -> if row.last_probe_time  != nil, do: row.last_probe_time |> pretty_datetime |> colorize_time end},
 			"boot_time"        => {"BOOT TIME",        fn row, _ -> if row.boot_time        != nil, do: row.boot_time       |> pretty_datetime |> colorize_time end},
-			"time_offset"      => {"TIME OFFSET",      fn row, _ -> if row.time_offset      != nil, do: row.time_offset     |> to_string end},
+			"time_offset"      => {"TIME OFFSET",      &format_time_offset/2},
 			"kernel"           => {"KERNEL",           &format_kernel/2},
 			"pending_upgrades" => {"PENDING UPGRADES", &format_pending_upgrades/2},
 		}
+	end
+
+	defp format_time_offset(row, _tag_frequency) do
+		if row.time_offset != nil do
+			s = row.time_offset |> to_string
+			cond do
+				s |> String.starts_with?("-") -> s
+				true                          -> "+" <> s
+			end
+		end
 	end
 
 	defp format_kernel(row, _tag_frequency) do
