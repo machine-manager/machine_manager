@@ -513,10 +513,9 @@ defmodule MachineManager.CLI do
 
 	defp format_time_offset(row, _tag_frequency) do
 		if row.time_offset != nil do
-			s = row.time_offset |> to_string
-			cond do
-				s |> String.starts_with?("-") -> s
-				true                          -> "+" <> s
+			case row.time_offset |> to_string do
+				"-" <> s -> "-" <> s
+				s        -> "+" <> s
 			end
 		end
 	end
