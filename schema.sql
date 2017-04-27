@@ -32,22 +32,20 @@ CREATE TABLE machines (
 	wireguard_pubkey  wireguard_key NOT NULL,
 	ssh_port          ssh_port      NOT NULL,
 	datacenter        datacenter    NOT NULL,
-	country           country,
 
-	-- Hardware information
+	-- Probed information
 	ram_mb            int4_gt0,
 	cpu_model_name    cpu_model_name,
 	cpu_architecture  cpu_architecture,
 	core_count        int2_gt0,
 	thread_count      int2_gt0,
-
-	-- OS information
+	country           country,
 	kernel            kernel,
 	boot_time         timestamp with time zone,
+	last_probe_time   timestamp with time zone,
 
 	-- Metadata
 	added_time        timestamp with time zone NOT NULL DEFAULT now(),
-	last_probe_time   timestamp with time zone,
 
 	UNIQUE (public_ip, ssh_port),
 	UNIQUE (wireguard_ip),
