@@ -22,14 +22,14 @@ defmodule MachineManager.Mixfile do
 
 	defp deps do
 		[
-			{:gears,     ">= 0.10.0"},
-			{:mixmaker,  ">= 0.1.0"},
-			{:ecto,      ">= 2.1"},
-			{:postgrex,  ">= 0.13.0"},
-			{:optimus,   ">= 0.1.0"},
-			{:poison,    ">= 3.1.0"},
-			{:exexec,    ">= 0.1.0"},
-			{:decimal,   ">= 1.3.1"},
+			{:gears,    ">= 0.10.0"},
+			{:mixmaker, ">= 0.1.0"},
+			{:ecto,     ">= 2.1"},
+			{:postgrex, ">= 0.13.0"},
+			{:optimus,  ">= 0.1.0"},
+			{:poison,   ">= 3.1.0"},
+			{:exexec,   ">= 0.1.0"},
+			{:decimal,  ">= 1.3.1"},
 		]
 	end
 end
