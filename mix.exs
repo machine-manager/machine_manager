@@ -16,7 +16,7 @@ defmodule MachineManager.Mixfile do
 	def application do
 		[
 			extra_applications: [:logger, :exexec, :erlexec],
-			mod: {MachineManager.Application, []}
+			mod:                {MachineManager.Application, []},
 		]
 	end
 
