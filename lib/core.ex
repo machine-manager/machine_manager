@@ -17,7 +17,7 @@ end
 defmodule MachineManager.Core do
 	alias MachineManager.{
 		ScriptWriter, Parallel, Repo, UpgradeError, BootstrapError,
-		ConfigureError, ProbeError, WireGuard, ErlExecUtil}
+		ConfigureError, ProbeError, WireGuard, ErlExecUtil, Graph}
 	alias Gears.{StringUtil, FileUtil}
 	import Ecto.Query
 
@@ -43,6 +43,7 @@ defmodule MachineManager.Core do
 				hostname:          m.hostname,
 				public_ip:         m.public_ip,
 				wireguard_ip:      m.wireguard_ip,
+				wireguard_pubkey:  m.wireguard_pubkey,
 				wireguard_privkey: m.wireguard_privkey,
 				ssh_port:          m.ssh_port,
 				tags:              t.tags,
@@ -122,10 +123,12 @@ defmodule MachineManager.Core do
 		all_machines     = from("machines") |> list
 		all_machines_map = all_machines |> Enum.map(fn row -> {row.hostname, row} end) |> Map.new
 		graph            = make_connectivity_graph(all_machines)
-		IO.puts("Connectivity: #{inspect graph}")
+		#IO.puts("Connectivity:\n#{inspect graph, pretty: true}")
 		wrapped_configure = fn row ->
 			try do
-				wireguard_peers = graph[row.hostname].wg
+				wireguard_peers =
+					(graph.wireguard[row.hostname] || [])
+					|> Enum.map(fn hostname -> all_machines_map[hostname] end)
 				configure(row, wireguard_peers, show_progress)
 			rescue
 				e in ConfigureError -> {:configure_error, e.message}
@@ -156,17 +159,30 @@ defmodule MachineManager.Core do
 	end
 
 	def make_connectivity_graph(all_machines) do
-		for row <- all_machines do
+		connections = for row <- all_machines do
 			hostname    = row.hostname
 			connections = connections_for_machine(row)
 			{hostname, connections}
 		end
-		|> Map.new
-		# TODO: connect bidirectionally
+
+		wireguard_graph = connections
+			|> Enum.map(fn {hostname, connections} -> {hostname, connections[:wireguard]} end)
+			|> Enum.reject(&is_nil/1)
+			|> Map.new
+			|> Graph.bidirectionalize
+
+		public_graph = connections
+			|> Enum.map(fn {hostname, connections} -> {hostname, connections[:public]} end)
+			|> Enum.reject(&is_nil/1)
+			|> Map.new
+			|> Graph.bidirectionalize
+
+		%{wireguard: wireguard_graph, public: public_graph}
 	end
 
 	# Returns %{
-	#	wg: a list of hostnames that machine `row` should be connected to with WireGuard
+	#	wireguard: a list of hostnames that machine `row` should be connected to with WireGuard
+	#	public:    a list of hostnames that machine `row` should know about in /etc/hosts
 	# }
 	defp connections_for_machine(row) do
 		tags  = row.tags
@@ -175,13 +191,25 @@ defmodule MachineManager.Core do
 			load_connections_module_for_role(role)
 			mod = connections_module_for_role(role)
 			if function_exported?(mod, :connections, 2) do
-				%{wg: wg_querable} = apply(mod, :connections, [tags, from("machines")])
-				%{wg: wg_querable |> select([m], m.hostname) |> Repo.all |> MapSet.new}
+				connections_descriptor = apply(mod, :connections, [tags, from("machines")])
+				wireguard_hostnames = case connections_descriptor[:wireguard] do
+					nil       -> []
+					queryable -> queryable |> select([m], m.hostname) |> Repo.all
+				end |> MapSet.new
+				# Note: a wireguard connection also implies a public-internet connection
+				public_hostnames = case connections_descriptor[:public] do
+					nil       -> []
+					queryable -> queryable |> select([m], m.hostname) |> Repo.all
+				end |> MapSet.new |> MapSet.union(wireguard_hostnames)
+				%{wireguard: wireguard_hostnames, public: public_hostnames}
 			end
 		end
 		|> Enum.reject(&is_nil/1)
-		|> Enum.reduce(%{wg: MapSet.new}, fn(map, acc) ->
-			%{wg: MapSet.union(acc.wg, map[:wg] || MapSet.new)}
+		|> Enum.reduce(%{wireguard: MapSet.new, public: MapSet.new}, fn(map, acc) ->
+			%{
+				wireguard: MapSet.union(acc.wireguard, map[:wireguard] || MapSet.new),
+				public:    MapSet.union(acc.public,    map[:public]    || MapSet.new),
+			}
 		end)
 	end
 
@@ -220,8 +248,8 @@ defmodule MachineManager.Core do
 			wireguard_peers
 			|> Enum.map(fn row -> %{
 				public_key:  row.wireguard_pubkey,
-				endpoint:    "#{row.public_ip}:51820",
-				allowed_ips: [row.wireguard_ip]
+				endpoint:    "#{inet_to_ip(row.public_ip)}:51820",
+				allowed_ips: [inet_to_ip(row.wireguard_ip)]
 			} end)
 		wireguard_config = WireGuard.make_wireguard_config(row.wireguard_privkey, inet_to_ip(row.wireguard_ip), 51820, peers)
 		case transfer_file(script_file, row, ".cache/machine_manager/script",
@@ -489,7 +517,7 @@ defmodule MachineManager.Core do
 		graph        = make_connectivity_graph(all_machines)
 		wrapped_upgrade = fn row ->
 			try do
-				wireguard_peers = graph[row.hostname].wg
+				wireguard_peers = graph[row.hostname].wireguard
 				upgrade(row, wireguard_peers)
 			rescue
 				e in UpgradeError   -> {:upgrade_error,   e.message}
