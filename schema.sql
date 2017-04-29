@@ -16,7 +16,6 @@ CREATE DOMAIN ssh_port         AS integer      CHECK(VALUE > 0 AND VALUE <= 6553
 CREATE DOMAIN int4_gt0         AS integer      CHECK(VALUE > 0);
 CREATE DOMAIN int2_gt0         AS integer      CHECK(VALUE > 0);
 CREATE DOMAIN tag              AS varchar      CHECK(VALUE ~ '\A[^\x00-\x20]+\Z');
-CREATE DOMAIN connection       AS varchar      CHECK(VALUE ~ '\A[^\x00-\x20]+\Z');
 CREATE DOMAIN package          AS varchar      CHECK(VALUE ~ '\A[^\x00-\x20]+\Z');
 CREATE DOMAIN kernel           AS varchar(80)  CHECK(VALUE ~ '\A[^\x00-\x1F]+\Z');
 CREATE DOMAIN cpu_model_name   AS varchar(64)  CHECK(VALUE ~ '\A[^\x00-\x1F]+\Z');
@@ -61,12 +60,6 @@ CREATE TABLE machine_tags (
 	hostname  hostname NOT NULL REFERENCES machines,
 	tag       tag      NOT NULL,
 	PRIMARY KEY(hostname, tag)
-);
-
-CREATE TABLE machine_connections (
-	hostname   hostname   NOT NULL REFERENCES machines,
-	connection connection NOT NULL,
-	PRIMARY KEY(hostname, connection)
 );
 
 CREATE TABLE machine_pending_upgrades (

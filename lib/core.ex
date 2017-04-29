@@ -22,6 +22,16 @@ defmodule MachineManager.Core do
 	import Ecto.Query
 
 	def list(queryable) do
+		# We need to do our aggregations in subqueries to prevent rows from multiplying.
+		# The Ecto below is an the equivalent of the SQL:
+		_ = """
+		SELECT    machines.hostname, ip, ssh_port, t.tags, u.pending_upgrades, last_probe_time, boot_time,
+		          datacenter, country, cpu_model_name, cpu_architecture, ram_mb, core_count, thread_count, kernel
+		FROM      machines
+		LEFT JOIN (SELECT hostname, array_agg(tag::varchar)     AS tags             FROM machine_tags             GROUP BY 1) t USING (hostname)
+		LEFT JOIN (SELECT hostname, array_agg(package::varchar) AS pending_upgrades FROM machine_pending_upgrades GROUP BY 1) u USING (hostname);
+		"""
+
 		tags_aggregate =
 			from("machine_tags")
 			|> select([t], %{
@@ -29,14 +39,6 @@ defmodule MachineManager.Core do
 					tags:     fragment("array_agg(?::varchar)", t.tag)
 				})
 			|> group_by([t], t.hostname)
-
-		connections_aggregate =
-			from("machine_connections")
-			|> select([c], %{
-					hostname:    c.hostname,
-					connections: fragment("array_agg(?::varchar)", c.connection)
-				})
-			|> group_by([c], c.hostname)
 
 		pending_upgrades_aggregate =
 			from("machine_pending_upgrades")
@@ -47,14 +49,13 @@ defmodule MachineManager.Core do
 			|> group_by([u], u.hostname)
 
 		queryable
-		|> select([m, t, c, u], %{
+		|> select([m, t, u], %{
 				hostname:          m.hostname,
 				public_ip:         m.public_ip,
 				wireguard_ip:      m.wireguard_ip,
 				wireguard_privkey: m.wireguard_privkey,
 				ssh_port:          m.ssh_port,
 				tags:              t.tags,
-				connections:       c.connections,
 				pending_upgrades:  u.pending_upgrades,
 				last_probe_time:   m.last_probe_time,
 				boot_time:         m.boot_time,
@@ -69,12 +70,10 @@ defmodule MachineManager.Core do
 				kernel:            m.kernel,
 			})
 		|> join(:left, [m], t in subquery(tags_aggregate),             t.hostname == m.hostname)
-		|> join(:left, [m], c in subquery(connections_aggregate),      c.hostname == m.hostname)
 		|> join(:left, [m], u in subquery(pending_upgrades_aggregate), u.hostname == m.hostname)
 		|> order_by(asc: :hostname)
 		|> Repo.all
 		|> fix_aggregate(:tags)
-		|> fix_aggregate(:connections)
 		|> fix_aggregate(:pending_upgrades)
 	end
 
