@@ -22,16 +22,6 @@ defmodule MachineManager.Core do
 	import Ecto.Query
 
 	def list(queryable) do
-		# We need to do our aggregations in subqueries to prevent rows from multiplying.
-		# The Ecto below is an the equivalent of the SQL:
-		_ = """
-		SELECT    machines.hostname, ip, ssh_port, t.tags, u.pending_upgrades, last_probe_time, boot_time,
-		          datacenter, country, cpu_model_name, cpu_architecture, ram_mb, core_count, thread_count, kernel
-		FROM      machines
-		LEFT JOIN (SELECT hostname, array_agg(tag::varchar)     AS tags             FROM machine_tags             GROUP BY 1) t USING (hostname)
-		LEFT JOIN (SELECT hostname, array_agg(package::varchar) AS pending_upgrades FROM machine_pending_upgrades GROUP BY 1) u USING (hostname);
-		"""
-
 		tags_aggregate =
 			from("machine_tags")
 			|> select([t], %{
