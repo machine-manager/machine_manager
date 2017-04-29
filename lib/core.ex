@@ -111,13 +111,22 @@ defmodule MachineManager.Core do
 
 	def configure_many(queryable, handle_configure_result, handle_waiting, show_progress) do
 		rows = list(queryable)
-		if show_progress and rows |> length > 1 do
+		if show_progress and length(rows) > 1 do
 			raise(ConfigureError, "Can't show progress when configuring more than one machine")
 		end
-		write_scripts_for_machines(rows)
+		# make_connectivity_graph needs a script for every role combination used
+		# by _any_ machine to do bidirectional connectivity: any role may have a
+		# :connections that matches the machines we're configuring.  Therefore,
+		# instead of writing scripts for just the machines we want to configure,
+		# write scripts for all machines.
+		all_machines = from("machines") |> list
+		write_scripts_for_machines(all_machines)
+		graph = make_connectivity_graph(all_machines)
+		IO.puts("Connectivity: #{inspect graph}")
 		wrapped_configure = fn row ->
 			try do
-				configure(row, show_progress)
+				wireguard_peers = graph[row.hostname].wg
+				configure(row, wireguard_peers, show_progress)
 			rescue
 				e in ConfigureError -> {:configure_error, e.message}
 				e in BootstrapError -> {:bootstrap_error, e.message}
@@ -146,14 +155,71 @@ defmodule MachineManager.Core do
 		end
 	end
 
+	def make_connectivity_graph(all_machines) do
+		for row <- all_machines do
+			hostname    = row.hostname
+			connections = connections_for_machine(row, all_machines)
+			{hostname, connections}
+		end
+		|> Map.new
+		# TODO: connect bidirectionally
+	end
+
+	# Returns %{
+	#	wg: a list of rows representing other machines that machine `row` should
+	#      be connected to with WireGuard
+	# }
+	defp connections_for_machine(row, all_machines) do
+		tags  = row.tags
+		roles = ScriptWriter.roles_for_tags(tags)
+		for role <- roles do
+			load_connections_module_for_role(role)
+			mod = connections_module_for_role(role)
+			if function_exported?(mod, :connections, 2) do
+				%{wg: wg_querable} = apply(mod, :connections, [tags, all_machines])
+				%{wg: wg_querable |> list}
+			end
+		end
+	end
+
+	# For a given role, return the module that contains the `connections()` function.
+	@spec connections_module_for_role(String.t) :: module
+	defp connections_module_for_role(role) do
+		role
+		|> String.split("_")
+		|> Enum.map(&String.capitalize/1)
+		|> Enum.join
+		|> (fn s -> "Elixir.Role#{s}.Connections" end).()
+		|> String.to_atom
+	end
+
+	@spec load_connections_module_for_role(String.t) :: nil
+	defp load_connections_module_for_role(role) do
+		# Assume that all role projects are stored as siblings to machine_manager/
+		# First |> dirname is to walk about of lib/
+		role_projects_dir = __DIR__ |> Path.dirname |> Path.dirname
+		connections_exs   = Path.join(role_projects_dir, "role_#{role}/lib/connections.exs")
+		if File.exists?(connections_exs) do
+			Code.require_file(connections_exs)
+		end
+		nil
+	end
+
 	# This function assumes an up-to-date configuration script is already present
 	# in @script_cache (call write_scripts_for_machines first).
 	#
 	# Can raise ConfigureError or BootstrapError
-	def configure(row, show_progress \\ false) do
+	def configure(row, wireguard_peers, show_progress \\ false) do
 		roles            = ScriptWriter.roles_for_tags(row.tags)
 		script_file      = script_filename_for_roles(roles)
-		wireguard_config = WireGuard.make_wireguard_config(row.wireguard_privkey, inet_to_ip(row.wireguard_ip), 51820, [])
+		peers            =
+			wireguard_peers
+			|> Enum.map(fn row -> %{
+				public_key:  row.wireguard_pubkey,
+				endpoint:    "#{row.public_ip}:51820",
+				allowed_ips: [row.wireguard_ip]
+			} end)
+		wireguard_config = WireGuard.make_wireguard_config(row.wireguard_privkey, inet_to_ip(row.wireguard_ip), 51820, peers)
 		case transfer_file(script_file, row, ".cache/machine_manager/script",
 		                   before_rsync: "mkdir -p .cache/machine_manager") do
 			{"", 0}          -> nil
@@ -414,10 +480,13 @@ defmodule MachineManager.Core do
 	end
 
 	def upgrade_many(queryable, handle_upgrade_result, handle_waiting) do
-		rows = list(queryable)
+		rows         = list(queryable)
+		all_machines = from("machines") |> list
+		graph        = make_connectivity_graph(all_machines)
 		wrapped_upgrade = fn row ->
 			try do
-				upgrade(row)
+				wireguard_peers = graph[row.hostname].wg
+				upgrade(row, wireguard_peers)
 			rescue
 				e in UpgradeError   -> {:upgrade_error,   e.message}
 				e in ConfigureError -> {:configure_error, e.message}
@@ -433,7 +502,7 @@ defmodule MachineManager.Core do
 	end
 
 	# Can raise UpgradeError, ConfigureError, or BootstrapError
-	def upgrade(row) do
+	def upgrade(row, wireguard_peers) do
 		case row.pending_upgrades do
 			[]       -> :no_pending_upgrades
 			upgrades ->
@@ -469,7 +538,7 @@ defmodule MachineManager.Core do
 				end
 				# Because packages upgrades can do things we don't like (e.g. install
 				# files in /etc/cron.d), configure immediately after upgrading.
-				configure(row)
+				configure(row, wireguard_peers)
 				# Probe the machine so that we don't have obsolete 'pending upgrade' list
 				probe(row)
 				:upgraded
