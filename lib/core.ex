@@ -122,12 +122,12 @@ defmodule MachineManager.Core do
 		write_scripts_for_machines(rows)
 		all_machines     = from("machines") |> list
 		all_machines_map = all_machines |> Enum.map(fn row -> {row.hostname, row} end) |> Map.new
-		graph            = make_connectivity_graph(all_machines)
+		graphs           = connectivity_graphs(all_machines)
 		#IO.puts("Connectivity:\n#{inspect graph, pretty: true}")
 		wrapped_configure = fn row ->
 			try do
 				wireguard_peers =
-					(graph.wireguard[row.hostname] || [])
+					(graphs.wireguard[row.hostname] || [])
 					|> Enum.map(fn hostname -> all_machines_map[hostname] end)
 				configure(row, wireguard_peers, show_progress)
 			rescue
@@ -158,31 +158,29 @@ defmodule MachineManager.Core do
 		end
 	end
 
-	def make_connectivity_graph(all_machines) do
+	def connectivity_graphs(all_machines) do
 		connections = for row <- all_machines do
 			hostname    = row.hostname
 			connections = connections_for_machine(row)
 			{hostname, connections}
 		end
+		%{
+			wireguard: connectivity_graph(connections, :wireguard),
+			public:    connectivity_graph(connections, :public),
+		}
+	end
 
-		wireguard_graph = connections
-			|> Enum.map(fn {hostname, connections} -> {hostname, connections[:wireguard]} end)
-			|> Enum.reject(&is_nil/1)
-			|> Map.new
-			|> Graph.bidirectionalize
-
-		public_graph = connections
-			|> Enum.map(fn {hostname, connections} -> {hostname, connections[:public]} end)
-			|> Enum.reject(&is_nil/1)
-			|> Map.new
-			|> Graph.bidirectionalize
-
-		%{wireguard: wireguard_graph, public: public_graph}
+	defp connectivity_graph(connections, key) do
+		connections
+		|> Enum.map(fn {hostname, connections} -> {hostname, connections[key]} end)
+		|> Enum.reject(&is_nil/1)
+		|> Map.new
+		|> Graph.bidirectionalize
 	end
 
 	# Returns %{
-	#	wireguard: a list of hostnames that machine `row` should be connected to with WireGuard
-	#	public:    a list of hostnames that machine `row` should know about in /etc/hosts
+	#   wireguard: a list of hostnames that machine `row` should be connected to with WireGuard
+	#   public:    a list of hostnames that machine `row` should know about in /etc/hosts
 	# }
 	defp connections_for_machine(row) do
 		tags  = row.tags
@@ -513,12 +511,15 @@ defmodule MachineManager.Core do
 	end
 
 	def upgrade_many(queryable, handle_upgrade_result, handle_waiting) do
-		rows         = list(queryable)
-		all_machines = from("machines") |> list
-		graph        = make_connectivity_graph(all_machines)
+		rows             = list(queryable)
+		all_machines     = from("machines") |> list
+		all_machines_map = all_machines |> Enum.map(fn row -> {row.hostname, row} end) |> Map.new
+		graphs           = connectivity_graphs(all_machines)
 		wrapped_upgrade = fn row ->
 			try do
-				wireguard_peers = graph[row.hostname].wireguard
+				wireguard_peers =
+					(graphs.wireguard[row.hostname] || [])
+					|> Enum.map(fn hostname -> all_machines_map[hostname] end)
 				upgrade(row, wireguard_peers)
 			rescue
 				e in UpgradeError   -> {:upgrade_error,   e.message}
