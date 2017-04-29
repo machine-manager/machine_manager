@@ -114,6 +114,7 @@ defmodule MachineManager.Core do
 		if show_progress and rows |> length > 1 do
 			raise(ConfigureError, "Can't show progress when configuring more than one machine")
 		end
+		write_scripts_for_machines(rows)
 		wrapped_configure = fn row ->
 			try do
 				configure(row, show_progress)
@@ -129,19 +130,31 @@ defmodule MachineManager.Core do
 		Parallel.block_on_tasks(task_map, handle_configure_result, handle_waiting, 2000)
 	end
 
+	@script_cache Path.expand("~/.cache/machine_manager/script_cache")
+
+	# We use this to avoid compiling a script N times for N machines with the same roles.
+	defp write_scripts_for_machines(rows) do
+		unique_role_combinations =
+			rows
+			|> Enum.map(fn row -> ScriptWriter.roles_for_tags(row.tags) end)
+			|> MapSet.new
+		File.mkdir_p!(@script_cache)
+		for roles <- unique_role_combinations do
+			script_file = script_filename_for_roles(roles)
+			IO.puts("Writing script for roles #{inspect roles}")
+			ScriptWriter.write_script_for_roles(roles, script_file)
+		end
+	end
+
+	# This function assumes an up-to-date configuration script is already present
+	# in @script_cache (call write_scripts_for_machines first).
+	#
 	# Can raise ConfigureError or BootstrapError
 	def configure(row, show_progress \\ false) do
-		roles        = ScriptWriter.roles_for_tags(row.tags)
-		script_cache = Path.expand("~/.cache/machine_manager/script_cache")
-		basename     = case roles do
-			[] -> "__no_roles__"
-			_  -> roles |> Enum.sort |> Enum.join(",")
-		end
-		output_file  = Path.join(script_cache, basename)
-		File.mkdir_p!(script_cache)
-		ScriptWriter.write_script_for_roles(roles, output_file)
+		roles            = ScriptWriter.roles_for_tags(row.tags)
+		script_file      = script_filename_for_roles(roles)
 		wireguard_config = WireGuard.make_wireguard_config(row.wireguard_privkey, inet_to_ip(row.wireguard_ip), 51820, [])
-		case transfer_file(output_file, row, ".cache/machine_manager/script",
+		case transfer_file(script_file, row, ".cache/machine_manager/script",
 		                   before_rsync: "mkdir -p .cache/machine_manager") do
 			{"", 0}          -> nil
 			{out, exit_code} -> raise_upload_error(row.hostname, out, exit_code, "configuration script")
@@ -183,6 +196,14 @@ defmodule MachineManager.Core do
 						end
 				end
 		end
+	end
+
+	defp script_filename_for_roles(roles) do
+		basename = case roles do
+			[] -> "__no_roles__"
+			_  -> roles |> Enum.sort |> Enum.join(",")
+		end
+		Path.join(@script_cache, basename)
 	end
 
 	defp raise_upload_error(hostname, out, exit_code, upload_description) do
