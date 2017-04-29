@@ -114,14 +114,14 @@ defmodule MachineManager.Core do
 		if show_progress and length(rows) > 1 do
 			raise(ConfigureError, "Can't show progress when configuring more than one machine")
 		end
-		# make_connectivity_graph needs a script for every role combination used
-		# by _any_ machine to do bidirectional connectivity: any role may have a
-		# :connections that matches the machines we're configuring.  Therefore,
-		# instead of writing scripts for just the machines we want to configure,
-		# write scripts for all machines.
-		all_machines = from("machines") |> list
-		write_scripts_for_machines(all_machines)
-		graph = make_connectivity_graph(all_machines)
+		# Even through we're building a connectivity graph that includes all
+		# machines, we don't actually need to do compile scripts for all machines
+		# because make_connectivity_graph just runs require_file on
+		# connections.exs files.
+		write_scripts_for_machines(rows)
+		all_machines     = from("machines") |> list
+		all_machines_map = all_machines |> Enum.map(fn row -> {row.hostname, row} end) |> Map.new
+		graph            = make_connectivity_graph(all_machines)
 		IO.puts("Connectivity: #{inspect graph}")
 		wrapped_configure = fn row ->
 			try do
@@ -158,7 +158,7 @@ defmodule MachineManager.Core do
 	def make_connectivity_graph(all_machines) do
 		for row <- all_machines do
 			hostname    = row.hostname
-			connections = connections_for_machine(row, all_machines)
+			connections = connections_for_machine(row)
 			{hostname, connections}
 		end
 		|> Map.new
@@ -166,20 +166,23 @@ defmodule MachineManager.Core do
 	end
 
 	# Returns %{
-	#	wg: a list of rows representing other machines that machine `row` should
-	#      be connected to with WireGuard
+	#	wg: a list of hostnames that machine `row` should be connected to with WireGuard
 	# }
-	defp connections_for_machine(row, all_machines) do
+	defp connections_for_machine(row) do
 		tags  = row.tags
 		roles = ScriptWriter.roles_for_tags(tags)
 		for role <- roles do
 			load_connections_module_for_role(role)
 			mod = connections_module_for_role(role)
 			if function_exported?(mod, :connections, 2) do
-				%{wg: wg_querable} = apply(mod, :connections, [tags, all_machines])
-				%{wg: wg_querable |> list}
+				%{wg: wg_querable} = apply(mod, :connections, [tags, from("machines")])
+				%{wg: wg_querable |> select([m], m.hostname) |> Repo.all |> MapSet.new}
 			end
 		end
+		|> Enum.reject(&is_nil/1)
+		|> Enum.reduce(%{wg: MapSet.new}, fn(map, acc) ->
+			%{wg: MapSet.union(acc.wg, map[:wg] || MapSet.new)}
+		end)
 	end
 
 	# For a given role, return the module that contains the `connections()` function.
@@ -200,6 +203,7 @@ defmodule MachineManager.Core do
 		role_projects_dir = __DIR__ |> Path.dirname |> Path.dirname
 		connections_exs   = Path.join(role_projects_dir, "role_#{role}/lib/connections.exs")
 		if File.exists?(connections_exs) do
+			# TODO: don't assume the file in the working directory is known-good
 			Code.require_file(connections_exs)
 		end
 		nil

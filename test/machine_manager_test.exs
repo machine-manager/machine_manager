@@ -1,4 +1,4 @@
-alias MachineManager.{Core, CPU, ScriptWriter, WireGuard}
+alias MachineManager.{Core, CPU, ScriptWriter, WireGuard, Graph}
 
 defmodule MachineManager.CoreTest do
 	use ExUnit.Case
@@ -27,13 +27,13 @@ defmodule MachineManager.WireGuardTest do
 
 	test "make_wireguard_privkey" do
 		privkey = WireGuard.make_wireguard_privkey()
-		assert privkey |> byte_size == 32
+		assert privkey |> byte_size == 44
 	end
 
 	test "get_wireguard_pubkey" do
 		privkey = WireGuard.make_wireguard_privkey()
 		pubkey  = WireGuard.get_wireguard_pubkey(privkey)
-		assert pubkey |> byte_size == 32
+		assert pubkey |> byte_size == 44
 		assert pubkey != privkey
 		assert pubkey == WireGuard.get_wireguard_pubkey(privkey)
 	end
@@ -70,5 +70,17 @@ defmodule MachineManager.ScriptWriterTest do
 		assert ScriptWriter.module_for_role("hello")             == RoleHello
 		assert ScriptWriter.module_for_role("hello_world")       == RoleHelloWorld
 		assert ScriptWriter.module_for_role("hello_world_again") == RoleHelloWorldAgain
+	end
+end
+
+
+defmodule MachineManager.GraphTest do
+	use ExUnit.Case
+
+	test "bidirectionalize" do
+		assert Graph.bidirectionalize(%{}) == %{}
+		assert Graph.bidirectionalize(%{"a" => ["b"]})               == %{"a" => MapSet.new(["b"]),      "b" => MapSet.new(["a"])}
+		assert Graph.bidirectionalize(%{"a" => ["b"] |> MapSet.new}) == %{"a" => MapSet.new(["b"]),      "b" => MapSet.new(["a"])}
+		assert Graph.bidirectionalize(%{"a" => ["b", "c"]})          == %{"a" => MapSet.new(["b", "c"]), "b" => MapSet.new(["a"]), "c" => MapSet.new(["a"])}
 	end
 end
