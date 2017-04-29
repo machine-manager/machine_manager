@@ -249,7 +249,8 @@ defmodule MachineManager.Core do
 			|> Enum.map(fn row -> %{
 				public_key:  row.wireguard_pubkey,
 				endpoint:    "#{inet_to_ip(row.public_ip)}:51820",
-				allowed_ips: [inet_to_ip(row.wireguard_ip)]
+				allowed_ips: [inet_to_ip(row.wireguard_ip)],
+				comment:     row.hostname,
 			} end)
 		wireguard_config = WireGuard.make_wireguard_config(row.wireguard_privkey, inet_to_ip(row.wireguard_ip), 51820, peers)
 		case transfer_file(script_file, row, ".cache/machine_manager/script",

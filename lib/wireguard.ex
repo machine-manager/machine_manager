@@ -57,8 +57,12 @@ defmodule MachineManager.WireGuard do
 
 		""" <> (
 		peers
-		|> Enum.map(fn %{public_key: public_key, endpoint: endpoint, allowed_ips: allowed_ips} ->
+		|> Enum.map(fn %{public_key: public_key, endpoint: endpoint, allowed_ips: allowed_ips, comment: comment} ->
+				if comment =~ ~r/\n/ do
+					raise "WireGuard comment cannot contain a newline: #{inspect comment}"
+				end
 				"""
+				# #{comment}
 				[Peer]
 				PublicKey  = #{public_key}
 				Endpoint   = #{endpoint}
