@@ -282,12 +282,21 @@ defmodule MachineManager.Core do
 		script_file      = script_filename_for_roles(roles)
 		peers            =
 			wireguard_peers
-			|> Enum.map(fn row -> %{
-				public_key:  row.wireguard_pubkey,
-				endpoint:    "#{inet_to_ip(row.public_ip)}:51820",
-				allowed_ips: [inet_to_ip(row.wireguard_ip)],
-				comment:     row.hostname,
-			} end)
+			|> Enum.map(fn peer_row ->
+					disjoint = addresses_on_disjoint_networks?(
+						inet_to_tuple(row.public_ip),
+						inet_to_tuple(peer_row.public_ip))
+					endpoint = case disjoint do
+						true  -> nil
+						false -> "#{inet_to_ip(peer_row.public_ip)}:51820"
+					end
+					%{
+						public_key:  peer_row.wireguard_pubkey,
+						endpoint:    endpoint,
+						allowed_ips: [inet_to_ip(peer_row.wireguard_ip)],
+						comment:     peer_row.hostname,
+					}
+				end)
 		wireguard_config = WireGuard.make_wireguard_config(row.wireguard_privkey, inet_to_ip(row.wireguard_ip), 51820, peers)
 		case transfer_file(script_file, row, ".cache/machine_manager/script",
 		                   before_rsync: "mkdir -p .cache/machine_manager") do
