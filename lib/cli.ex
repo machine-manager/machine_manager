@@ -53,6 +53,13 @@ defmodule MachineManager.CLI do
 					name:  "ssh_config",
 					about: "Output an SSH config with all machines to stdout",
 				],
+				connectivity: [
+					name:  "connectivity",
+					about: "Output a machine connectivity graph as a .dot file to stdout, for use with Graphviz",
+					args: [
+						type: [required: true, help: ~s(Connectivity type: either "wireguard" or "public")],
+					]
+				],
 				wireguard_config: [
 					name:  "wireguard_config",
 					about: "Output a WireGuard configuration file for a machine to stdout",
@@ -206,6 +213,7 @@ defmodule MachineManager.CLI do
 			:bootstrap        -> bootstrap_many(args.hostname_regexp)
 			:configure        -> configure_many(args.hostname_regexp, flags.show_progress)
 			:ssh_config       -> ssh_config()
+			:connectivity     -> Core.connectivity(args.type)
 			:wireguard_config -> wireguard_config(args.hostname)
 			:probe            -> probe_many(args.hostname_regexp)
 			:exec             -> exec_many(args.hostname_regexp, args.command)

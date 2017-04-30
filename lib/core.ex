@@ -157,6 +157,42 @@ defmodule MachineManager.Core do
 		end
 	end
 
+	@doc """
+	Output a machine connectivity graph as a .dot file to stdout, for use with Graphviz
+	"""
+	@spec connectivity(String.t) :: nil
+	def connectivity(type_s) do
+		all_machines = from("machines") |> list
+		graphs       = connectivity_graphs(all_machines)
+		type         = type_s |> String.to_atom
+		edge_color   = color_for_connectivity_type(type)
+		edges        = graphs[type]
+			|> Enum.flat_map(fn {a, bs} ->
+					Enum.map(bs, fn b -> "#{inspect a} -- #{inspect b} [color=#{inspect edge_color}];" end)
+				end)
+		# `strict` dedupes the edges for us
+		dot = """
+		strict graph connectivity {
+			graph [fontname="sans-serif"];
+			node  [fontname="sans-serif", fontsize="10pt"];
+			edge  [fontname="sans-serif"];
+
+		#{edges |> Enum.join("\n") |> indent}
+		}
+		"""
+		:ok = IO.write(dot)
+	end
+
+	defp color_for_connectivity_type(:wireguard), do: "red"
+	defp color_for_connectivity_type(:public),    do: "black"
+
+	defp indent(s) do
+		s
+		|> String.split("\n")
+		|> Enum.map(fn line -> "\t#{line}" end)
+		|> Enum.join("\n")
+	end
+
 	def connectivity_graphs(all_machines) do
 		connections = for row <- all_machines do
 			hostname    = row.hostname
