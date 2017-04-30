@@ -283,12 +283,9 @@ defmodule MachineManager.Core do
 		peers            =
 			wireguard_peers
 			|> Enum.map(fn peer_row ->
-					disjoint = addresses_on_disjoint_networks?(
-						inet_to_tuple(row.public_ip),
-						inet_to_tuple(peer_row.public_ip))
-					endpoint = case disjoint do
-						true  -> nil
-						false -> "#{inet_to_ip(peer_row.public_ip)}:51820"
+					endpoint = case {ip_really_public?(inet_to_tuple(row.public_ip)), ip_really_public?(inet_to_tuple(peer_row.public_ip))} do
+						{true, false} -> nil
+						_             -> "#{inet_to_ip(peer_row.public_ip)}:51820"
 					end
 					%{
 						public_key:  peer_row.wireguard_pubkey,
@@ -339,6 +336,20 @@ defmodule MachineManager.Core do
 							false -> raise_configure_error(row.hostname, out, exit_code)
 						end
 				end
+		end
+	end
+
+	# Some of the machines I manage with machine_manager have a "public" IP
+	# address of 192.168.x.y, which is not reachable outside my LAN; these
+	# IP addresses shouldn't end up in WireGuard configurations or /etc/hosts
+	# files on machines that aren't on the LAN.
+	defp ip_really_public?({a, b, _c, _d}) do
+		case {a, b} do
+			{192, 168}                       -> false
+			{10, _}                          -> false
+			{172, n} when n >= 16 and n < 32 -> false
+			{127, _}                         -> false
+			_                                -> true
 		end
 	end
 
