@@ -91,15 +91,16 @@ defmodule MachineManager.Core do
 	end
 
 	def wireguard_config(hostname) do
-		row =
-			from("machines")
-			|> select([:wireguard_privkey, :wireguard_ip])
-			|> where([m], m.hostname == ^hostname)
-			|> Repo.all
-			|> hd
-		listen_port = 51820
-		peers       = []
-		WireGuard.make_wireguard_config(row.wireguard_privkey, inet_to_ip(row.wireguard_ip), listen_port, peers)
+		all_machines     = from("machines") |> list
+		all_machines_map = all_machines |> Enum.map(fn row -> {row.hostname, row} end) |> Map.new
+		row              = all_machines_map[hostname]
+		listen_port      = 51820
+		graphs           = connectivity_graphs(all_machines)
+		peer_rows        =
+			(graphs.wireguard[hostname] || [])
+			|> Enum.map(fn hostname -> all_machines_map[hostname] end)
+		wireguard_peers  = rows_to_wireguard_peers(row, peer_rows)
+		WireGuard.make_wireguard_config(row.wireguard_privkey, inet_to_ip(row.wireguard_ip), listen_port, wireguard_peers)
 	end
 
 	defp sql_row_to_ssh_config_entry(row) do
@@ -277,24 +278,11 @@ defmodule MachineManager.Core do
 	# in @script_cache (call write_scripts_for_machines first).
 	#
 	# Can raise ConfigureError or BootstrapError
-	def configure(row, wireguard_peers, show_progress \\ false) do
+	def configure(row, wireguard_peer_rows, show_progress \\ false) do
 		roles            = ScriptWriter.roles_for_tags(row.tags)
 		script_file      = script_filename_for_roles(roles)
-		peers            =
-			wireguard_peers
-			|> Enum.map(fn peer_row ->
-					endpoint = case {ip_really_public?(inet_to_tuple(row.public_ip)), ip_really_public?(inet_to_tuple(peer_row.public_ip))} do
-						{true, false} -> nil
-						_             -> "#{inet_to_ip(peer_row.public_ip)}:51820"
-					end
-					%{
-						public_key:  peer_row.wireguard_pubkey,
-						endpoint:    endpoint,
-						allowed_ips: [inet_to_ip(peer_row.wireguard_ip)],
-						comment:     peer_row.hostname,
-					}
-				end)
-		wireguard_config = WireGuard.make_wireguard_config(row.wireguard_privkey, inet_to_ip(row.wireguard_ip), 51820, peers)
+		wireguard_peers  = rows_to_wireguard_peers(row, wireguard_peer_rows)
+		wireguard_config = WireGuard.make_wireguard_config(row.wireguard_privkey, inet_to_ip(row.wireguard_ip), 51820, wireguard_peers)
 		case transfer_file(script_file, row, ".cache/machine_manager/script",
 		                   before_rsync: "mkdir -p .cache/machine_manager") do
 			{"", 0}          -> nil
@@ -337,6 +325,23 @@ defmodule MachineManager.Core do
 						end
 				end
 		end
+	end
+
+	@spec rows_to_wireguard_peers(map, [map]) :: [map]
+	defp rows_to_wireguard_peers(self_row, peer_rows) do
+		peer_rows
+		|> Enum.map(fn peer_row ->
+				endpoint = case {ip_really_public?(inet_to_tuple(self_row.public_ip)), ip_really_public?(inet_to_tuple(peer_row.public_ip))} do
+					{true, false} -> nil
+					_             -> "#{inet_to_ip(peer_row.public_ip)}:51820"
+				end
+				%{
+					public_key:  peer_row.wireguard_pubkey,
+					endpoint:    endpoint,
+					allowed_ips: [inet_to_ip(peer_row.wireguard_ip)],
+					comment:     peer_row.hostname,
+				}
+			end)
 	end
 
 	# Some of the machines I manage with machine_manager have a "public" IP
@@ -575,10 +580,10 @@ defmodule MachineManager.Core do
 		graphs           = connectivity_graphs(all_machines)
 		wrapped_upgrade = fn row ->
 			try do
-				wireguard_peers =
+				wireguard_peer_rows =
 					(graphs.wireguard[row.hostname] || [])
 					|> Enum.map(fn hostname -> all_machines_map[hostname] end)
-				upgrade(row, wireguard_peers)
+				upgrade(row, wireguard_peer_rows)
 			rescue
 				e in UpgradeError   -> {:upgrade_error,   e.message}
 				e in ConfigureError -> {:configure_error, e.message}
@@ -594,7 +599,7 @@ defmodule MachineManager.Core do
 	end
 
 	# Can raise UpgradeError, ConfigureError, or BootstrapError
-	def upgrade(row, wireguard_peers) do
+	def upgrade(row, wireguard_peer_rows) do
 		case row.pending_upgrades do
 			[]       -> :no_pending_upgrades
 			upgrades ->
@@ -630,7 +635,7 @@ defmodule MachineManager.Core do
 				end
 				# Because packages upgrades can do things we don't like (e.g. install
 				# files in /etc/cron.d), configure immediately after upgrading.
-				configure(row, wireguard_peers)
+				configure(row, wireguard_peer_rows)
 				# Probe the machine so that we don't have obsolete 'pending upgrade' list
 				probe(row)
 				:upgraded
