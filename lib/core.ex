@@ -179,9 +179,10 @@ defmodule MachineManager.Core do
 	end
 
 	# Returns %{
-	#   wireguard: a list of hostnames that machine `row` should be connected to with WireGuard
-	#   public:    a list of hostnames that machine `row` should know about in /etc/hosts
+	#   wireguard: a partial list of hostnames that machine `row` should be connected to with WireGuard
+	#   public:    a partial list of hostnames that machine `row` should know about in /etc/hosts
 	# }
+	# Partial because the lists don't include machines with roles connected to *this* machine.
 	defp connections_for_machine(row) do
 		tags  = row.tags
 		roles = ScriptWriter.roles_for_tags(tags)
