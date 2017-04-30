@@ -219,8 +219,9 @@ defmodule MachineManager.Core do
 	# }
 	# Partial because the lists don't include machines with roles connected to *this* machine.
 	defp partial_connections_for_machine(row) do
-		tags  = row.tags
-		roles = ScriptWriter.roles_for_tags(tags)
+		tags     = row.tags
+		hostname = row.hostname
+		roles    = ScriptWriter.roles_for_tags(tags)
 		for role <- roles do
 			load_connections_module_for_role(role)
 			mod = connections_module_for_role(role)
@@ -229,12 +230,13 @@ defmodule MachineManager.Core do
 				wireguard_hostnames = case connections_descriptor[:wireguard] do
 					nil       -> []
 					queryable -> queryable |> select([m], m.hostname) |> Repo.all
-				end |> MapSet.new
-				# Note: a wireguard connection also implies a public-internet connection
+				end |> MapSet.new |> MapSet.delete(hostname)
+				# We use MapSet.delete(hostname) because a machine should not be connected to itself.
 				public_hostnames = case connections_descriptor[:public] do
 					nil       -> []
 					queryable -> queryable |> select([m], m.hostname) |> Repo.all
-				end |> MapSet.new |> MapSet.union(wireguard_hostnames)
+				end |> MapSet.new |> MapSet.delete(hostname) |> MapSet.union(wireguard_hostnames)
+				# A wireguard connection also implies a public-internet connection.
 				%{wireguard: wireguard_hostnames, public: public_hostnames}
 			end
 		end
