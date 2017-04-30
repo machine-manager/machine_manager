@@ -123,7 +123,6 @@ defmodule MachineManager.Core do
 		all_machines     = from("machines") |> list
 		all_machines_map = all_machines |> Enum.map(fn row -> {row.hostname, row} end) |> Map.new
 		graphs           = connectivity_graphs(all_machines)
-		#IO.puts("Connectivity:\n#{inspect graph, pretty: true}")
 		wrapped_configure = fn row ->
 			try do
 				wireguard_peers =
