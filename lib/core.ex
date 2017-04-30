@@ -161,7 +161,7 @@ defmodule MachineManager.Core do
 	def connectivity_graphs(all_machines) do
 		connections = for row <- all_machines do
 			hostname    = row.hostname
-			connections = connections_for_machine(row)
+			connections = partial_connections_for_machine(row)
 			{hostname, connections}
 		end
 		%{
@@ -183,7 +183,7 @@ defmodule MachineManager.Core do
 	#   public:    a partial list of hostnames that machine `row` should know about in /etc/hosts
 	# }
 	# Partial because the lists don't include machines with roles connected to *this* machine.
-	defp connections_for_machine(row) do
+	defp partial_connections_for_machine(row) do
 		tags  = row.tags
 		roles = ScriptWriter.roles_for_tags(tags)
 		for role <- roles do
