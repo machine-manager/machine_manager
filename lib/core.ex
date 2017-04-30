@@ -333,6 +333,19 @@ defmodule MachineManager.Core do
 		end
 	end
 
+	# Some of the machines I manage with machine_manager have a "public" IP
+	# address of 192.168.x.y, which is not reachable outside my LAN; these
+	# IP addresses shouldn't end up in WireGuard configurations or /etc/hosts
+	# files on machines that aren't on the LAN.
+	def addresses_on_disjoint_networks?({a1, b1, _c1, _d1}, {a2, b2, _c2, _d2}) do
+		case {{a1, b1}, {a2, b2}} do
+			{{192, 168}, {192, 168}} -> false
+			{{192, 168}, {_, _}}     -> true
+			{{_, _},     {192, 168}} -> true
+			_                        -> false
+		end
+	end
+
 	defp script_filename_for_roles(roles) do
 		basename = case roles do
 			[] -> "__no_roles__"

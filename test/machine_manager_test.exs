@@ -19,6 +19,13 @@ defmodule MachineManager.CoreTest do
 	test "get_unused_wireguard_ip" do
 		{_, _, _, _} = Core.get_unused_wireguard_ip()
 	end
+
+	test "addresses_on_disjoint_networks?" do
+		assert Core.addresses_on_disjoint_networks?({1, 2, 3, 4},     {1, 2, 3, 5})     == false
+		assert Core.addresses_on_disjoint_networks?({1, 2, 3, 4},     {192, 168, 0, 1}) == true
+		assert Core.addresses_on_disjoint_networks?({192, 168, 0, 1}, {1, 2, 3, 4})     == true
+		assert Core.addresses_on_disjoint_networks?({192, 168, 0, 1}, {192, 168, 0, 2}) == false
+	end
 end
 
 
