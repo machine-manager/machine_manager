@@ -61,11 +61,15 @@ defmodule MachineManager.WireGuard do
 				if comment =~ ~r/\n/ do
 					raise "WireGuard comment cannot contain a newline: #{inspect comment}"
 				end
+				endpoint_line = case endpoint do
+					nil -> ""
+					_   -> "Endpoint   = #{endpoint}\n"
+				end
 				"""
 				# #{comment}
 				[Peer]
 				PublicKey  = #{public_key}
-				Endpoint   = #{endpoint}
+				#{endpoint_line}\
 				AllowedIPs = #{allowed_ips |> Enum.join(", ")}
 				"""
 		end)

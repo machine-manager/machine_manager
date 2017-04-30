@@ -37,6 +37,52 @@ defmodule MachineManager.WireGuardTest do
 		assert pubkey != privkey
 		assert pubkey == WireGuard.get_wireguard_pubkey(privkey)
 	end
+
+	test "make_wireguard_config" do
+		private_key = "X" |> String.duplicate(44)
+		address     = "1.2.3.4"
+		listen_port = 51820
+		peers       = []
+		conf        = WireGuard.make_wireguard_config(private_key, address, listen_port, peers)
+		assert conf ==
+			"""
+			[Interface]
+			PrivateKey = #{private_key}
+			ListenPort = #{listen_port}
+			Address    = #{address}
+
+			"""
+	end
+
+	test "make_wireguard_config with peers" do
+		private_key = "X" |> String.duplicate(44)
+		address     = "1.2.3.4"
+		listen_port = 51820
+		public_key  = "Y" |> String.duplicate(44)
+		peers       = [
+			%{public_key: public_key, endpoint: "5.6.7.8", allowed_ips: ["10.10.0.1"],              comment: "Comment"},
+			%{public_key: public_key, endpoint: nil,       allowed_ips: ["10.10.0.2", "10.10.0.3"], comment: "Comment"},
+		]
+		conf        = WireGuard.make_wireguard_config(private_key, address, listen_port, peers)
+		assert conf ==
+			"""
+			[Interface]
+			PrivateKey = #{private_key}
+			ListenPort = #{listen_port}
+			Address    = #{address}
+
+			# Comment
+			[Peer]
+			PublicKey  = #{public_key}
+			Endpoint   = 5.6.7.8
+			AllowedIPs = 10.10.0.1
+
+			# Comment
+			[Peer]
+			PublicKey  = #{public_key}
+			AllowedIPs = 10.10.0.2, 10.10.0.3
+			"""
+	end
 end
 
 
