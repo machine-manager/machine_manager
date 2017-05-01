@@ -327,6 +327,25 @@ defmodule MachineManager.Core do
 		end
 	end
 
+	defp raise_upload_error(hostname, out, exit_code, upload_description) do
+		raise(ConfigureError,
+			"""
+			Uploading #{upload_description} to machine #{inspect hostname} \
+			failed with exit code #{exit_code}; output:
+
+			#{out}
+			""")
+	end
+
+	defp raise_configure_error(hostname, out, exit_code) do
+		raise(ConfigureError,
+			"""
+			Configuring machine #{inspect hostname} failed with exit code #{exit_code}; output:
+
+			#{out}
+			""")
+	end
+
 	@spec rows_to_wireguard_peers(map, [map]) :: [map]
 	defp rows_to_wireguard_peers(self_row, peer_rows) do
 		peer_rows
@@ -364,25 +383,6 @@ defmodule MachineManager.Core do
 			_  -> roles |> Enum.sort |> Enum.join(",")
 		end
 		Path.join(@script_cache, basename)
-	end
-
-	defp raise_upload_error(hostname, out, exit_code, upload_description) do
-		raise(ConfigureError,
-			"""
-			Uploading #{upload_description} to machine #{inspect hostname} \
-			failed with exit code #{exit_code}; output:
-
-			#{out}
-			""")
-	end
-
-	defp raise_configure_error(hostname, out, exit_code) do
-		raise(ConfigureError,
-			"""
-			Configuring machine #{inspect hostname} failed with exit code #{exit_code}; output:
-
-			#{out}
-			""")
 	end
 
 	defp erlang_missing_error?(out) do
