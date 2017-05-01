@@ -350,8 +350,11 @@ defmodule MachineManager.Core do
 	defp rows_to_wireguard_peers(self_row, peer_rows) do
 		peer_rows
 		|> Enum.map(fn peer_row ->
-				endpoint = case {ip_really_public?(inet_to_tuple(self_row.public_ip)), ip_really_public?(inet_to_tuple(peer_row.public_ip))} do
-					{true, false} -> nil
+				# Some machines may have a "public" IP that is actually on a LAN;
+				# these addresses should not end up in WireGuard configurations or
+				# /etc/hosts files on machines that aren't on the LAN.
+				endpoint = case {ip_private?(inet_to_tuple(self_row.public_ip)), ip_private?(inet_to_tuple(peer_row.public_ip))} do
+					{false, true} -> nil
 					_             -> "#{inet_to_ip(peer_row.public_ip)}:51820"
 				end
 				%{
@@ -361,20 +364,6 @@ defmodule MachineManager.Core do
 					comment:     peer_row.hostname,
 				}
 			end)
-	end
-
-	# Some of the machines I manage with machine_manager have a "public" IP
-	# address of 192.168.x.y, which is not reachable outside my LAN; these
-	# IP addresses shouldn't end up in WireGuard configurations or /etc/hosts
-	# files on machines that aren't on the LAN.
-	defp ip_really_public?({a, b, _c, _d}) do
-		case {a, b} do
-			{192, 168}                       -> false
-			{10, _}                          -> false
-			{172, n} when n >= 16 and n < 32 -> false
-			{127, _}                         -> false
-			_                                -> true
-		end
 	end
 
 	defp script_filename_for_roles(roles) do
@@ -961,5 +950,16 @@ defmodule MachineManager.Core do
 
 	def inet_to_tuple(%Postgrex.INET{address: {a, b, c, d}}) do
 		{a, b, c, d}
+	end
+
+	@spec ip_private?({integer, integer, integer, integer}) :: boolean
+	def ip_private?({a, b, _c, _d}) do
+		case {a, b} do
+			{192, 168}                       -> true
+			{10, _}                          -> true
+			{172, n} when n >= 16 and n < 32 -> true
+			{127, _}                         -> true
+			_                                -> false
+		end
 	end
 end

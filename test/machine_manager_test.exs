@@ -19,6 +19,20 @@ defmodule MachineManager.CoreTest do
 	test "get_unused_wireguard_ip" do
 		{_, _, _, _} = Core.get_unused_wireguard_ip()
 	end
+
+	test "ip_private?" do
+		assert Core.ip_private?({0, 0, 0, 0})         == false
+		assert Core.ip_private?({1, 2, 3, 4})         == false
+		assert Core.ip_private?({192, 168, 0, 0})     == true
+		assert Core.ip_private?({192, 168, 255, 255}) == true
+		assert Core.ip_private?({10, 0, 0, 0})        == true
+		assert Core.ip_private?({10, 255, 255, 255})  == true
+		assert Core.ip_private?({172, 16, 0, 0})      == true
+		assert Core.ip_private?({172, 31, 255, 255})  == true
+		assert Core.ip_private?({172, 32, 0, 0})      == false
+		assert Core.ip_private?({127, 0, 0, 0})       == true
+		assert Core.ip_private?({127, 255, 255, 255}) == true
+	end
 end
 
 
