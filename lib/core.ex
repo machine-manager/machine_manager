@@ -359,7 +359,7 @@ defmodule MachineManager.Core do
 		(graphs.wireguard[self_row.hostname] || [])
 		|> Enum.map(fn hostname ->
 				peer_row = all_machines_map[hostname]
-				endpoint = case ip_connectable?(inet_to_tuple(self_row.public_ip), inet_to_tuple(peer_row.public_ip)) do
+				endpoint = case ip_connectable?(self_row.public_ip, peer_row.public_ip) do
 					true  -> "#{inet_to_ip(peer_row.public_ip)}:51820"
 					false -> nil
 				end
@@ -390,7 +390,7 @@ defmodule MachineManager.Core do
 			|> Enum.map(fn hostname ->
 					self_ip = self_row.public_ip
 					peer_ip = all_machines_map[hostname].public_ip
-					case ip_connectable?(inet_to_tuple(self_ip), inet_to_tuple(peer_ip)) do
+					case ip_connectable?(self_ip, peer_ip) do
 						true  -> [inet_to_ip(peer_ip), "#{hostname}.pi"]
 						false -> nil
 					end
@@ -990,6 +990,8 @@ defmodule MachineManager.Core do
 			_             -> true
 		end
 	end
+
+	def ip_private?(%Postgrex.INET{address: address}), do: ip_private?(address)
 
 	@spec ip_private?({integer, integer, integer, integer}) :: boolean
 	def ip_private?({a, b, _c, _d}) do
