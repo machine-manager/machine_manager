@@ -90,6 +90,14 @@ defmodule MachineManager.Core do
 		|> Enum.join("\n")
 	end
 
+	defp sql_row_to_ssh_config_entry(row) do
+		"""
+		Host #{row.hostname}
+		  Hostname #{inet_to_ip(row.public_ip)}
+		  Port #{row.ssh_port}
+		"""
+	end
+
 	@spec wireguard_config(String.t) :: String.t
 	def wireguard_config(hostname) do
 		all_machines     = from("machines") |> list
@@ -108,14 +116,6 @@ defmodule MachineManager.Core do
 		row              = all_machines_map[hostname]
 		graphs           = connectivity_graphs(all_machines)
 		make_hosts_file(row, graphs, all_machines_map)
-	end
-
-	defp sql_row_to_ssh_config_entry(row) do
-		"""
-		Host #{row.hostname}
-		  Hostname #{inet_to_ip(row.public_ip)}
-		  Port #{row.ssh_port}
-		"""
 	end
 
 	def configure_many(queryable, handle_configure_result, handle_waiting, show_progress) do
