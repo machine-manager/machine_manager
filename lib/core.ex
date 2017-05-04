@@ -360,17 +360,17 @@ defmodule MachineManager.Core do
 			end)
 	end
 
-	def hosts_file(self_row, graphs, all_machines) do
+	def hosts_file(self_row, graphs, all_machines_map) do
 		wireguard_hosts =
 			graphs.wireguard[self_row.hostname]
 			|> Enum.map(fn hostname ->
-					wireguard_ip = all_machines[hostname].wireguard_ip
+					wireguard_ip = all_machines_map[hostname].wireguard_ip
 					"#{wireguard_ip}\t#{hostname}.wg"
 				end)
 		public_hosts =
 			graphs.public[self_row.hostname]
 			|> Enum.map(fn hostname ->
-					public_ip = all_machines[hostname].public_ip
+					public_ip = all_machines_map[hostname].public_ip
 					"#{public_ip}\t#{hostname}.pi"
 				end)
 		(wireguard_hosts ++ public_hosts) |> Enum.join("\n")
