@@ -96,10 +96,7 @@ defmodule MachineManager.Core do
 		row              = all_machines_map[hostname]
 		listen_port      = 51820
 		graphs           = connectivity_graphs(all_machines)
-		peer_rows        =
-			(graphs.wireguard[hostname] || [])
-			|> Enum.map(fn hostname -> all_machines_map[hostname] end)
-		wireguard_peers  = rows_to_wireguard_peers(row, peer_rows)
+		wireguard_peers  = get_wireguard_peers(row, graphs, all_machines_map)
 		WireGuard.make_wireguard_config(row.wireguard_privkey, inet_to_ip(row.wireguard_ip), listen_port, wireguard_peers)
 	end
 
@@ -121,15 +118,12 @@ defmodule MachineManager.Core do
 		# because make_connectivity_graph just runs require_file on
 		# connections.exs files.
 		write_scripts_for_machines(rows)
-		all_machines     = from("machines") |> list
-		all_machines_map = all_machines |> Enum.map(fn row -> {row.hostname, row} end) |> Map.new
-		graphs           = connectivity_graphs(all_machines)
+		all_machines      = from("machines") |> list
+		all_machines_map  = all_machines |> Enum.map(fn row -> {row.hostname, row} end) |> Map.new
+		graphs            = connectivity_graphs(all_machines)
 		wrapped_configure = fn row ->
 			try do
-				wireguard_peers =
-					(graphs.wireguard[row.hostname] || [])
-					|> Enum.map(fn hostname -> all_machines_map[hostname] end)
-				configure(row, wireguard_peers, show_progress)
+				configure(row, graphs, all_machines_map, show_progress)
 			rescue
 				e in ConfigureError -> {:configure_error, e.message}
 				e in BootstrapError -> {:bootstrap_error, e.message}
@@ -278,10 +272,10 @@ defmodule MachineManager.Core do
 	# in @script_cache (call write_scripts_for_machines first).
 	#
 	# Can raise ConfigureError or BootstrapError
-	def configure(row, wireguard_peer_rows, show_progress \\ false) do
+	def configure(row, graphs, all_machines_map, show_progress \\ false) do
 		roles            = ScriptWriter.roles_for_tags(row.tags)
 		script_file      = script_filename_for_roles(roles)
-		wireguard_peers  = rows_to_wireguard_peers(row, wireguard_peer_rows)
+		wireguard_peers  = get_wireguard_peers(row, graphs, all_machines_map)
 		wireguard_config = WireGuard.make_wireguard_config(row.wireguard_privkey, inet_to_ip(row.wireguard_ip), 51820, wireguard_peers)
 		case transfer_file(script_file, row, ".cache/machine_manager/script",
 		                   before_rsync: "mkdir -p .cache/machine_manager") do
@@ -346,10 +340,10 @@ defmodule MachineManager.Core do
 			""")
 	end
 
-	@spec rows_to_wireguard_peers(map, [map]) :: [map]
-	defp rows_to_wireguard_peers(self_row, peer_rows) do
-		peer_rows
-		|> Enum.map(fn peer_row ->
+	defp get_wireguard_peers(self_row, graphs, all_machines_map) do
+		(graphs.wireguard[self_row.hostname] || [])
+		|> Enum.map(fn hostname ->
+				peer_row = all_machines_map[hostname]
 				# Some machines may have a "public" IP that is actually on a LAN;
 				# these addresses should not end up in WireGuard configurations or
 				# /etc/hosts files on machines that aren't on the LAN.
@@ -585,10 +579,7 @@ defmodule MachineManager.Core do
 		graphs           = connectivity_graphs(all_machines)
 		wrapped_upgrade = fn row ->
 			try do
-				wireguard_peer_rows =
-					(graphs.wireguard[row.hostname] || [])
-					|> Enum.map(fn hostname -> all_machines_map[hostname] end)
-				upgrade(row, wireguard_peer_rows)
+				upgrade(row, graphs, all_machines_map)
 			rescue
 				e in UpgradeError   -> {:upgrade_error,   e.message}
 				e in ConfigureError -> {:configure_error, e.message}
@@ -604,7 +595,7 @@ defmodule MachineManager.Core do
 	end
 
 	# Can raise UpgradeError, ConfigureError, or BootstrapError
-	def upgrade(row, wireguard_peer_rows) do
+	def upgrade(row, graphs, all_machines_map) do
 		case row.pending_upgrades do
 			[]       -> :no_pending_upgrades
 			upgrades ->
@@ -640,7 +631,7 @@ defmodule MachineManager.Core do
 				end
 				# Because packages upgrades can do things we don't like (e.g. install
 				# files in /etc/cron.d), configure immediately after upgrading.
-				configure(row, wireguard_peer_rows)
+				configure(row, graphs, all_machines_map)
 				# Probe the machine so that we don't have obsolete 'pending upgrade' list
 				probe(row)
 				:upgraded
