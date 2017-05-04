@@ -124,8 +124,8 @@ defmodule MachineManager.Core do
 			raise(ConfigureError, "Can't show progress when configuring more than one machine")
 		end
 		# Even through we're building a connectivity graph that includes all
-		# machines, we don't actually need to do compile scripts for all machines
-		# because make_connectivity_graph just runs require_file on
+		# machines, we don't actually need to do compile scripts for *all*
+		# machines because make_connectivity_graph just runs require_file on
 		# connections.exs files.
 		write_scripts_for_machines(rows)
 		all_machines      = from("machines") |> list
@@ -597,6 +597,8 @@ defmodule MachineManager.Core do
 
 	def upgrade_many(queryable, handle_upgrade_result, handle_waiting) do
 		rows             = list(queryable)
+		# upgrade calls configure, which expects updated scripts in @script_cache
+		write_scripts_for_machines(rows)
 		all_machines     = from("machines") |> list
 		all_machines_map = all_machines |> Enum.map(fn row -> {row.hostname, row} end) |> Map.new
 		graphs           = connectivity_graphs(all_machines)
