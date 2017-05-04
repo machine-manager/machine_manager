@@ -378,7 +378,7 @@ defmodule MachineManager.Core do
 					public_ip = all_machines_map[hostname].public_ip
 					"#{inet_to_ip(public_ip)}\t#{hostname}.pi"
 				end)
-		(wireguard_hosts ++ public_hosts) |> Enum.join("\n")
+		(wireguard_hosts ++ [""] ++ public_hosts ++ [""]) |> Enum.join("\n")
 	end
 
 	defp script_filename_for_roles(roles) do
