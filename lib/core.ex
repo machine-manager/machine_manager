@@ -277,6 +277,7 @@ defmodule MachineManager.Core do
 		script_file      = script_filename_for_roles(roles)
 		wireguard_peers  = get_wireguard_peers(row, graphs, all_machines_map)
 		wireguard_config = WireGuard.make_wireguard_config(row.wireguard_privkey, inet_to_ip(row.wireguard_ip), 51820, wireguard_peers)
+		hosts_file       = make_hosts_file(row, graphs, all_machines_map)
 		case transfer_file(script_file, row, ".cache/machine_manager/script",
 		                   before_rsync: "mkdir -p .cache/machine_manager") do
 			{"", 0}          -> nil
@@ -285,6 +286,10 @@ defmodule MachineManager.Core do
 		case transfer_content(wireguard_config, row, ".cache/machine_manager/wg0.conf") do
 			{"", 0}          -> nil
 			{out, exit_code} -> raise_upload_error(row.hostname, out, exit_code, "WireGuard configuration")
+		end
+		case transfer_content(hosts_file, row, ".cache/machine_manager/hosts") do
+			{"", 0}          -> nil
+			{out, exit_code} -> raise_upload_error(row.hostname, out, exit_code, "hosts file")
 		end
 		arguments = [".cache/machine_manager/script"] ++ row.tags
 		for arg <- arguments do
@@ -360,18 +365,18 @@ defmodule MachineManager.Core do
 			end)
 	end
 
-	def hosts_file(self_row, graphs, all_machines_map) do
+	def make_hosts_file(self_row, graphs, all_machines_map) do
 		wireguard_hosts =
 			graphs.wireguard[self_row.hostname]
 			|> Enum.map(fn hostname ->
 					wireguard_ip = all_machines_map[hostname].wireguard_ip
-					"#{wireguard_ip}\t#{hostname}.wg"
+					"#{inet_to_ip(wireguard_ip)}\t#{hostname}.wg"
 				end)
 		public_hosts =
 			graphs.public[self_row.hostname]
 			|> Enum.map(fn hostname ->
 					public_ip = all_machines_map[hostname].public_ip
-					"#{public_ip}\t#{hostname}.pi"
+					"#{inet_to_ip(public_ip)}\t#{hostname}.pi"
 				end)
 		(wireguard_hosts ++ public_hosts) |> Enum.join("\n")
 	end
