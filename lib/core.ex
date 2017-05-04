@@ -373,6 +373,12 @@ defmodule MachineManager.Core do
 	end
 
 	defp make_hosts_file(self_row, graphs, all_machines_map) do
+		preamble_hosts = [
+			"127.0.0.1\tlocalhost #{self_row.hostname}",
+			"::1\t\tlocalhost ip6-localhost ip6-loopback",
+			"ff02::1\t\tip6-allnodes",
+			"ff02::2\t\tip6-allrouters",
+		]
 		wireguard_hosts =
 			graphs.wireguard[self_row.hostname]
 			|> Enum.map(fn hostname ->
@@ -390,7 +396,7 @@ defmodule MachineManager.Core do
 					end
 				end)
 			|> Enum.reject(&is_nil/1)
-		(wireguard_hosts ++ [""] ++ public_hosts ++ [""]) |> Enum.join("\n")
+		(preamble_hosts ++ [""] ++ wireguard_hosts ++ [""] ++ public_hosts ++ [""]) |> Enum.join("\n")
 	end
 
 	defp mention_peer_ip?(self_ip, peer_ip) do
