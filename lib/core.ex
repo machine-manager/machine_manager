@@ -380,13 +380,13 @@ defmodule MachineManager.Core do
 			["ff02::2",   "ip6-allrouters"],
 		]
 		wireguard_hosts =
-			graphs.wireguard[self_row.hostname]
+			Stream.concat([self_row.hostname], graphs.wireguard[self_row.hostname])
 			|> Enum.map(fn hostname ->
 					wireguard_ip = all_machines_map[hostname].wireguard_ip
 					[inet_to_ip(wireguard_ip), "#{hostname}.wg"]
 				end)
 		public_hosts =
-			graphs.public[self_row.hostname]
+			Stream.concat([self_row.hostname], graphs.public[self_row.hostname])
 			|> Enum.map(fn hostname ->
 					self_ip = self_row.public_ip
 					peer_ip = all_machines_map[hostname].public_ip
