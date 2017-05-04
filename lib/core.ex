@@ -349,12 +349,9 @@ defmodule MachineManager.Core do
 		(graphs.wireguard[self_row.hostname] || [])
 		|> Enum.map(fn hostname ->
 				peer_row = all_machines_map[hostname]
-				# Some machines may have a "public" IP that is actually on a LAN;
-				# these addresses should not end up in WireGuard configurations or
-				# /etc/hosts files on machines that aren't on the LAN.
-				endpoint = case {ip_private?(inet_to_tuple(self_row.public_ip)), ip_private?(inet_to_tuple(peer_row.public_ip))} do
-					{false, true} -> nil
-					_             -> "#{inet_to_ip(peer_row.public_ip)}:51820"
+				endpoint = case mention_peer_ip?(self_row.public_ip, peer_row.public_ip) do
+					true  -> "#{inet_to_ip(peer_row.public_ip)}:51820"
+					false -> nil
 				end
 				%{
 					public_key:  peer_row.wireguard_pubkey,
@@ -365,7 +362,7 @@ defmodule MachineManager.Core do
 			end)
 	end
 
-	def make_hosts_file(self_row, graphs, all_machines_map) do
+	defp make_hosts_file(self_row, graphs, all_machines_map) do
 		wireguard_hosts =
 			graphs.wireguard[self_row.hostname]
 			|> Enum.map(fn hostname ->
@@ -375,10 +372,24 @@ defmodule MachineManager.Core do
 		public_hosts =
 			graphs.public[self_row.hostname]
 			|> Enum.map(fn hostname ->
-					public_ip = all_machines_map[hostname].public_ip
-					"#{inet_to_ip(public_ip)}\t#{hostname}.pi"
+					self_ip = self_row.public_ip
+					peer_ip = all_machines_map[hostname].public_ip
+					case mention_peer_ip?(self_ip, peer_ip) do
+						true  -> "#{inet_to_ip(peer_ip)}\t#{hostname}.pi"
+						false -> nil
+					end
 				end)
+			|> Enum.reject(&is_nil/1)
 		(wireguard_hosts ++ [""] ++ public_hosts ++ [""]) |> Enum.join("\n")
+	end
+
+	defp mention_peer_ip?(self_ip, peer_ip) do
+		# Some machines may have a "public" IP that is actually on a LAN;
+		# these addresses should not end up on machines that aren't on the LAN.
+		case {ip_private?(inet_to_tuple(self_ip)), ip_private?(inet_to_tuple(peer_ip))} do
+			{false, true} -> false
+			_             -> true
+		end
 	end
 
 	defp script_filename_for_roles(roles) do
