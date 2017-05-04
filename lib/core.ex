@@ -18,7 +18,7 @@ defmodule MachineManager.Core do
 	alias MachineManager.{
 		ScriptWriter, Parallel, Repo, UpgradeError, BootstrapError,
 		ConfigureError, ProbeError, WireGuard, ErlExecUtil, Graph}
-	alias Gears.{StringUtil, FileUtil}
+	alias Gears.{StringUtil, FileUtil, TableFormatter}
 	import Ecto.Query
 
 	def list(queryable) do
@@ -374,16 +374,16 @@ defmodule MachineManager.Core do
 
 	defp make_hosts_file(self_row, graphs, all_machines_map) do
 		preamble_hosts = [
-			"127.0.0.1\tlocalhost #{self_row.hostname}",
-			"::1\t\tlocalhost ip6-localhost ip6-loopback",
-			"ff02::1\t\tip6-allnodes",
-			"ff02::2\t\tip6-allrouters",
+			["127.0.0.1", "localhost #{self_row.hostname}"],
+			["::1",       "localhost ip6-localhost ip6-loopback"],
+			["ff02::1",   "ip6-allnodes"],
+			["ff02::2",   "ip6-allrouters"],
 		]
 		wireguard_hosts =
 			graphs.wireguard[self_row.hostname]
 			|> Enum.map(fn hostname ->
 					wireguard_ip = all_machines_map[hostname].wireguard_ip
-					"#{inet_to_ip(wireguard_ip)}\t#{hostname}.wg"
+					[inet_to_ip(wireguard_ip), "#{hostname}.wg"]
 				end)
 		public_hosts =
 			graphs.public[self_row.hostname]
@@ -391,12 +391,12 @@ defmodule MachineManager.Core do
 					self_ip = self_row.public_ip
 					peer_ip = all_machines_map[hostname].public_ip
 					case mention_peer_ip?(self_ip, peer_ip) do
-						true  -> "#{inet_to_ip(peer_ip)}\t#{hostname}.pi"
+						true  -> [inet_to_ip(peer_ip), "#{hostname}.pi"]
 						false -> nil
 					end
 				end)
 			|> Enum.reject(&is_nil/1)
-		(preamble_hosts ++ [""] ++ wireguard_hosts ++ [""] ++ public_hosts ++ [""]) |> Enum.join("\n")
+		TableFormatter.format(preamble_hosts ++ [[]] ++ wireguard_hosts ++ [[]] ++ public_hosts)
 	end
 
 	defp mention_peer_ip?(self_ip, peer_ip) do
