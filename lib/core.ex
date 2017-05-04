@@ -978,8 +978,8 @@ defmodule MachineManager.Core do
 		"#{a}.#{b}.#{c}.#{d}"
 	end
 
-	def inet_to_tuple(%Postgrex.INET{address: {a, b, c, d}}) do
-		{a, b, c, d}
+	def inet_to_tuple(%Postgrex.INET{address: address}) do
+		address
 	end
 
 	defp ip_connectable?(source, dest) do
