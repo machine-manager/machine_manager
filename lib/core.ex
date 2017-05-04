@@ -90,6 +90,7 @@ defmodule MachineManager.Core do
 		|> Enum.join("\n")
 	end
 
+	@spec wireguard_config(String.t) :: String.t
 	def wireguard_config(hostname) do
 		all_machines     = from("machines") |> list
 		all_machines_map = all_machines |> Enum.map(fn row -> {row.hostname, row} end) |> Map.new
@@ -98,6 +99,15 @@ defmodule MachineManager.Core do
 		graphs           = connectivity_graphs(all_machines)
 		wireguard_peers  = get_wireguard_peers(row, graphs, all_machines_map)
 		WireGuard.make_wireguard_config(row.wireguard_privkey, inet_to_ip(row.wireguard_ip), listen_port, wireguard_peers)
+	end
+
+	@spec hosts_file(String.t) :: String.t
+	def hosts_file(hostname) do
+		all_machines     = from("machines") |> list
+		all_machines_map = all_machines |> Enum.map(fn row -> {row.hostname, row} end) |> Map.new
+		row              = all_machines_map[hostname]
+		graphs           = connectivity_graphs(all_machines)
+		make_hosts_file(row, graphs, all_machines_map)
 	end
 
 	defp sql_row_to_ssh_config_entry(row) do

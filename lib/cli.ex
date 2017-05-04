@@ -67,6 +67,13 @@ defmodule MachineManager.CLI do
 						hostname: [required: true],
 					],
 				],
+				hosts_file: [
+					name:  "hosts_file",
+					about: "Output an /etc/hosts file for a machine to stdout",
+					args: [
+						hostname: [required: true],
+					],
+				],
 				script: [
 					name:  "script",
 					about: "Write a configuration script suitable for a particular machine.  Note that tags must be passed to the script as arguments when it is run on the target machine.",
@@ -215,6 +222,7 @@ defmodule MachineManager.CLI do
 			:ssh_config       -> ssh_config()
 			:connectivity     -> Core.connectivity(args.type)
 			:wireguard_config -> wireguard_config(args.hostname)
+			:hosts_file       -> hosts_file(args.hostname)
 			:probe            -> probe_many(args.hostname_regexp)
 			:exec             -> exec_many(args.hostname_regexp, args.command)
 			:upgrade          -> upgrade_many(args.hostname_regexp)
@@ -245,6 +253,10 @@ defmodule MachineManager.CLI do
 
 	def wireguard_config(hostname) do
 		:ok = IO.write(Core.wireguard_config(hostname))
+	end
+
+	def hosts_file(hostname) do
+		:ok = IO.write(Core.hosts_file(hostname))
 	end
 
 	def bootstrap_many(hostname_regexp) do
