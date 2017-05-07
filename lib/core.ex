@@ -115,7 +115,7 @@ defmodule MachineManager.Core do
 		all_machines_map = all_machines |> Enum.map(fn row -> {row.hostname, row} end) |> Map.new
 		row              = all_machines_map[hostname]
 		graphs           = connectivity_graphs(all_machines)
-		subdomains       = %{wireguard: %{}, public: %{}}
+		subdomains       = subdomains(all_machines)
 		make_hosts_file(row, graphs, subdomains, all_machines_map)
 	end
 
@@ -255,6 +255,40 @@ defmodule MachineManager.Core do
 		end)
 	end
 
+	def subdomains(all_machines) do
+		tuples = for row <- all_machines do
+			hostname   = row.hostname
+			{hostname, subdomains_for_machine(row)}
+		end
+		%{
+			wireguard: tuples |> Enum.map(fn {hostname, m} -> {hostname, m.wireguard} end) |> Map.new,
+			public:    tuples |> Enum.map(fn {hostname, m} -> {hostname, m.public}    end) |> Map.new,
+		}
+	end
+
+	defp subdomains_for_machine(row) do
+		tags  = row.tags
+		roles = ScriptWriter.roles_for_tags(tags)
+		for role <- roles do
+			load_connections_module_for_role(role)
+			mod = connections_module_for_role(role)
+			if function_exported?(mod, :subdomains, 1) do
+				subdomains_descriptor = apply(mod, :subdomains, [tags])
+				%{
+					wireguard: (subdomains_descriptor[:wireguard] || []) |> MapSet.new,
+					public:    (subdomains_descriptor[:public]    || []) |> MapSet.new,
+				}
+			end
+		end
+		|> Enum.reject(&is_nil/1)
+		|> Enum.reduce(%{wireguard: MapSet.new, public: MapSet.new}, fn(map, acc) ->
+			%{
+				wireguard: MapSet.union(acc.wireguard, map[:wireguard]),
+				public:    MapSet.union(acc.public,    map[:public]),
+			}
+		end)
+	end
+
 	# For a given role, return the module that contains the `connections()` function.
 	@spec connections_module_for_role(String.t) :: module
 	defp connections_module_for_role(role) do
@@ -288,7 +322,7 @@ defmodule MachineManager.Core do
 		script_file      = script_filename_for_roles(roles)
 		wireguard_peers  = get_wireguard_peers(row, graphs, all_machines_map)
 		wireguard_config = WireGuard.make_wireguard_config(row.wireguard_privkey, to_ip_string(row.wireguard_ip), 51820, wireguard_peers)
-		subdomains       = %{wireguard: %{}, public: %{}}
+		subdomains       = subdomains(all_machines_map |> Map.values)
 		hosts_file       = make_hosts_file(row, graphs, subdomains, all_machines_map)
 		case transfer_file(script_file, row, ".cache/machine_manager/script",
 		                   before_rsync: "mkdir -p .cache/machine_manager") do
