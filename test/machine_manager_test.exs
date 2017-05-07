@@ -50,6 +50,44 @@ defmodule MachineManager.CoreTest do
 			1.1.1.1   me.pi
 			"""
 	end
+
+	test "make_hosts_file with a public connection" do
+		self_row         = %{hostname: "me",   public_ip: "1.1.1.1", wireguard_ip: "10.10.0.1"}
+		peer_row         = %{hostname: "peer", public_ip: "1.1.1.2", wireguard_ip: "10.10.0.2"}
+		graphs           = %{wireguard: %{}, public: %{"me" => ["peer"]}}
+		all_machines_map = %{"me" => self_row, "peer" => peer_row}
+		assert Core.make_hosts_file(self_row, graphs, all_machines_map) |> IO.iodata_to_binary ==
+			"""
+			127.0.0.1 localhost me
+			::1       localhost ip6-localhost ip6-loopback
+			ff02::1   ip6-allnodes
+			ff02::2   ip6-allrouters
+
+			10.10.0.1 me.wg
+
+			1.1.1.1   me.pi
+			1.1.1.2   peer.pi
+			"""
+	end
+
+	test "make_hosts_file with a WireGuard connection" do
+		self_row         = %{hostname: "me",   public_ip: "1.1.1.1", wireguard_ip: "10.10.0.1"}
+		peer_row         = %{hostname: "peer", public_ip: "1.1.1.2", wireguard_ip: "10.10.0.2"}
+		graphs           = %{wireguard: %{"me" => ["peer"]}, public: %{}}
+		all_machines_map = %{"me" => self_row, "peer" => peer_row}
+		assert Core.make_hosts_file(self_row, graphs, all_machines_map) |> IO.iodata_to_binary ==
+			"""
+			127.0.0.1 localhost me
+			::1       localhost ip6-localhost ip6-loopback
+			ff02::1   ip6-allnodes
+			ff02::2   ip6-allrouters
+
+			10.10.0.1 me.wg
+			10.10.0.2 peer.wg
+
+			1.1.1.1   me.pi
+			"""
+	end
 end
 
 
