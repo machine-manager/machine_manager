@@ -93,7 +93,7 @@ defmodule MachineManager.Core do
 	defp sql_row_to_ssh_config_entry(row) do
 		"""
 		Host #{row.hostname}
-		  Hostname #{inet_to_ip(row.public_ip)}
+		  Hostname #{to_ip_string(row.public_ip)}
 		  Port #{row.ssh_port}
 		"""
 	end
@@ -106,7 +106,7 @@ defmodule MachineManager.Core do
 		listen_port      = 51820
 		graphs           = connectivity_graphs(all_machines)
 		wireguard_peers  = get_wireguard_peers(row, graphs, all_machines_map)
-		WireGuard.make_wireguard_config(row.wireguard_privkey, inet_to_ip(row.wireguard_ip), listen_port, wireguard_peers)
+		WireGuard.make_wireguard_config(row.wireguard_privkey, to_ip_string(row.wireguard_ip), listen_port, wireguard_peers)
 	end
 
 	@spec hosts_file(String.t) :: String.t
@@ -286,7 +286,7 @@ defmodule MachineManager.Core do
 		roles            = ScriptWriter.roles_for_tags(row.tags)
 		script_file      = script_filename_for_roles(roles)
 		wireguard_peers  = get_wireguard_peers(row, graphs, all_machines_map)
-		wireguard_config = WireGuard.make_wireguard_config(row.wireguard_privkey, inet_to_ip(row.wireguard_ip), 51820, wireguard_peers)
+		wireguard_config = WireGuard.make_wireguard_config(row.wireguard_privkey, to_ip_string(row.wireguard_ip), 51820, wireguard_peers)
 		hosts_file       = make_hosts_file(row, graphs, all_machines_map)
 		case transfer_file(script_file, row, ".cache/machine_manager/script",
 		                   before_rsync: "mkdir -p .cache/machine_manager") do
@@ -360,19 +360,19 @@ defmodule MachineManager.Core do
 		|> Enum.map(fn hostname ->
 				peer_row = all_machines_map[hostname]
 				endpoint = case ip_connectable?(self_row.public_ip, peer_row.public_ip) do
-					true  -> "#{inet_to_ip(peer_row.public_ip)}:51820"
+					true  -> "#{to_ip_string(peer_row.public_ip)}:51820"
 					false -> nil
 				end
 				%{
 					public_key:  peer_row.wireguard_pubkey,
 					endpoint:    endpoint,
-					allowed_ips: [inet_to_ip(peer_row.wireguard_ip)],
+					allowed_ips: [to_ip_string(peer_row.wireguard_ip)],
 					comment:     peer_row.hostname,
 				}
 			end)
 	end
 
-	defp make_hosts_file(self_row, graphs, all_machines_map) do
+	def make_hosts_file(self_row, graphs, all_machines_map) do
 		preamble_hosts = [
 			["127.0.0.1", "localhost #{self_row.hostname}"],
 			["::1",       "localhost ip6-localhost ip6-loopback"],
@@ -380,18 +380,18 @@ defmodule MachineManager.Core do
 			["ff02::2",   "ip6-allrouters"],
 		]
 		wireguard_hosts =
-			Stream.concat([self_row.hostname], graphs.wireguard[self_row.hostname])
+			Stream.concat([self_row.hostname], graphs.wireguard[self_row.hostname] || [])
 			|> Enum.map(fn hostname ->
 					wireguard_ip = all_machines_map[hostname].wireguard_ip
-					[inet_to_ip(wireguard_ip), "#{hostname}.wg"]
+					[to_ip_string(wireguard_ip), "#{hostname}.wg"]
 				end)
 		public_hosts =
-			Stream.concat([self_row.hostname], graphs.public[self_row.hostname])
+			Stream.concat([self_row.hostname], graphs.public[self_row.hostname] || [])
 			|> Enum.map(fn hostname ->
 					self_ip = self_row.public_ip
 					peer_ip = all_machines_map[hostname].public_ip
 					case ip_connectable?(self_ip, peer_ip) do
-						true  -> [inet_to_ip(peer_ip), "#{hostname}.pi"]
+						true  -> [to_ip_string(peer_ip), "#{hostname}.pi"]
 						false -> nil
 					end
 				end)
@@ -536,7 +536,7 @@ defmodule MachineManager.Core do
 			_   -> ["--rsync-path", "#{before_rsync} && rsync"]
 		end ++
 		["-e", "ssh -p #{row.ssh_port}", "--protect-args", "--executability"] ++
-		source_files ++ ["root@#{inet_to_ip(row.public_ip)}:#{dest}"]
+		source_files ++ ["root@#{to_ip_string(row.public_ip)}:#{dest}"]
 		System.cmd("rsync", args)
 	end
 
@@ -740,7 +740,7 @@ defmodule MachineManager.Core do
 
 	@spec run_on_machine(%{public_ip: Postgrex.INET.t, ssh_port: integer}, String.t, boolean) :: {String.t, integer}
 	defp run_on_machine(row, command, capture \\ true) do
-		ssh("root", inet_to_ip(row.public_ip), row.ssh_port, command, capture)
+		ssh("root", to_ip_string(row.public_ip), row.ssh_port, command, capture)
 	end
 
 	@doc """
@@ -786,8 +786,8 @@ defmodule MachineManager.Core do
 		{:ok, _} = Repo.transaction(fn ->
 			Repo.insert_all("machines", [[
 				hostname:          hostname,
-				public_ip:         ip_to_inet(public_ip),
-				wireguard_ip:      ip_to_inet(get_unused_wireguard_ip()),
+				public_ip:         to_ip_postgrex(public_ip),
+				wireguard_ip:      to_ip_postgrex(get_unused_wireguard_ip()),
 				wireguard_privkey: wireguard_privkey,
 				wireguard_pubkey:  wireguard_pubkey,
 				datacenter:        datacenter,
@@ -801,7 +801,7 @@ defmodule MachineManager.Core do
 		existing_ips = from("machines")
 			|> select([m], m.wireguard_ip)
 			|> Repo.all
-			|> Enum.map(&inet_to_tuple/1)
+			|> Enum.map(&to_ip_tuple/1)
 			|> MapSet.new
 		wireguard_start = {10, 10, 0, 0}
 		wireguard_end   = {10, 10, 255, 255}
@@ -886,7 +886,7 @@ defmodule MachineManager.Core do
 	def set_public_ip(hostname, public_ip) do
 		from("machines")
 		|> where([m], m.hostname == ^hostname)
-		|> Repo.update_all(set: [public_ip: ip_to_inet(public_ip)])
+		|> Repo.update_all(set: [public_ip: to_ip_postgrex(public_ip)])
 		nil
 	end
 
@@ -965,24 +965,20 @@ defmodule MachineManager.Core do
 		{a, b, c, d}
 	end
 
-	defp ip_to_inet(ip) when is_tuple(ip),  do: %Postgrex.INET{address: ip}
-	defp ip_to_inet(ip) when is_binary(ip), do: %Postgrex.INET{address: ip_to_tuple(ip)}
+	defp to_ip_postgrex(ip) when is_tuple(ip),  do: %Postgrex.INET{address: ip}
+	defp to_ip_postgrex(ip) when is_binary(ip), do: %Postgrex.INET{address: to_ip_tuple(ip)}
 
-	@spec ip_to_tuple(String.t) :: ip_tuple
-	defp ip_to_tuple(ip) do
-		ip
+	@spec to_ip_tuple(String.t) :: ip_tuple
+	def to_ip_tuple(s) when is_binary(s) do
+		s
 		|> String.split(".")
 		|> Enum.map(&String.to_integer/1)
 		|> List.to_tuple
 	end
+	def to_ip_tuple(%Postgrex.INET{address: address}),       do: address
 
-	def inet_to_ip(%Postgrex.INET{address: {a, b, c, d}}) do
-		"#{a}.#{b}.#{c}.#{d}"
-	end
-
-	def inet_to_tuple(%Postgrex.INET{address: address}) do
-		address
-	end
+	def to_ip_string(s) when is_binary(s),                   do: s
+	def to_ip_string(%Postgrex.INET{address: {a, b, c, d}}), do: "#{a}.#{b}.#{c}.#{d}"
 
 	defp ip_connectable?(source, dest) do
 		# Some machines may have a "public" IP that is actually on a LAN;
@@ -993,6 +989,7 @@ defmodule MachineManager.Core do
 		end
 	end
 
+	def ip_private?(s) when is_binary(s),              do: ip_private?(to_ip_tuple(s))
 	def ip_private?(%Postgrex.INET{address: address}), do: ip_private?(address)
 
 	@spec ip_private?(ip_tuple) :: boolean

@@ -33,6 +33,23 @@ defmodule MachineManager.CoreTest do
 		assert Core.ip_private?({127, 0, 0, 0})       == true
 		assert Core.ip_private?({127, 255, 255, 255}) == true
 	end
+
+	test "make_hosts_file" do
+		self_row         = %{hostname: "me", public_ip: "1.1.1.1", wireguard_ip: "10.10.0.1"}
+		graphs           = %{wireguard: %{}, public: %{}}
+		all_machines_map = %{"me" => self_row}
+		assert Core.make_hosts_file(self_row, graphs, all_machines_map) |> IO.iodata_to_binary ==
+			"""
+			127.0.0.1 localhost me
+			::1       localhost ip6-localhost ip6-loopback
+			ff02::1   ip6-allnodes
+			ff02::2   ip6-allrouters
+
+			10.10.0.1 me.wg
+
+			1.1.1.1   me.pi
+			"""
+	end
 end
 
 
