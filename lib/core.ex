@@ -385,28 +385,27 @@ defmodule MachineManager.Core do
 			Stream.concat([self_row.hostname], graphs.wireguard[self_row.hostname] || [])
 			|> Enum.flat_map(fn hostname ->
 					wireguard_ip = all_machines_map[hostname].wireguard_ip
-					hostnames    = ["#{hostname}.wg"] ++ \
-						Enum.map(subdomains.wireguard[hostname] || [], fn sub -> "#{sub}.#{hostname}.wg" end)
-					for hostname <- hostnames do
+					for hostname <- hostnames("#{hostname}.wg", subdomains.wireguard[hostname]) do
 						[to_ip_string(wireguard_ip), hostname]
 					end
 				end)
 		public_hosts =
 			Stream.concat([self_row.hostname], graphs.public[self_row.hostname] || [])
 			|> Enum.flat_map(fn hostname ->
-					self_ip = self_row.public_ip
 					peer_ip = all_machines_map[hostname].public_ip
-					case ip_connectable?(self_ip, peer_ip) do
+					case ip_connectable?(self_row.public_ip, peer_ip) do
 						true  ->
-							hostnames = ["#{hostname}.pi"] ++ \
-								Enum.map(subdomains.public[hostname] || [], fn sub -> "#{sub}.#{hostname}.pi" end)
-							for hostname <- hostnames do
+							for hostname <- hostnames("#{hostname}.pi", subdomains.public[hostname]) do
 								[to_ip_string(peer_ip), hostname]
 							end
 						false -> []
 					end
 				end)
 		TableFormatter.format(preamble_hosts ++ [[]] ++ wireguard_hosts ++ [[]] ++ public_hosts)
+	end
+
+	defp hostnames(base, subdomains) do
+		[base | Enum.map(subdomains || [], fn sub -> "#{sub}.#{base}" end)]
 	end
 
 	defp script_filename_for_roles(roles) do
