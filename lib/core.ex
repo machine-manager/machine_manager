@@ -798,7 +798,7 @@ defmodule MachineManager.Core do
 			true  -> {true,    :stdout}
 			false -> {&echo/3, &echo/3}
 		end
-		# We use erlexec instead of System.cmd or Porcelain because Erlang's
+		# Use erlexec instead of System.cmd or Porcelain because Erlang's
 		# open_port({spawn_executable, ...}, ...) breaks with ssh ControlMaster:
 		# it waits for the daemonized ssh [mux] process to exit before returning.
 		# erlexec doesn't have this problem.  The cause of the problem is probably
