@@ -454,10 +454,6 @@ defmodule MachineManager.Core do
 		out =~ ~r"/usr/bin/env:.*escript.*: No such file or directory"
 	end
 
-	defmacro content(filename) do
-		File.read!(filename)
-	end
-
 	def bootstrap_many(queryable, handle_bootstrap_result, handle_waiting) do
 		rows = list(queryable)
 		wrapped_bootstrap = fn row ->
@@ -520,6 +516,10 @@ defmodule MachineManager.Core do
 					#{out}
 					""")
 		end
+	end
+
+	defmacro content(filename) do
+		File.read!(filename)
 	end
 
 	defp custom_packages_apt_key() do
