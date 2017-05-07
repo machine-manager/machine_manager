@@ -801,8 +801,8 @@ defmodule MachineManager.Core do
 		# Use erlexec instead of System.cmd or Porcelain because Erlang's
 		# open_port({spawn_executable, ...}, ...) breaks with ssh ControlMaster:
 		# it waits for the daemonized ssh [mux] process to exit before returning.
-		# erlexec doesn't have this problem.  The cause of the problem is probably
-		# https://bugzilla.mindrot.org/show_bug.cgi?id=1988 (xenial comes with
+		# erlexec doesn't have this problem.  The probable cause of this problem
+		# is https://bugzilla.mindrot.org/show_bug.cgi?id=1988 (xenial comes with
 		# OpenSSH 7.2p2, released before the fix.)
 		args = ["-q", "-p", "#{ssh_port}", "#{user}@#{ip}", command]
 		Exexec.run(["/usr/bin/ssh" | args], stdout: stdout, stderr: stderr, sync: true, env: env_for_ssh())
