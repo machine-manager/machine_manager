@@ -478,16 +478,10 @@ defmodule MachineManager.Core do
 	"""
 	def bootstrap(row) do
 		with \
-			{_, 0} <-
-				run_on_machine(row,
-					"""
-					apt-get update -q &&
-					env DEBIAN_FRONTEND=noninteractive apt-get --quiet --assume-yes install rsync &&
-					mkdir -p /etc/custom-packages-client ~/.cache/machine_manager/bootstrap
-					"""),
 			{"", 0} <-
 				transfer_content(custom_packages_spiped_key(), row,
-					"/etc/custom-packages-client/spiped_key"),
+					"/etc/custom-packages-client/spiped_key",
+					before_rsync: "mkdir -p /etc/custom-packages-client ~/.cache/machine_manager/bootstrap"),
 			{"", 0} <-
 				transfer_file(custom_packages_client_deb_filename(), row,
 					".cache/machine_manager/bootstrap/custom-packages-client.deb"),
@@ -571,7 +565,10 @@ defmodule MachineManager.Core do
 	# remote before the rsync transfer.  This can be used to create a directory
 	# needed for the transfer to succeed.
 	#
-	# Returns {rsync_out, rsync_exit_code}
+	# If rsync appears to be missing on the remote, this will install rsync
+	# and try again.
+	#
+	# Returns {rsync_stdout_and_stderr, rsync_exit_code}
 	defp transfer_files(source_files, row, dest, opts) do
 		before_rsync = opts[:before_rsync]
 		args = case before_rsync do
@@ -580,7 +577,26 @@ defmodule MachineManager.Core do
 		end ++
 		["-e", "ssh -p #{row.ssh_port}", "--protect-args", "--executability"] ++
 		source_files ++ ["root@#{to_ip_string(row.public_ip)}:#{dest}"]
-		System.cmd("rsync", args)
+		case System.cmd("rsync", args, stderr_to_stdout: true) do
+			{out, 0}         -> {out, 0}
+			{out, exit_code} ->
+				cond do
+					String.contains?(out, "rsync: command not found") ->
+						case install_rsync_on_machine(row) do
+							{_, 0} -> System.cmd("rsync", args, stderr_to_stdout: true)
+							{_, _} -> {out, exit_code}
+						end
+					true -> {out, exit_code}
+				end
+		end
+	end
+
+	defp install_rsync_on_machine(row) do
+		run_on_machine(row,
+			"""
+			apt-get update -q &&
+			env DEBIAN_FRONTEND=noninteractive apt-get --quiet --assume-yes install rsync
+			""")
 	end
 
 	def probe_many(queryable, handle_probe_result, handle_waiting) do
