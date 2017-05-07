@@ -115,7 +115,8 @@ defmodule MachineManager.Core do
 		all_machines_map = all_machines |> Enum.map(fn row -> {row.hostname, row} end) |> Map.new
 		row              = all_machines_map[hostname]
 		graphs           = connectivity_graphs(all_machines)
-		make_hosts_file(row, graphs, all_machines_map)
+		subdomains       = %{wireguard: %{}, public: %{}}
+		make_hosts_file(row, graphs, subdomains, all_machines_map)
 	end
 
 	def configure_many(queryable, handle_configure_result, handle_waiting, show_progress) do
@@ -287,7 +288,8 @@ defmodule MachineManager.Core do
 		script_file      = script_filename_for_roles(roles)
 		wireguard_peers  = get_wireguard_peers(row, graphs, all_machines_map)
 		wireguard_config = WireGuard.make_wireguard_config(row.wireguard_privkey, to_ip_string(row.wireguard_ip), 51820, wireguard_peers)
-		hosts_file       = make_hosts_file(row, graphs, all_machines_map)
+		subdomains       = %{wireguard: %{}, public: %{}}
+		hosts_file       = make_hosts_file(row, graphs, subdomains, all_machines_map)
 		case transfer_file(script_file, row, ".cache/machine_manager/script",
 		                   before_rsync: "mkdir -p .cache/machine_manager") do
 			{"", 0}          -> nil
@@ -372,7 +374,7 @@ defmodule MachineManager.Core do
 			end)
 	end
 
-	def make_hosts_file(self_row, graphs, all_machines_map) do
+	def make_hosts_file(self_row, graphs, subdomains, all_machines_map) do
 		preamble_hosts = [
 			["127.0.0.1", "localhost #{self_row.hostname}"],
 			["::1",       "localhost ip6-localhost ip6-loopback"],
@@ -381,21 +383,29 @@ defmodule MachineManager.Core do
 		]
 		wireguard_hosts =
 			Stream.concat([self_row.hostname], graphs.wireguard[self_row.hostname] || [])
-			|> Enum.map(fn hostname ->
+			|> Enum.flat_map(fn hostname ->
 					wireguard_ip = all_machines_map[hostname].wireguard_ip
-					[to_ip_string(wireguard_ip), "#{hostname}.wg"]
+					hostnames    = ["#{hostname}.wg"] ++ \
+						Enum.map(subdomains.wireguard[hostname] || [], fn sub -> "#{sub}.#{hostname}.wg" end)
+					for hostname <- hostnames do
+						[to_ip_string(wireguard_ip), hostname]
+					end
 				end)
 		public_hosts =
 			Stream.concat([self_row.hostname], graphs.public[self_row.hostname] || [])
-			|> Enum.map(fn hostname ->
+			|> Enum.flat_map(fn hostname ->
 					self_ip = self_row.public_ip
 					peer_ip = all_machines_map[hostname].public_ip
 					case ip_connectable?(self_ip, peer_ip) do
-						true  -> [to_ip_string(peer_ip), "#{hostname}.pi"]
-						false -> nil
+						true  ->
+							hostnames = ["#{hostname}.pi"] ++ \
+								Enum.map(subdomains.public[hostname] || [], fn sub -> "#{sub}.#{hostname}.pi" end)
+							for hostname <- hostnames do
+								[to_ip_string(peer_ip), hostname]
+							end
+						false -> []
 					end
 				end)
-			|> Enum.reject(&is_nil/1)
 		TableFormatter.format(preamble_hosts ++ [[]] ++ wireguard_hosts ++ [[]] ++ public_hosts)
 	end
 
