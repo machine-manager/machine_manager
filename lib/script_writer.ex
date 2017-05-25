@@ -42,7 +42,7 @@ defmodule MachineManager.ScriptWriter do
 			{out, _code} ->
 				raise(ScriptCompilationError, "mix compile failed:\n\n#{out}")
 		end
-		{_, 0} = System.cmd("mix", ["escript.build"], cd: temp_dir, env: [{"MIX_ENV", "prod"}])
+		{_, 0} = System.cmd("nice", ["-n", "5", "mix", "escript.build"], cd: temp_dir, env: [{"MIX_ENV", "prod"}])
 		File.cp!(Path.join(temp_dir, app_name), output_filename)
 		File.rm_rf!(temp_dir)
 		nil
