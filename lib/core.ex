@@ -661,8 +661,10 @@ defmodule MachineManager.Core do
 
 	def upgrade_many(queryable, handle_upgrade_result, handle_waiting) do
 		rows             = list(queryable)
-		# upgrade calls configure, which expects updated scripts in @script_cache
-		write_scripts_for_machines(rows)
+		# upgrade calls configure, which expects updated scripts in @script_cache.
+		# Note that we don't need to compile scripts for machines with no pending
+		# upgrades, because they will not be upgraded and therefore not configured.
+		write_scripts_for_machines(rows |> Enum.reject(fn row -> row.pending_upgrades == [] end))
 		all_machines     = from("machines") |> list
 		all_machines_map = all_machines |> Enum.map(fn row -> {row.hostname, row} end) |> Map.new
 		graphs           = connectivity_graphs(all_machines)
