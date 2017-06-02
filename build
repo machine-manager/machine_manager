@@ -4,7 +4,10 @@ set -e
 
 rm -f mix.lock
 mix deps.get
+
+rm -rf _build
 MIX_ENV=prod mix deps.compile
+
 # Elixir's escript builder includes exec-port in the escript, even though
 # erlexec never looks for exec-port there.  (We actually patch erlexec to look
 # for it in /usr/bin.)  Remove exec-port from _build to prevent it from
