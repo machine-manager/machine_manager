@@ -1031,8 +1031,8 @@ defmodule MachineManager.Core do
 		{a, b, c, d}
 	end
 
-	defp to_ip_postgrex(ip) when is_tuple(ip),  do: %Postgrex.INET{address: ip}
-	defp to_ip_postgrex(ip) when is_binary(ip), do: %Postgrex.INET{address: to_ip_tuple(ip)}
+	defp to_ip_postgrex(ip) when is_tuple(ip),  do: %Postgrex.INET{address: ip,              netmask: 32}
+	defp to_ip_postgrex(ip) when is_binary(ip), do: %Postgrex.INET{address: to_ip_tuple(ip), netmask: 32}
 
 	@spec to_ip_tuple(String.t) :: ip_tuple
 	def to_ip_tuple(s) when is_binary(s) do
