@@ -119,7 +119,7 @@ defmodule MachineManager.Core do
 		make_hosts_file(row, graphs, subdomains, all_machines_map)
 	end
 
-	def configure_many(queryable, handle_configure_result, handle_waiting, show_progress) do
+	def configure_many(queryable, handle_configure_result, handle_waiting, show_progress, allow_warnings) do
 		rows = list(queryable)
 		if show_progress and length(rows) > 1 do
 			raise(ConfigureError, "Can't show progress when configuring more than one machine")
@@ -128,7 +128,7 @@ defmodule MachineManager.Core do
 		# machines, we don't actually need to do compile scripts for *all*
 		# machines because make_connectivity_graph just runs require_file on
 		# connections.exs files.
-		write_scripts_for_machines(rows)
+		write_scripts_for_machines(rows, allow_warnings)
 		all_machines      = from("machines") |> list
 		all_machines_map  = all_machines |> Enum.map(fn row -> {row.hostname, row} end) |> Map.new
 		graphs            = connectivity_graphs(all_machines)
@@ -150,7 +150,7 @@ defmodule MachineManager.Core do
 	@script_cache Path.expand("~/.cache/machine_manager/script_cache")
 
 	# We use this to avoid compiling a script N times for N machines with the same roles.
-	defp write_scripts_for_machines(rows) do
+	defp write_scripts_for_machines(rows, allow_warnings \\ false) do
 		unique_role_combinations =
 			rows
 			|> Enum.map(fn row -> ScriptWriter.roles_for_tags(row.tags) end)
@@ -158,7 +158,7 @@ defmodule MachineManager.Core do
 		File.mkdir_p!(@script_cache)
 		pmap(unique_role_combinations, fn roles ->
 			script_file = script_filename_for_roles(roles)
-			ScriptWriter.write_script_for_roles(roles, script_file)
+			ScriptWriter.write_script_for_roles(roles, script_file, allow_warnings: allow_warnings)
 		end, 2 * 60 * 1000)
 	end
 

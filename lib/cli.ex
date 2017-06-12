@@ -102,6 +102,7 @@ defmodule MachineManager.CLI do
 							Will not automatically bootstrap as needed.
 							"""
 						],
+						allow_warnings: [long: "--allow-warnings", help: "Write the script even if there are warnings during the build."],
 					],
 					args: [
 						hostname_regexp: [required: true, help: hostname_regexp_help],
@@ -218,7 +219,7 @@ defmodule MachineManager.CLI do
 			:ls               -> list(args.hostname_regexp, options.columns, (if flags.no_header, do: false, else: true))
 			:script           -> Core.write_script_for_machine(args.hostname, args.output_file, allow_warnings: flags.allow_warnings)
 			:bootstrap        -> bootstrap_many(args.hostname_regexp)
-			:configure        -> configure_many(args.hostname_regexp, flags.show_progress)
+			:configure        -> configure_many(args.hostname_regexp, flags.show_progress, flags.allow_warnings)
 			:ssh_config       -> ssh_config()
 			:connectivity     -> Core.connectivity(args.type)
 			:wireguard_config -> wireguard_config(args.hostname)
@@ -283,7 +284,7 @@ defmodule MachineManager.CLI do
 		end
 	end
 
-	def configure_many(hostname_regexp, show_progress) do
+	def configure_many(hostname_regexp, show_progress, allow_warnings) do
 		error_counter = Counter.new()
 		# If Core.configure is printing converge output to the terminal, we don't
 		# want to overlap it with "# Waiting on host" output.
@@ -295,7 +296,8 @@ defmodule MachineManager.CLI do
 			Core.machines_matching_regexp(hostname_regexp),
 			with_error_counter(&handle_configure_result/3, error_counter),
 			handle_waiting,
-			show_progress
+			show_progress,
+			allow_warnings
 		)
 		nonzero_exit_if_errors(error_counter)
 	end
