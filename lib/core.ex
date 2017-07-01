@@ -641,7 +641,7 @@ defmodule MachineManager.Core do
 				country:          data.country,
 				kernel:           data.kernel,
 				boot_time:        data.boot_time_ms |> DateTime.from_unix!(:millisecond),
-				time_offset:      data.time_offset  |> Decimal.new,
+				time_offset:      (if data.time_offset, do: Decimal.new(data.time_offset)),
 				last_probe_time:  DateTime.utc_now(),
 			])
 
