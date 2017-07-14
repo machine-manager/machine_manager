@@ -18,7 +18,7 @@ defmodule MachineManager.Core do
 	alias MachineManager.{
 		ScriptWriter, Parallel, Repo, UpgradeError, BootstrapError,
 		ConfigureError, ProbeError, WireGuard, ErlExecUtil, Graph}
-	alias Gears.{StringUtil, FileUtil, TableFormatter}
+	alias Gears.{StringUtil, FileUtil}
 	import Ecto.Query
 
 	def list(queryable) do
@@ -109,14 +109,14 @@ defmodule MachineManager.Core do
 		WireGuard.make_wireguard_config(row.wireguard_privkey, to_ip_string(row.wireguard_ip), listen_port, wireguard_peers)
 	end
 
-	@spec hosts_file(String.t) :: String.t
-	def hosts_file(hostname) do
+	@spec hosts_json_file(String.t) :: String.t
+	def hosts_json_file(hostname) do
 		all_machines     = from("machines") |> list
 		all_machines_map = all_machines |> Enum.map(fn row -> {row.hostname, row} end) |> Map.new
 		row              = all_machines_map[hostname]
 		graphs           = connectivity_graphs(all_machines)
 		subdomains       = subdomains(all_machines)
-		make_hosts_file(row, graphs, subdomains, all_machines_map)
+		make_hosts_json_file(row, graphs, subdomains, all_machines_map)
 	end
 
 	def configure_many(queryable, handle_configure_result, handle_waiting, show_progress, allow_warnings) do
@@ -328,7 +328,7 @@ defmodule MachineManager.Core do
 		wireguard_peers  = get_wireguard_peers(row, graphs, all_machines_map)
 		wireguard_config = WireGuard.make_wireguard_config(row.wireguard_privkey, to_ip_string(row.wireguard_ip), 51820, wireguard_peers)
 		subdomains       = subdomains(all_machines_map |> Map.values)
-		hosts_file       = make_hosts_file(row, graphs, subdomains, all_machines_map)
+		hosts_file       = make_hosts_json_file(row, graphs, subdomains, all_machines_map)
 		case transfer_file(script_file, row, ".cache/machine_manager/script",
 		                   before_rsync: "mkdir -p .cache/machine_manager") do
 			{"", 0}          -> nil
@@ -338,9 +338,9 @@ defmodule MachineManager.Core do
 			{"", 0}          -> nil
 			{out, exit_code} -> raise_upload_error(row.hostname, out, exit_code, "WireGuard configuration")
 		end
-		case transfer_content(hosts_file, row, ".cache/machine_manager/hosts") do
+		case transfer_content(hosts_file, row, ".cache/machine_manager/hosts.json") do
 			{"", 0}          -> nil
-			{out, exit_code} -> raise_upload_error(row.hostname, out, exit_code, "hosts file")
+			{out, exit_code} -> raise_upload_error(row.hostname, out, exit_code, "hosts.json")
 		end
 		arguments = [".cache/machine_manager/script"] ++ row.tags
 		for arg <- arguments do
@@ -413,13 +413,7 @@ defmodule MachineManager.Core do
 			end)
 	end
 
-	def make_hosts_file(self_row, graphs, subdomains, all_machines_map) do
-		preamble_hosts = [
-			["127.0.0.1", "localhost #{self_row.hostname}"],
-			["::1",       "localhost ip6-localhost ip6-loopback"],
-			["ff02::1",   "ip6-allnodes"],
-			["ff02::2",   "ip6-allrouters"],
-		]
+	def make_hosts_json_file(self_row, graphs, subdomains, all_machines_map) do
 		wireguard_hosts =
 			Stream.concat([self_row.hostname], graphs.wireguard[self_row.hostname] || [])
 			|> Enum.flat_map(fn hostname ->
@@ -440,7 +434,7 @@ defmodule MachineManager.Core do
 						false -> []
 					end
 				end)
-		TableFormatter.format(preamble_hosts ++ [[]] ++ wireguard_hosts ++ [[]] ++ public_hosts)
+		Poison.encode!(wireguard_hosts ++ [[]] ++ public_hosts)
 	end
 
 	defp hostnames(base, subdomains) do
