@@ -351,14 +351,14 @@ defmodule MachineManager.Core do
 		end
 		case show_progress do
 			true ->
-				{"", exit_code} = run_on_machine(row, arguments |> Enum.join(" "), false)
+				{"", exit_code} = run_on_machine(row, configure_command(arguments), false)
 				case exit_code do
 					0 -> :configured
 					_ -> raise(ConfigureError,
 						"Configuring machine #{inspect row.hostname} failed with exit code #{exit_code}")
 				end
 			false ->
-				{out, exit_code} = run_on_machine(row, arguments |> Enum.join(" "))
+				{out, exit_code} = run_on_machine(row, configure_command(arguments))
 				case exit_code do
 					0 -> :configured
 					_ ->
@@ -366,7 +366,7 @@ defmodule MachineManager.Core do
 							true ->
 								# Machine seems to be missing erlang, so bootstrap it, then try running the script again.
 								bootstrap(row)
-								{out, exit_code} = run_on_machine(row, arguments |> Enum.join(" "))
+								{out, exit_code} = run_on_machine(row, configure_command(arguments))
 								case exit_code do
 									0 -> :configured
 									_ -> raise_configure_error(row.hostname, out, exit_code)
@@ -375,6 +375,18 @@ defmodule MachineManager.Core do
 						end
 				end
 		end
+	end
+
+	defp configure_command(arguments) do
+		# Upgrade Erlang first because the machine may have an older OTP release
+		# that cannot execute an escript compiled for a newer OTP release.
+		"""
+		apt-get install -y --no-install-recommends --only-upgrade \
+			-o Dpkg::Options::=--force-confdef \
+			-o Dpkg::Options::=--force-confold \
+			erlang-base-hipe erlang-crypto &&
+		#{arguments |> Enum.join(" ")}
+		"""
 	end
 
 	defp raise_upload_error(hostname, out, exit_code, upload_description) do
