@@ -658,20 +658,10 @@ defmodule MachineManager.CLI do
 		%Postgrex.INET{address: address}
 	end
 
-	def pretty_datetime(erlang_date) do
-		erlang_date
-		|> erlang_date_to_datetime
+	def pretty_datetime(datetime) do
+		datetime
 		|> DateTime.to_iso8601
 		|> String.split(".")
 		|> hd
-	end
-
-	# https://github.com/elixir-ecto/ecto/issues/1920
-	def erlang_date_to_datetime({{year, month, day}, {hour, min, sec, usec}}) do
-		%DateTime{
-			year: year, month: month, day: day, hour: hour, minute: min,
-			second: sec, microsecond: {usec, 6}, zone_abbr: "UTC", time_zone: "Etc/UTC",
-			utc_offset: 0, std_offset: 0
-		}
 	end
 end
