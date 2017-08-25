@@ -37,7 +37,7 @@ sed -i "1s,^,deb [lang=\"none\"] http://packages:${CUSTOM_PACKAGES_PASSWORD}@127
 
 wait_for_dpkg_lock &&
 apt-get update &&
-# Make sure erlang-base-hipe >= 19 is available
-(apt-cache show erlang-base-hipe | fgrep -q 'Version: 1:19.') &&
+# Make sure erlang-base-hipe >= 20 is available
+(apt-cache show erlang-base-hipe | fgrep -q 'Version: 1:20.') &&
 wait_for_dpkg_lock &&
 apt-get install -y --no-install-recommends --upgrade erlang-base-hipe erlang-crypto curl binutils
