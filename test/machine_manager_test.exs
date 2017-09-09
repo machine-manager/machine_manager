@@ -4,12 +4,12 @@ defmodule MachineManager.CoreTest do
 	use ExUnit.Case
 
 	test "increment_ip_tuple" do
-		assert Core.increment_ip_tuple({0, 0,   0,   0})       == {0, 0, 0,   1}
-		assert Core.increment_ip_tuple({0, 0,   0,   1})       == {0, 0, 0,   2}
-		assert Core.increment_ip_tuple({0, 0,   1,   255})     == {0, 0, 2,   0}
-		assert Core.increment_ip_tuple({0, 0,   255, 0})       == {0, 0, 255, 1}
-		assert Core.increment_ip_tuple({0, 2,   255, 255})     == {0, 3, 0,   0}
-		assert Core.increment_ip_tuple({3, 255, 255, 255})     == {4, 0, 0,   0}
+		assert Core.increment_ip_tuple({0, 0,   0,   0})   == {0, 0, 0,   1}
+		assert Core.increment_ip_tuple({0, 0,   0,   1})   == {0, 0, 0,   2}
+		assert Core.increment_ip_tuple({0, 0,   1,   255}) == {0, 0, 2,   0}
+		assert Core.increment_ip_tuple({0, 0,   255, 0})   == {0, 0, 255, 1}
+		assert Core.increment_ip_tuple({0, 2,   255, 255}) == {0, 3, 0,   0}
+		assert Core.increment_ip_tuple({3, 255, 255, 255}) == {4, 0, 0,   0}
 		assert_raise(
 			FunctionClauseError,
 			fn -> Core.increment_ip_tuple({255, 255, 255, 255}) end
