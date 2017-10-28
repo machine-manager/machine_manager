@@ -35,7 +35,7 @@ sleep 2 &&
 
 # Add custom-packages to sources.list
 chattr -i /etc/apt/sources.list &&
-sed -i "1s,^,deb [lang=\"none\"] http://packages:${CUSTOM_PACKAGES_PASSWORD}@127.0.0.1:28000/ ./\n," /etc/apt/sources.list &&
+sed -i "1s,^,deb [lang=\"none\"] http://packages:${CUSTOM_PACKAGES_PASSWORD}@127.0.0.1:28000/${RELEASE}/ ./\n," /etc/apt/sources.list &&
 
 wait_for_dpkg_lock &&
 apt-get update &&

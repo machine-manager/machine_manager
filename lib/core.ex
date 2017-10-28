@@ -488,13 +488,17 @@ defmodule MachineManager.Core do
 	custom-packages apt key and a suitable apt/sources.list.
 	"""
 	def bootstrap(row) do
+		release = Converge.Util.tag_value!(row.tags, "release")
+		unless release =~ ~r/\A[a-z]{2,20}\z/ do
+			raise("Unexpected value for release tag: #{inspect release}")
+		end
 		with \
 			{"", 0} <-
 				transfer_content(custom_packages_spiped_key(), row,
 					"/etc/custom-packages-client/spiped_key",
 					before_rsync: "mkdir -p /etc/custom-packages-client ~/.cache/machine_manager/bootstrap"),
 			{"", 0} <-
-				transfer_file(custom_packages_client_deb_filename(), row,
+				transfer_file(custom_packages_client_deb_filename(release), row,
 					".cache/machine_manager/bootstrap/custom-packages-client.deb"),
 			{"", 0} <-
 				transfer_content(bootstrap_setup(), row,
@@ -508,7 +512,7 @@ defmodule MachineManager.Core do
 					chattr -i /etc/apt/trusted.gpg &&
 					apt-key add ~/.cache/machine_manager/bootstrap/custom-packages-apt-key &&
 					chmod +x ~/.cache/machine_manager/bootstrap/setup &&
-					CUSTOM_PACKAGES_PASSWORD=#{custom_packages_password()} ~/.cache/machine_manager/bootstrap/setup
+					RELEASE=#{release} CUSTOM_PACKAGES_PASSWORD=#{custom_packages_password()} ~/.cache/machine_manager/bootstrap/setup
 					""")
 		do
 			:bootstrapped
@@ -543,8 +547,8 @@ defmodule MachineManager.Core do
 		content("bootstrap/setup")
 	end
 
-	defp custom_packages_client_deb_filename() do
-		packages_directory = "/var/custom-packages"
+	defp custom_packages_client_deb_filename(release) do
+		packages_directory = "/var/custom-packages/#{release}"
 		{:ok, list} = File.ls(packages_directory)
 		deb = list
 			|> Enum.filter(fn filename -> filename =~ ~r/^custom-packages-client_.*_all\.deb$/ end)

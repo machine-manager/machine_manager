@@ -212,7 +212,7 @@ defmodule MachineManager.CLI do
 						hostname_regexp: [required: true, help: hostname_regexp_help],
 					],
 				],
-			],
+			]
 		)
 		{[subcommand], %{args: args, options: options, flags: flags, unknown: unknown}} = Optimus.parse!(spec, argv)
 		case subcommand do

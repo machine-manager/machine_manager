@@ -23,6 +23,7 @@ defmodule MachineManager.Mixfile do
 	defp deps do
 		[
 			{:gears,    ">= 0.10.0"},
+			{:converge, ">= 0.1.0"},
 			{:mixmaker, ">= 0.1.0"},
 			{:ecto,     ">= 2.1"},
 			{:postgrex, ">= 0.13.0"},
