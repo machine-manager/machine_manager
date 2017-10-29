@@ -509,7 +509,7 @@ defmodule MachineManager.Core do
 			{_, 0} <-
 				run_on_machine(row,
 					"""
-					chattr -i /etc/apt/trusted.gpg &&
+					(chattr -i /etc/apt/trusted.gpg || true) &&
 					apt-key add ~/.cache/machine_manager/bootstrap/custom-packages-apt-key &&
 					chmod +x ~/.cache/machine_manager/bootstrap/setup &&
 					RELEASE=#{release} CUSTOM_PACKAGES_PASSWORD=#{custom_packages_password()} ~/.cache/machine_manager/bootstrap/setup
@@ -551,9 +551,12 @@ defmodule MachineManager.Core do
 		packages_directory = "/var/custom-packages/#{release}"
 		{:ok, list} = File.ls(packages_directory)
 		deb = list
-			|> Enum.filter(fn filename -> filename =~ ~r/^custom-packages-client_.*_all\.deb$/ end)
+			|> Enum.filter(fn filename -> filename =~ ~r/\Acustom-packages-client_.*_all\.deb\z/ end)
 			|> Enum.sort
 			|> List.last
+		unless deb do
+			raise("Could not find a custom-packages-client_*_all.deb file in #{packages_directory}")
+		end
 		Path.join(packages_directory, deb)
 	end
 
