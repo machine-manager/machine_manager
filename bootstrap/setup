@@ -41,4 +41,4 @@ wait_for_dpkg_lock &&
 apt-get update &&
 (apt-cache show erlang-base-hipe | fgrep -q 'Version: 1:20.') &&
 wait_for_dpkg_lock &&
-apt-get install -y --no-install-recommends --upgrade erlang-base-hipe erlang-crypto curl binutils etckeeper gnupg2
+apt-get install -y --no-install-recommends --upgrade erlang-base-hipe erlang-crypto
