@@ -589,12 +589,14 @@ defmodule MachineManager.Core do
 	# Returns {rsync_stdout_and_stderr, rsync_exit_code}
 	defp transfer_files(source_files, row, dest, opts) do
 		before_rsync = opts[:before_rsync]
-		args = case before_rsync do
-			nil -> []
-			_   -> ["--rsync-path", "#{before_rsync} && rsync"]
-		end ++
-		["-e", "ssh -p #{row.ssh_port}", "--protect-args", "--executability"] ++
-		source_files ++ ["root@#{to_ip_string(row.public_ip)}:#{dest}"]
+		args =
+			case before_rsync do
+				nil -> []
+				_   -> ["--rsync-path", "#{before_rsync} && rsync"]
+			end ++
+			["-e", "ssh -p #{row.ssh_port}", "--protect-args", "--executability"] ++
+			source_files ++
+			["root@#{to_ip_string(row.public_ip)}:#{dest}"]
 		case System.cmd("rsync", args, stderr_to_stdout: true) do
 			{out, 0}         -> {out, 0}
 			{out, exit_code} ->
