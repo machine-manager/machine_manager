@@ -11,7 +11,6 @@ SET ROLE machine_manager;
 
 CREATE DOMAIN hostname         AS varchar(32)  CHECK(VALUE ~ '\A[-_a-z0-9]+\Z');
 CREATE DOMAIN datacenter       AS varchar(32)  CHECK(VALUE ~ '\A[-_a-z0-9]+\Z');
-CREATE DOMAIN country          AS character(2) CHECK(VALUE ~ '\A[a-z]{2}\Z');
 CREATE DOMAIN ssh_port         AS integer      CHECK(VALUE > 0 AND VALUE <= 65536);
 CREATE DOMAIN int4_gt0         AS integer      CHECK(VALUE > 0);
 CREATE DOMAIN int2_gt0         AS integer      CHECK(VALUE > 0);
@@ -38,7 +37,6 @@ CREATE TABLE machines (
 	cpu_architecture  cpu_architecture,
 	core_count        int2_gt0,
 	thread_count      int2_gt0,
-	country           country,
 	kernel            kernel,
 	boot_time         timestamp with time zone,
 	last_probe_time   timestamp with time zone,

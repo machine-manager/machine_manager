@@ -484,7 +484,7 @@ defmodule MachineManager.CLI do
 	defp default_columns() do
 		[
 			"hostname", "public_ip", "wireguard_ip", "ssh_port", "tags",
-			"datacenter", "country", "ram_mb", "cpu_model_name", "core_count",
+			"datacenter", "ram_mb", "cpu_model_name", "core_count",
 			"thread_count", "last_probe_time", "boot_time", "time_offset",
 			"kernel", "pending_upgrades",
 		]
@@ -498,7 +498,6 @@ defmodule MachineManager.CLI do
 			"ssh_port"         => {"SSH",              fn row, _ -> row.ssh_port end},
 			"tags"             => {"TAGS",             &format_tags/2},
 			"datacenter"       => {"DC",               fn row, _ -> row.datacenter |> colorize end},
-			"country"          => {"CC",               fn row, _ -> if row.country          != nil, do: row.country |> colorize end},
 			"ram_mb"           => {"RAM",              fn row, _ -> row.ram_mb end},
 			"cpu_model_name"   => {"CPU",              fn row, _ -> if row.cpu_model_name   != nil, do: row.cpu_model_name |> CPU.short_description end},
 			"cpu_architecture" => {"ARCH",             fn row, _ -> row.cpu_architecture end},
