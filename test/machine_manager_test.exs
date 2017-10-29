@@ -1,4 +1,5 @@
-alias MachineManager.{Core, CPU, ScriptWriter, WireGuard, Graph}
+alias Gears.FileUtil
+alias MachineManager.{Core, CPU, ScriptWriter, WireGuard, Graph, PortableErlang}
 
 defmodule MachineManager.CoreTest do
 	use ExUnit.Case
@@ -199,5 +200,15 @@ defmodule MachineManager.GraphTest do
 		assert Graph.bidirectionalize(%{"a" => ["b"]})               == %{"a" => MapSet.new(["b"]),      "b" => MapSet.new(["a"])}
 		assert Graph.bidirectionalize(%{"a" => ["b"] |> MapSet.new}) == %{"a" => MapSet.new(["b"]),      "b" => MapSet.new(["a"])}
 		assert Graph.bidirectionalize(%{"a" => ["b", "c"]})          == %{"a" => MapSet.new(["b", "c"]), "b" => MapSet.new(["a"]), "c" => MapSet.new(["a"])}
+	end
+end
+
+
+defmodule MachineManager.PortableErlangTest do
+	use ExUnit.Case
+
+	test "make_portable_erlang" do
+		temp = FileUtil.temp_dir("machine_manager_portable_erlang_test")
+		PortableErlang.make_portable_erlang(temp)
 	end
 end

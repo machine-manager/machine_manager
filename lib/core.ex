@@ -16,8 +16,8 @@ end
 
 defmodule MachineManager.Core do
 	alias MachineManager.{
-		ScriptWriter, Parallel, Repo, UpgradeError, BootstrapError,
-		ConfigureError, ProbeError, WireGuard, ErlExecUtil, Graph}
+		ScriptWriter, Parallel, Repo, UpgradeError, BootstrapError, ConfigureError,
+		ProbeError, WireGuard, ErlExecUtil, Graph, PortableErlang}
 	alias Gears.{StringUtil, FileUtil}
 	import Ecto.Query
 
@@ -322,13 +322,22 @@ defmodule MachineManager.Core do
 	#
 	# Can raise ConfigureError or BootstrapError
 	def configure(row, graphs, all_machines_map, show_progress \\ false) do
+		# TODO: only do this once even when configuring many machines
+		portable_erlang  = FileUtil.temp_dir("machine_manager_portable_erlang")
+		PortableErlang.make_portable_erlang(portable_erlang)
 		roles            = ScriptWriter.roles_for_tags(row.tags)
 		script_file      = script_filename_for_roles(roles)
 		wireguard_peers  = get_wireguard_peers(row, graphs, all_machines_map)
 		wireguard_config = WireGuard.make_wireguard_config(row.wireguard_privkey, to_ip_string(row.wireguard_ip), 51820, wireguard_peers)
 		subdomains       = subdomains(all_machines_map |> Map.values)
 		hosts_file       = make_hosts_json_file(row, graphs, subdomains, all_machines_map)
-		case transfer_file(script_file, row, ".cache/machine_manager/script",
+		case transfer_path("#{portable_erlang}/", row, ".cache/machine_manager/erlang",
+		                   before_rsync: "mkdir -p .cache/machine_manager/erlang",
+		                   recursive: true) do
+			{"", 0}          -> nil
+			{out, exit_code} -> raise_upload_error(row.hostname, out, exit_code, "erlang")
+		end
+		case transfer_path(script_file, row, ".cache/machine_manager/script",
 		                   before_rsync: "mkdir -p .cache/machine_manager") do
 			{"", 0}          -> nil
 			{out, exit_code} -> raise_upload_error(row.hostname, out, exit_code, "configuration script")
@@ -341,7 +350,7 @@ defmodule MachineManager.Core do
 			{"", 0}          -> nil
 			{out, exit_code} -> raise_upload_error(row.hostname, out, exit_code, "hosts.json")
 		end
-		arguments = [".cache/machine_manager/script"] ++ row.tags
+		arguments = [".cache/machine_manager/erlang/bin/escript", ".cache/machine_manager/script"] ++ row.tags
 		for arg <- arguments do
 			if arg |> String.contains?(" ") do
 				raise(ConfigureError,
@@ -350,14 +359,14 @@ defmodule MachineManager.Core do
 		end
 		case show_progress do
 			true ->
-				{"", exit_code} = run_on_machine(row, configure_command(arguments), false)
+				{"", exit_code} = run_on_machine(row, Enum.join(arguments, " "), false)
 				case exit_code do
 					0 -> :configured
 					_ -> raise(ConfigureError,
 						"Configuring machine #{inspect row.hostname} failed with exit code #{exit_code}")
 				end
 			false ->
-				{out, exit_code} = run_on_machine(row, configure_command(arguments))
+				{out, exit_code} = run_on_machine(row, Enum.join(arguments, " "))
 				case exit_code do
 					0 -> :configured
 					_ ->
@@ -365,7 +374,7 @@ defmodule MachineManager.Core do
 							true ->
 								# Machine seems to be missing erlang, so bootstrap it, then try running the script again.
 								bootstrap(row)
-								{out, exit_code} = run_on_machine(row, configure_command(arguments))
+								{out, exit_code} = run_on_machine(row, Enum.join(arguments, " "))
 								case exit_code do
 									0 -> :configured
 									_ -> raise_configure_error(row.hostname, out, exit_code)
@@ -374,18 +383,6 @@ defmodule MachineManager.Core do
 						end
 				end
 		end
-	end
-
-	defp configure_command(arguments) do
-		# Upgrade Erlang first because the machine may have an older OTP release
-		# that cannot execute an escript compiled for a newer OTP release.
-		"""
-		apt-get install -y --no-install-recommends --only-upgrade \
-			-o Dpkg::Options::=--force-confdef \
-			-o Dpkg::Options::=--force-confold \
-			erlang-base-hipe erlang-crypto &&
-		#{arguments |> Enum.join(" ")}
-		"""
 	end
 
 	defp raise_upload_error(hostname, out, exit_code, upload_description) do
@@ -486,77 +483,9 @@ defmodule MachineManager.Core do
 	so first install custom-packages-client and the spiped_key, along with the
 	custom-packages apt key and a suitable apt/sources.list.
 	"""
-	def bootstrap(row) do
-		release = Converge.Util.tag_value!(row.tags, "release")
-		unless release =~ ~r/\A[a-z]{2,20}\z/ do
-			raise("Unexpected value for release tag: #{inspect release}")
-		end
-		with \
-			{"", 0} <-
-				transfer_content(custom_packages_spiped_key(), row,
-					"/etc/custom-packages-client/spiped_key",
-					before_rsync: "mkdir -p /etc/custom-packages-client ~/.cache/machine_manager/bootstrap"),
-			{"", 0} <-
-				transfer_file(custom_packages_client_deb_filename(release), row,
-					".cache/machine_manager/bootstrap/custom-packages-client.deb"),
-			{"", 0} <-
-				transfer_content(bootstrap_setup(), row,
-					".cache/machine_manager/bootstrap/setup"),
-			{"", 0} <-
-				transfer_content(custom_packages_apt_key(), row,
-					".cache/machine_manager/bootstrap/custom-packages-apt-key"),
-			{_, 0} <-
-				run_on_machine(row,
-					"""
-					(chattr -i /etc/apt/trusted.gpg || true) &&
-					apt-key add ~/.cache/machine_manager/bootstrap/custom-packages-apt-key &&
-					chmod +x ~/.cache/machine_manager/bootstrap/setup &&
-					RELEASE=#{release} CUSTOM_PACKAGES_PASSWORD=#{custom_packages_password()} ~/.cache/machine_manager/bootstrap/setup
-					""")
-		do
-			:bootstrapped
-		else
-			{out, exit_code} ->
-				raise(BootstrapError,
-					"""
-					Bootstrapping machine #{inspect row.hostname} failed with exit code #{exit_code}; output:
-
-					#{out}
-					""")
-		end
-	end
-
-	defmacro content(filename) do
-		File.read!(filename)
-	end
-
-	defp custom_packages_apt_key() do
-		content("../role_custom_packages/files/apt_keys/2AAA29C8 Custom Packages.txt")
-	end
-
-	defp custom_packages_spiped_key() do
-		content("../role_custom_packages_server/files/etc/custom-packages-server/spiped_key")
-	end
-
-	defp custom_packages_password() do
-		content("../role_custom_packages_server/files/etc/custom-packages-server/unencrypted_password")
-	end
-
-	defp bootstrap_setup() do
-		content("bootstrap/setup")
-	end
-
-	defp custom_packages_client_deb_filename(release) do
-		packages_directory = "/var/custom-packages/#{release}"
-		{:ok, list} = File.ls(packages_directory)
-		deb = list
-			|> Enum.filter(fn filename -> filename =~ ~r/\Acustom-packages-client_.*_all\.deb\z/ end)
-			|> Enum.sort
-			|> List.last
-		unless deb do
-			raise("Could not find a custom-packages-client_*_all.deb file in #{packages_directory}")
-		end
-		Path.join(packages_directory, deb)
+	def bootstrap(_row) do
+		# TODO: remove 'bootstrap' entirely
+		:bootstrapped
 	end
 
 	# Transfer content `content` using rsync to machine described by `row` to `dest`
@@ -566,17 +495,18 @@ defmodule MachineManager.Core do
 		temp = FileUtil.temp_path("machine_manager_transfer_content")
 		File.write!(temp, content)
 		try do
-			transfer_file(temp, row, dest, opts)
+			transfer_path(temp, row, dest, opts)
 		after
 			FileUtil.rm_f!(temp)
 		end
 	end
 
-	defp transfer_file(source_file, row, dest, opts \\ []) do
-		transfer_files([source_file], row, dest, opts)
+	defp transfer_path(source_path, row, dest, opts) do
+		transfer_paths([source_path], row, dest, opts)
 	end
 
-	# Transfer files `source_files` using rsync to machine described by `row` to `dest`
+	# Transfer files/directories `source_paths` using rsync to machine described
+	# by `row` to `dest`.
 	#
 	# If opts[:before_rsync] is non-nil, the given command is executed on the
 	# remote before the rsync transfer.  This can be used to create a directory
@@ -586,15 +516,17 @@ defmodule MachineManager.Core do
 	# and try again.
 	#
 	# Returns {rsync_stdout_and_stderr, rsync_exit_code}
-	defp transfer_files(source_files, row, dest, opts) do
+	defp transfer_paths(source_paths, row, dest, opts) do
 		before_rsync = opts[:before_rsync]
+		recursive    = opts[:recursive]
 		args =
 			case before_rsync do
 				nil -> []
 				_   -> ["--rsync-path", "#{before_rsync} && rsync"]
 			end ++
 			["-e", "ssh -p #{row.ssh_port}", "--protect-args", "--executability"] ++
-			source_files ++
+			(if recursive, do: ["--recursive", "--links"], else: []) ++
+			source_paths ++
 			["root@#{to_ip_string(row.public_ip)}:#{dest}"]
 		case System.cmd("rsync", args, stderr_to_stdout: true) do
 			{out, 0}         -> {out, 0}
@@ -602,8 +534,8 @@ defmodule MachineManager.Core do
 				cond do
 					String.contains?(out, "rsync: command not found") ->
 						case install_rsync_on_machine(row) do
-							{_, 0} -> System.cmd("rsync", args, stderr_to_stdout: true)
-							{_, _} -> {out, exit_code}
+							{_, 0}           -> System.cmd("rsync", args, stderr_to_stdout: true)
+							{out, exit_code} -> {out, exit_code}
 						end
 					true -> {out, exit_code}
 				end
