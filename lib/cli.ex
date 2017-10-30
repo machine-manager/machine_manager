@@ -85,23 +85,11 @@ defmodule MachineManager.CLI do
 						allow_warnings: [long: "--allow-warnings", help: "Write the script even if there are warnings during the build."],
 					]
 				],
-				bootstrap: [
-					name:  "bootstrap",
-					about: "Bootstrap machines so that configure can be run on them",
-					args: [
-						hostname_regexp: [required: true, help: hostname_regexp_help],
-					],
-				],
 				configure: [
 					name:  "configure",
 					about: "Configure machines",
 					flags: [
-						show_progress: [long: "--progress", help:
-							"""
-							Show configure progress.  Works only when configuring a single server.
-							Will not automatically bootstrap as needed.
-							"""
-						],
+						show_progress:  [long: "--progress", help: "Show configure progress.  Works only when configuring a single server."],
 						allow_warnings: [long: "--allow-warnings", help: "Write the script even if there are warnings during the build."],
 					],
 					args: [
@@ -218,7 +206,6 @@ defmodule MachineManager.CLI do
 		case subcommand do
 			:ls               -> list(args.hostname_regexp, options.columns, (if flags.no_header, do: false, else: true))
 			:script           -> Core.write_script_for_machine(args.hostname, args.output_file, allow_warnings: flags.allow_warnings)
-			:bootstrap        -> bootstrap_many(args.hostname_regexp)
 			:configure        -> configure_many(args.hostname_regexp, flags.show_progress, flags.allow_warnings)
 			:ssh_config       -> ssh_config()
 			:connectivity     -> Core.connectivity(args.type)
@@ -260,30 +247,6 @@ defmodule MachineManager.CLI do
 		:ok = IO.write(Core.hosts_json_file(hostname))
 	end
 
-	def bootstrap_many(hostname_regexp) do
-		error_counter = Counter.new()
-		Core.bootstrap_many(
-			Core.machines_matching_regexp(hostname_regexp),
-			with_error_counter(&handle_bootstrap_result/3, error_counter),
-			&handle_waiting/1
-		)
-		nonzero_exit_if_errors(error_counter)
-	end
-
-	defp handle_bootstrap_result(hostname, task_result, error_counter) do
-		pretty_hostname = hostname |> String.pad_trailing(16) |> bolded
-		case task_result do
-			{:ok, :bootstrapped} ->
-				IO.puts("#{pretty_hostname} bootstrapped")
-			{:ok, {:bootstrap_error, message}} ->
-				IO.puts("#{pretty_hostname} bootstrap failed: #{message}")
-				Counter.increment(error_counter)
-			{:exit, reason} ->
-				IO.puts("#{pretty_hostname} bootstrap task failed: #{reason}")
-				Counter.increment(error_counter)
-		end
-	end
-
 	def configure_many(hostname_regexp, show_progress, allow_warnings) do
 		error_counter = Counter.new()
 		# If Core.configure is printing converge output to the terminal, we don't
@@ -309,9 +272,6 @@ defmodule MachineManager.CLI do
 				IO.puts("#{pretty_hostname} configured")
 			{:ok, {:configure_error, message}} ->
 				IO.puts("#{pretty_hostname} configure failed: #{message}")
-				Counter.increment(error_counter)
-			{:ok, {:bootstrap_error, message}} ->
-				IO.puts("#{pretty_hostname} bootstrap failed: #{message}")
 				Counter.increment(error_counter)
 			{:exit, reason} ->
 				IO.puts("#{pretty_hostname} configure task failed: #{reason}")
@@ -341,9 +301,6 @@ defmodule MachineManager.CLI do
 				Counter.increment(error_counter)
 			{:ok, {:configure_error, message}} ->
 				IO.puts("#{pretty_hostname} configure failed: #{message}")
-				Counter.increment(error_counter)
-			{:ok, {:bootstrap_error, message}} ->
-				IO.puts("#{pretty_hostname} bootstrap failed: #{message}")
 				Counter.increment(error_counter)
 			{:ok, {:probe_error, message}} ->
 				IO.puts("#{pretty_hostname} probe failed: #{message}")

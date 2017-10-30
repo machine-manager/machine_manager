@@ -2,10 +2,6 @@ defmodule MachineManager.UpgradeError do
 	defexception [:message]
 end
 
-defmodule MachineManager.BootstrapError do
-	defexception [:message]
-end
-
 defmodule MachineManager.ConfigureError do
 	defexception [:message]
 end
@@ -16,7 +12,7 @@ end
 
 defmodule MachineManager.Core do
 	alias MachineManager.{
-		ScriptWriter, Parallel, Repo, UpgradeError, BootstrapError, ConfigureError,
+		ScriptWriter, Parallel, Repo, UpgradeError, ConfigureError,
 		ProbeError, WireGuard, ErlExecUtil, Graph, PortableErlang}
 	alias Gears.{StringUtil, FileUtil}
 	import Ecto.Query
@@ -136,7 +132,6 @@ defmodule MachineManager.Core do
 				configure(row, graphs, all_machines_map, show_progress)
 			rescue
 				e in ConfigureError -> {:configure_error, e.message}
-				e in BootstrapError -> {:bootstrap_error, e.message}
 			end
 		end
 		task_map =
@@ -320,7 +315,7 @@ defmodule MachineManager.Core do
 	# This function assumes an up-to-date configuration script is already present
 	# in @script_cache (call write_scripts_for_machines first).
 	#
-	# Can raise ConfigureError or BootstrapError
+	# Can raise ConfigureError
 	def configure(row, graphs, all_machines_map, show_progress \\ false) do
 		# TODO: only do this once even when configuring many machines
 		portable_erlang  = FileUtil.temp_dir("machine_manager_portable_erlang")
@@ -369,18 +364,7 @@ defmodule MachineManager.Core do
 				{out, exit_code} = run_on_machine(row, Enum.join(arguments, " "))
 				case exit_code do
 					0 -> :configured
-					_ ->
-						case erlang_missing_error?(out) do
-							true ->
-								# Machine seems to be missing erlang, so bootstrap it, then try running the script again.
-								bootstrap(row)
-								{out, exit_code} = run_on_machine(row, Enum.join(arguments, " "))
-								case exit_code do
-									0 -> :configured
-									_ -> raise_configure_error(row.hostname, out, exit_code)
-								end
-							false -> raise_configure_error(row.hostname, out, exit_code)
-						end
+					_ -> raise_configure_error(row.hostname, out, exit_code)
 				end
 		end
 	end
@@ -455,37 +439,6 @@ defmodule MachineManager.Core do
 			_  -> roles |> Enum.sort |> Enum.join(",")
 		end
 		Path.join(@script_cache, basename)
-	end
-
-	defp erlang_missing_error?(out) do
-		out =~ ~r"/usr/bin/env:.*escript.*: No such file or directory"
-	end
-
-	def bootstrap_many(queryable, handle_bootstrap_result, handle_waiting) do
-		rows = list(queryable)
-		wrapped_bootstrap = fn row ->
-			try do
-				bootstrap(row)
-			rescue
-				e in BootstrapError -> {:bootstrap_error, e.message}
-			end
-		end
-		task_map =
-			rows
-			|> Enum.map(fn row -> {row.hostname, Task.async(fn -> wrapped_bootstrap.(row) end)} end)
-			|> Map.new
-		Parallel.block_on_tasks(task_map, handle_bootstrap_result, handle_waiting, 2000)
-	end
-
-	@doc """
-	Prepare a system so that it can be configured with erlang escripts.  To do this,
-	install erlang + curl + ar, but get erlang from our custom-packages repository,
-	so first install custom-packages-client and the spiped_key, along with the
-	custom-packages apt key and a suitable apt/sources.list.
-	"""
-	def bootstrap(_row) do
-		# TODO: remove 'bootstrap' entirely
-		:bootstrapped
 	end
 
 	# Transfer content `content` using rsync to machine described by `row` to `dest`
@@ -619,7 +572,6 @@ defmodule MachineManager.Core do
 			rescue
 				e in UpgradeError   -> {:upgrade_error,   e.message}
 				e in ConfigureError -> {:configure_error, e.message}
-				e in BootstrapError -> {:bootstrap_error, e.message}
 				e in ProbeError     -> {:probe_error,     e.message}
 			end
 		end
@@ -630,7 +582,7 @@ defmodule MachineManager.Core do
 		Parallel.block_on_tasks(task_map, handle_upgrade_result, handle_waiting, 2000)
 	end
 
-	# Can raise UpgradeError, ConfigureError, or BootstrapError
+	# Can raise UpgradeError or ConfigureError
 	def upgrade(row, graphs, all_machines_map) do
 		case row.pending_upgrades do
 			[]       -> :no_pending_upgrades
