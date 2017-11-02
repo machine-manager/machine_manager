@@ -172,7 +172,7 @@ defmodule MachineManager.CLI do
 				],
 				get_tags: [
 					name:  "get-tags",
-					about: "Get tags for a machine",
+					about: "Get tags for a machine in alphanumeric order, one tag per line",
 					args: [
 						hostname: [required: true],
 					],
@@ -220,7 +220,7 @@ defmodule MachineManager.CLI do
 			:rm               -> Core.rm_many(Core.machines_matching_regexp(args.hostname_regexp))
 			:tag              -> Core.tag_many(Core.machines_matching_regexp(args.hostname_regexp),   all_arguments(args.tag, unknown))
 			:untag            -> Core.untag_many(Core.machines_matching_regexp(args.hostname_regexp), all_arguments(args.tag, unknown))
-			:get_tags         -> Core.get_tags(args.hostname) |> Enum.join(" ") |> IO.write
+			:get_tags         -> Core.get_tags(args.hostname) |> Enum.sort |> Enum.join("\n") |> Kernel.<>("\n") |> IO.write
 			:set_public_ip    -> Core.set_public_ip(args.hostname, args.public_ip)
 			:set_ssh_port     -> Core.set_ssh_port_many(Core.machines_matching_regexp(args.hostname_regexp), args.ssh_port)
 			:rekey_wireguard  -> Core.rekey_wireguard_many(Core.machines_matching_regexp(args.hostname_regexp))
