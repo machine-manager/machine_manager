@@ -346,7 +346,7 @@ defmodule MachineManager.Core do
 		end
 		arguments = [".cache/machine_manager/erlang/bin/escript", ".cache/machine_manager/script"] ++ row.tags
 		for arg <- arguments do
-			if arg |> String.contains?(" ") do
+			if String.contains?(arg, " ") do
 				raise(ConfigureError,
 					"Argument list #{inspect arguments} contains an argument with a space: #{inspect arg}")
 			end
