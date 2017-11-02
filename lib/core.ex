@@ -327,8 +327,7 @@ defmodule MachineManager.Core do
 		subdomains       = subdomains(all_machines_map |> Map.values)
 		hosts_file       = make_hosts_json_file(row, graphs, subdomains, all_machines_map)
 		case transfer_path("#{portable_erlang}/", row, ".cache/machine_manager/erlang",
-		                   before_rsync: "mkdir -p .cache/machine_manager/erlang",
-		                   recursive: true) do
+		                   before_rsync: "mkdir -p .cache/machine_manager/erlang") do
 			{"", 0}          -> nil
 			{out, exit_code} -> raise_upload_error(row.hostname, out, exit_code, "erlang")
 		end
@@ -471,14 +470,9 @@ defmodule MachineManager.Core do
 	# Returns {rsync_stdout_and_stderr, rsync_exit_code}
 	defp transfer_paths(source_paths, row, dest, opts) do
 		before_rsync = opts[:before_rsync]
-		recursive    = opts[:recursive]
 		args =
-			case before_rsync do
-				nil -> []
-				_   -> ["--rsync-path", "#{before_rsync} && rsync"]
-			end ++
-			["-e", "ssh -p #{row.ssh_port}", "--protect-args", "--executability"] ++
-			(if recursive, do: ["--recursive", "--links"], else: []) ++
+			(if before_rsync != nil, do: ["--rsync-path", "#{before_rsync} && rsync"], else: []) ++
+			["-e", "ssh -p #{row.ssh_port}", "--protect-args", "--recursive", "--delete", "--executability", "--links"] ++
 			source_paths ++
 			["root@#{to_ip_string(row.public_ip)}:#{dest}"]
 		case System.cmd("rsync", args, stderr_to_stdout: true) do
