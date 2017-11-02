@@ -4,7 +4,6 @@ defmodule MachineManager.PortableErlang do
 	"""
 	def make_portable_erlang(dest) do
 		erlang_base        = "/usr/lib/erlang"
-		{:ok, []}          = File.ls(dest)
 		[erts]             = Path.wildcard("#{erlang_base}/erts-*")
 		erlang_libs        = File.ls!("#{erlang_base}/lib")
 		erlang_bins        = File.ls!("#{erlang_base}/bin")
@@ -23,6 +22,7 @@ defmodule MachineManager.PortableErlang do
 				"/erts-*/lib",
 				"/erts-*/include",
 			]
+		{:ok, []} = File.ls(dest)
 		exclude_args = Enum.flat_map(excludes, fn path -> ["--exclude", path] end)
 		{"", 0} = System.cmd("rsync", exclude_args ++ ["-a", "--", "#{erlang_base}/", dest], stderr_to_stdout: true)
 		fix_bin_erl(Path.join(dest, "bin/erl"))
