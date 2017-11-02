@@ -5,7 +5,7 @@ defmodule MachineManager.WireGuard do
 	@spec make_wireguard_privkey() :: String.t
 	def make_wireguard_privkey() do
 		{privkey, 0} = System.cmd("/usr/bin/wg", ["genkey"])
-		privkey = privkey |> String.trim_trailing("\n")
+		privkey = String.trim_trailing(privkey, "\n")
 		if byte_size(privkey) != 44 do
 			raise(RuntimeError, "Private key from `wg genkey` was of the wrong size")
 		end
@@ -49,30 +49,37 @@ defmodule MachineManager.WireGuard do
 	"""
 	@spec make_wireguard_config(String.t, String.t, integer, [map]) :: String.t
 	def make_wireguard_config(private_key, address, listen_port, peers) do
+		peer_sections = Enum.map(peers, &peer_section/1)
 		"""
 		[Interface]
 		PrivateKey = #{private_key}
 		ListenPort = #{listen_port}
 		Address    = #{address}
 
-		""" <> (
-		peers
-		|> Enum.map(fn %{public_key: public_key, endpoint: endpoint, allowed_ips: allowed_ips, comment: comment} ->
-				if comment =~ ~r/\n/ do
-					raise "WireGuard comment cannot contain a newline: #{inspect comment}"
-				end
-				endpoint_line = case endpoint do
-					nil -> ""
-					_   -> "Endpoint   = #{endpoint}\n"
-				end
-				"""
-				# #{comment}
-				[Peer]
-				PublicKey  = #{public_key}
-				#{endpoint_line}\
-				AllowedIPs = #{allowed_ips |> Enum.join(", ")}
-				"""
-		end)
-		|> Enum.join("\n"))
+		#{Enum.join(peer_sections, "\n")}\
+		"""
+	end
+
+	defp peer_section(peer) do
+		%{
+			public_key:  public_key, 
+			endpoint:    endpoint,
+			allowed_ips: allowed_ips,
+			comment:     comment
+		} = peer
+		if comment =~ ~r/\n/ do
+			raise "WireGuard comment cannot contain a newline: #{inspect comment}"
+		end
+		endpoint_line = case endpoint do
+			nil -> ""
+			_   -> "Endpoint   = #{endpoint}\n"
+		end
+		"""
+		# #{comment}
+		[Peer]
+		PublicKey  = #{public_key}
+		#{endpoint_line}\
+		AllowedIPs = #{Enum.join(allowed_ips, ", ")}
+		"""
 	end
 end
