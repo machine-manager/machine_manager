@@ -36,7 +36,8 @@ defmodule MachineManager.CLI do
 						no_header: [long: "--no-header", help: "Don't print the column header"],
 					],
 					options: [
-						columns:   [short: "-c", long: "--column", multiple: true, help:
+						color:   color_option(),
+						columns: [short: "-c", long: "--column", multiple: true, help:
 							"""
 							Column to include in the output.  Can be specified multiple times.  One of: \
 							#{get_column_spec() |> Map.keys |> Enum.join(" ")}.                                           \
@@ -174,6 +175,7 @@ defmodule MachineManager.CLI do
 					name:  "get-tags",
 					about: "Get tags for a machine in alphanumeric order, one tag per line",
 					args: [
+						color:    color_option(),
 						hostname: [required: true],
 					],
 				],
@@ -204,7 +206,7 @@ defmodule MachineManager.CLI do
 		)
 		{[subcommand], %{args: args, options: options, flags: flags, unknown: unknown}} = Optimus.parse!(spec, argv)
 		case subcommand do
-			:ls               -> list(args.hostname_regexp, options.columns, (if flags.no_header, do: false, else: true))
+			:ls               -> list(args.hostname_regexp, options.columns, (if flags.no_header, do: false, else: true), options.color)
 			:script           -> Core.write_script_for_machine(args.hostname, args.output_file, allow_warnings: flags.allow_warnings)
 			:configure        -> configure_many(args.hostname_regexp, flags.show_progress, flags.allow_warnings)
 			:ssh_config       -> ssh_config()
@@ -220,11 +222,26 @@ defmodule MachineManager.CLI do
 			:rm               -> Core.rm_many(Core.machines_matching_regexp(args.hostname_regexp))
 			:tag              -> Core.tag_many(Core.machines_matching_regexp(args.hostname_regexp),   all_arguments(args.tag, unknown))
 			:untag            -> Core.untag_many(Core.machines_matching_regexp(args.hostname_regexp), all_arguments(args.tag, unknown))
-			:get_tags         -> Core.get_tags(args.hostname) |> Enum.sort |> Enum.join("\n") |> Kernel.<>("\n") |> IO.write
+			:get_tags         -> get_tags(args.hostname, args.color)
 			:set_public_ip    -> Core.set_public_ip(args.hostname, args.public_ip)
 			:set_ssh_port     -> Core.set_ssh_port_many(Core.machines_matching_regexp(args.hostname_regexp), args.ssh_port)
 			:rekey_wireguard  -> Core.rekey_wireguard_many(Core.machines_matching_regexp(args.hostname_regexp))
 		end
+	end
+
+	defp color_option() do
+		[
+			long:     "--color",
+			help:     ~s(Default "auto"; set to "always" to output ANSI color codes even to non-terminals),
+			parser:   fn(s) ->
+				case s do
+					"always" -> {:ok, :always}
+					"auto"   -> {:ok, :auto}
+					nil      -> {:ok, :auto}
+					other    -> {:error, "Unexpected value for --color: #{inspect other}"}
+				end
+			end,
+		]
 	end
 
 	# https://github.com/savonarola/optimus/issues/3
@@ -403,7 +420,7 @@ defmodule MachineManager.CLI do
 		end
 	end
 
-	def list(hostname_regexp, columns, print_header) do
+	def list(hostname_regexp, columns, print_header, color) do
 		hostname_regexp = case hostname_regexp do
 			nil -> ".*"
 			_   -> hostname_regexp
@@ -413,8 +430,8 @@ defmodule MachineManager.CLI do
 			_  -> columns
 		end
 		rows          = Core.list(Core.machines_matching_regexp(hostname_regexp))
-		column_spec   = get_column_spec()
-		header_row    = get_column_header_row(column_spec, columns)
+		column_spec   = get_column_spec(color)
+		header_row    = get_column_header_row(column_spec, columns, color)
 		tag_frequency = make_tag_frequency(rows)
 		table         = Enum.map(rows, fn row -> sql_row_to_table_row(column_spec, columns, row, tag_frequency) end)
 		table         = case print_header do
@@ -425,10 +442,10 @@ defmodule MachineManager.CLI do
 		:ok = IO.write(out)
 	end
 
-	defp get_column_header_row(column_spec, columns) do
+	defp get_column_header_row(column_spec, columns, color) do
 		Enum.map(columns, fn column ->
 			case column_spec[column] do
-				{header, _display_function} -> bolded(header)
+				{header, _display_function} -> bolded(header, color)
 				_ -> raise(RuntimeError, "No such column #{inspect column}")
 			end
 		end)
@@ -443,28 +460,28 @@ defmodule MachineManager.CLI do
 		]
 	end
 
-	defp get_column_spec() do
+	defp get_column_spec(color \\ :auto) do
 		%{
 			"hostname"         => {"HOSTNAME",         fn row, _ -> row.hostname end},
 			"public_ip"        => {"PUBLIC IP",        fn row, _ -> row.public_ip    |> maybe_scramble_ip |> Core.to_ip_string end},
 			"wireguard_ip"     => {"WIREGUARD",        fn row, _ -> row.wireguard_ip |> Core.to_ip_string end},
 			"ssh_port"         => {"SSH",              fn row, _ -> row.ssh_port end},
-			"tags"             => {"TAGS",             &format_tags/2},
-			"datacenter"       => {"DC",               fn row, _ -> row.datacenter |> colorize end},
+			"tags"             => {"TAGS",             fn row, tag_frequency -> format_tags(row, tag_frequency, color) end},
+			"datacenter"       => {"DC",               fn row, _ -> row.datacenter |> colorize(color) end},
 			"ram_mb"           => {"RAM",              fn row, _ -> row.ram_mb end},
 			"cpu_model_name"   => {"CPU",              fn row, _ -> if row.cpu_model_name   != nil, do: row.cpu_model_name |> CPU.short_description end},
 			"cpu_architecture" => {"ARCH",             fn row, _ -> row.cpu_architecture end},
 			"core_count"       => {"CO",               fn row, _ -> row.core_count end},
 			"thread_count"     => {"TH",               fn row, _ -> row.thread_count end},
-			"last_probe_time"  => {"PROBE TIME",       fn row, _ -> if row.last_probe_time  != nil, do: row.last_probe_time |> pretty_datetime |> colorize_time end},
-			"boot_time"        => {"BOOT TIME",        fn row, _ -> if row.boot_time        != nil, do: row.boot_time       |> pretty_datetime |> colorize_time end},
-			"time_offset"      => {"TIME OFFSET",      &format_time_offset/2},
-			"kernel"           => {"KERNEL",           &format_kernel/2},
-			"pending_upgrades" => {"PENDING UPGRADES", &format_pending_upgrades/2},
+			"last_probe_time"  => {"PROBE TIME",       fn row, _ -> if row.last_probe_time  != nil, do: row.last_probe_time |> pretty_datetime |> colorize_time(color) end},
+			"boot_time"        => {"BOOT TIME",        fn row, _ -> if row.boot_time        != nil, do: row.boot_time       |> pretty_datetime |> colorize_time(color) end},
+			"time_offset"      => {"TIME OFFSET",      fn row, _ -> format_time_offset(row) end},
+			"kernel"           => {"KERNEL",           fn row, _ -> format_kernel(row, color) end},
+			"pending_upgrades" => {"PENDING UPGRADES", fn row, _ -> format_pending_upgrades(row, color) end},
 		}
 	end
 
-	defp format_time_offset(row, _tag_frequency) do
+	defp format_time_offset(row) do
 		if row.time_offset != nil do
 			case Decimal.to_string(row.time_offset, :normal) do
 				"-" <> s -> "-" <> s
@@ -473,35 +490,46 @@ defmodule MachineManager.CLI do
 		end
 	end
 
-	defp format_kernel(row, _tag_frequency) do
+	defp format_kernel(row, color) do
 		if row.kernel != nil do
 			row.kernel
 			|> String.split(" ")
 			|> Enum.take(3) # take "Linux 4.4.0-NN-generic #NN" but ignore "SMP" and the build date
 			|> Enum.join(" ")
 			|> String.replace_prefix("Linux ", "🐧  ")
-			|> colorize
+			|> colorize(color)
 		end
 	end
 
-	defp format_pending_upgrades(row, _tag_frequency) do
+	defp format_pending_upgrades(row, color) do
 		if row.pending_upgrades != nil do
 			row.pending_upgrades
-			|> Enum.map(fn upgrade -> "#{upgrade["package"]}#{with_fgcolor("=", {150, 150, 150})}#{bolded(upgrade["new_version"])}" end)
+			|> Enum.map(fn upgrade -> "#{upgrade["package"]}#{with_fgcolor("=", {150, 150, 150}, color)}#{bolded(upgrade["new_version"], color)}" end)
 			|> Enum.join(" ")
 		end
 	end
 
-	defp format_tags(row, tag_frequency) do
+	def get_tags(hostname, color) do
+		Core.get_tags(hostname)
+		|> Enum.map(fn tag -> colorize_tag(tag, color) end)
+		|> Enum.sort
+		|> Enum.join("\n")
+		|> Kernel.<>("\n")
+		|> IO.write
+	end
+
+	defp format_tags(row, tag_frequency, color) do
 		row.tags
 		|> Enum.sort_by(fn tag -> -tag_frequency[tag] end)
-		|> Enum.map(fn tag ->
-				# Compute our own hash to avoid including the bold ANSI codes
-				# in the computation.
-				hash = :erlang.crc32(tag)
-				tag |> bold_first_part_if_multiple_parts |> colorize(hash)
-			end)
+		|> Enum.map(fn tag -> colorize_tag(tag, color) end)
 		|> Enum.join(" ")
+	end
+
+	defp colorize_tag(tag, color) do
+		# Compute our own hash to avoid including the bold ANSI codes
+		# in the computation.
+		hash = :erlang.crc32(tag)
+		tag |> bold_first_part_if_multiple_parts(color) |> colorize(color, hash)
 	end
 
 	defp width_fn(s) do
@@ -531,15 +559,15 @@ defmodule MachineManager.CLI do
 		end)
 	end
 
-	defp colorize_time(iso_time) do
+	defp colorize_time(iso_time, color) do
 		[date, time] = iso_time |> String.split("T", parts: 2)
-		"#{date}#{with_fgcolor("T", {150, 150, 150})}#{time}"
+		"#{date}#{with_fgcolor("T", {150, 150, 150}, color)}#{time}"
 	end
 
 	# Colorize the background color of a string in a manner that results in the
 	# same background color for identical strings.
 	@spec colorize(String.t, integer) :: String.t
-	defp colorize(string, hash \\ nil) do
+	defp colorize(string, color, hash \\ nil) do
 		bg_colors = [
 			{196, 218, 255},
 			{255, 196, 196},
@@ -563,32 +591,48 @@ defmodule MachineManager.CLI do
 		end
 		idx       = rem(hash, length(bg_colors))
 		bg_color  = Enum.fetch!(bg_colors, idx)
-		with_bgcolor(string, bg_color)
+		with_bgcolor(string, bg_color, color)
 	end
 
-	# Requires a terminal with true color support: https://gist.github.com/XVilka/8346728
-	@spec with_fgcolor(String.t, {integer, integer, integer}) :: String.t
-	defp with_fgcolor(text, {red, green, blue}) do
-		fg = 38
-		"\e[#{fg};2;#{red};#{green};#{blue}m#{text}\e[0m"
-	end
-
-	# Requires a terminal with true color support: https://gist.github.com/XVilka/8346728
-	@spec with_bgcolor(String.t, {integer, integer, integer}) :: String.t
-	defp with_bgcolor(text, {red, green, blue}) do
-		bg = 48
-		"\e[#{bg};2;#{red};#{green};#{blue}m#{text}\e[0m"
-	end
-
-	defp bold_first_part_if_multiple_parts(tag) do
-		case String.split(tag, ":", parts: 2) do
-			[first, rest] -> "#{bolded(first)}:#{rest}"
-			[first]       -> first
+	@spec with_fgcolor(String.t, {integer, integer, integer}, atom) :: String.t
+	defp with_fgcolor(text, {red, green, blue}, color \\ :auto) do
+		if color == :always or IO.ANSI.enabled?() do
+			# Requires a terminal with true color support: https://gist.github.com/XVilka/8346728
+			fg = 38
+			"\e[#{fg};2;#{red};#{green};#{blue}m#{text}\e[0m"
+		else
+			text
 		end
 	end
 
-	defp bolded(s) do
-		"#{IO.ANSI.bright()}#{s}#{IO.ANSI.normal()}"
+	@spec with_bgcolor(String.t, {integer, integer, integer}, atom) :: String.t
+	defp with_bgcolor(text, {red, green, blue}, color) do
+		if color == :always or IO.ANSI.enabled?() do
+			# Requires a terminal with true color support: https://gist.github.com/XVilka/8346728
+			bg = 48
+			"\e[#{bg};2;#{red};#{green};#{blue}m#{text}\e[0m"
+		else
+			text
+		end
+	end
+
+	defp bold_first_part_if_multiple_parts(tag, color) do
+		if color == :always or IO.ANSI.enabled?() do
+			case String.split(tag, ":", parts: 2) do
+				[first, rest] -> "#{bolded(first, color)}:#{rest}"
+				[first]       -> first
+			end
+		else
+			tag
+		end
+	end
+
+	defp bolded(s, color \\ :auto) do
+		if color == :always or IO.ANSI.enabled?() do
+			"#{IO.ANSI.bright()}#{s}#{IO.ANSI.normal()}"
+		else
+			s
+		end
 	end
 
 	defp maybe_scramble_ip(inet) do
