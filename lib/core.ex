@@ -496,8 +496,8 @@ defmodule MachineManager.Core do
 	defp install_rsync_on_machine(row) do
 		run_on_machine(row,
 			"""
-			apt-get update -q &&
-			env DEBIAN_FRONTEND=noninteractive apt-get --quiet --assume-yes install rsync
+			(apt-get update -q || echo "apt-get update failed but continuing anyway") &&
+			env DEBIAN_FRONTEND=noninteractive apt-get --quiet --assume-yes --no-install-recommends install rsync
 			""")
 	end
 
