@@ -8,6 +8,9 @@ defmodule MachineManager.PortableErlang do
 		erlang_libs        = File.ls!("#{erlang_base}/lib")
 		erlang_bins        = File.ls!("#{erlang_base}/bin")
 		erlang_erts_bins   = File.ls!("#{erts}/bin")
+		# We include compiler because 1) escript.build.ex's :application.ensure_all_started(:elixir)
+		# will crash if it is not available (because compiler is listed in elixir.app.src)
+		# 2) some users of converge may want to use the compiler for some reason
 		unwanted_libs      = Enum.reject(erlang_libs,      fn n -> n =~ ~r/\A(kernel|stdlib|compiler)-/ end)
 		unwanted_bins      = Enum.reject(erlang_bins,      fn n -> n =~ ~r/\A(erl|escript|start_clean\.boot)\z/ end)
 		unwanted_erts_bins = Enum.reject(erlang_erts_bins, fn n -> n =~ ~r/\A(erlexec|erl_child_setup|inet_gethost|beam\.smp)\z/ end)
