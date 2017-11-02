@@ -95,7 +95,7 @@ defmodule MachineManager.Core do
 
 	@spec wireguard_config(String.t) :: String.t
 	def wireguard_config(hostname) do
-		all_machines     = from("machines") |> list
+		all_machines     = list(from("machines"))
 		all_machines_map = all_machines |> Enum.map(fn row -> {row.hostname, row} end) |> Map.new
 		row              = all_machines_map[hostname]
 		listen_port      = 51820
@@ -106,7 +106,7 @@ defmodule MachineManager.Core do
 
 	@spec hosts_json_file(String.t) :: String.t
 	def hosts_json_file(hostname) do
-		all_machines     = from("machines") |> list
+		all_machines     = list(from("machines"))
 		all_machines_map = all_machines |> Enum.map(fn row -> {row.hostname, row} end) |> Map.new
 		row              = all_machines_map[hostname]
 		graphs           = connectivity_graphs(all_machines)
@@ -124,7 +124,7 @@ defmodule MachineManager.Core do
 		# machines because make_connectivity_graph just runs require_file on
 		# connections.exs files.
 		write_scripts_for_machines(rows, allow_warnings)
-		all_machines      = from("machines") |> list
+		all_machines      = list(from("machines"))
 		all_machines_map  = all_machines |> Enum.map(fn row -> {row.hostname, row} end) |> Map.new
 		graphs            = connectivity_graphs(all_machines)
 		wrapped_configure = fn row ->
@@ -167,9 +167,9 @@ defmodule MachineManager.Core do
 	"""
 	@spec connectivity(String.t) :: nil
 	def connectivity(type_s) do
-		all_machines = from("machines") |> list
+		all_machines = list(from("machines"))
 		graphs       = connectivity_graphs(all_machines)
-		type         = type_s |> String.to_atom
+		type         = String.to_atom(type_s)
 		edge_color   = color_for_connectivity_type(type)
 		edges        = graphs[type]
 			|> Enum.flat_map(fn {a, bs} ->
@@ -347,7 +347,7 @@ defmodule MachineManager.Core do
 		end
 		arguments = [".cache/machine_manager/erlang/bin/escript", ".cache/machine_manager/script"] ++ row.tags
 		for arg <- arguments do
-			if arg |> String.contains?(" ") do
+			if String.contains?(arg, " ") do
 				raise(ConfigureError,
 					"Argument list #{inspect arguments} contains an argument with a space: #{inspect arg}")
 			end

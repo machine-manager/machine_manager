@@ -414,28 +414,24 @@ defmodule MachineManager.CLI do
 		end
 		rows          = Core.list(Core.machines_matching_regexp(hostname_regexp))
 		column_spec   = get_column_spec()
-		header        = get_column_header(column_spec, columns)
+		header_row    = get_column_header_row(column_spec, columns)
 		tag_frequency = make_tag_frequency(rows)
 		table         = Enum.map(rows, fn row -> sql_row_to_table_row(column_spec, columns, row, tag_frequency) end)
 		table         = case print_header do
-			true  -> [header | table]
+			true  -> [header_row | table]
 			false -> table
 		end
-		out           = TableFormatter.format(table, padding: 2, width_fn: &width_fn/1)
+		out = TableFormatter.format(table, padding: 2, width_fn: &width_fn/1)
 		:ok = IO.write(out)
 	end
 
-	defp get_column_header(column_spec, columns) do
-		columns
-		|> Enum.map(fn column ->
-				tuple = column_spec[column]
-				if tuple == nil do
-					raise(RuntimeError, "No such column #{inspect column}")
-				end
-				{header, _} = tuple
-				header
-			end)
-		|> Enum.map(&bolded/1)
+	defp get_column_header_row(column_spec, columns) do
+		Enum.map(columns, fn column ->
+			case column_spec[column] do
+				{header, _display_function} -> bolded(header)
+				_ -> raise(RuntimeError, "No such column #{inspect column}")
+			end
+		end)
 	end
 
 	defp default_columns() do
@@ -470,7 +466,7 @@ defmodule MachineManager.CLI do
 
 	defp format_time_offset(row, _tag_frequency) do
 		if row.time_offset != nil do
-			case row.time_offset |> Decimal.to_string(:normal) do
+			case Decimal.to_string(row.time_offset, :normal) do
 				"-" <> s -> "-" <> s
 				s        -> "+" <> s
 			end
@@ -565,7 +561,7 @@ defmodule MachineManager.CLI do
 			nil   -> :erlang.crc32(string)
 			other -> other
 		end
-		idx       = rem(hash, bg_colors |> length)
+		idx       = rem(hash, length(bg_colors))
 		bg_color  = Enum.fetch!(bg_colors, idx)
 		with_bgcolor(string, bg_color)
 	end
@@ -585,7 +581,7 @@ defmodule MachineManager.CLI do
 	end
 
 	defp bold_first_part_if_multiple_parts(tag) do
-		case tag |> String.split(":", parts: 2) do
+		case String.split(tag, ":", parts: 2) do
 			[first, rest] -> "#{bolded(first)}:#{rest}"
 			[first]       -> first
 		end

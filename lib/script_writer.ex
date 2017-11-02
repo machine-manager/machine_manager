@@ -14,8 +14,8 @@ defmodule MachineManager.ScriptWriter do
 		allow_warnings = opts[:allow_warnings] || false
 		dependencies   = [{:converge,    ">= 0.1.0"},
 		                  {:base_system, ">= 0.1.0"}] ++ \
-		                 (roles |> Enum.map(fn role -> {"role_#{role}" |> String.to_atom, ">= 0.0.0"} end))
-		role_modules   = roles |> Enum.map(&module_for_role/1)
+		                 Enum.map(roles, fn role -> {String.to_atom("role_#{role}"), ">= 0.0.0"} end)
+		role_modules   = Enum.map(roles, &module_for_role/1)
 		temp_dir       = FileUtil.temp_dir("multi_role_script")
 		app_name       = "multi_role_script"
 		module         = MultiRoleScript
@@ -36,7 +36,7 @@ defmodule MachineManager.ScriptWriter do
 				# Even with --warnings-as-errors, warnings in dependencies don't
 				# result in a non-0 exit from `mix compile`.  Parse the output and
 				# fail the build if there were any warnings.
-				if not allow_warnings and out |> String.contains?("warning:") do
+				if not allow_warnings and String.contains?(out, "warning:") do
 					raise(ScriptCompilationError, "mix compile had a warning:\n\n#{out}")
 				end
 			{out, _code} ->
@@ -54,8 +54,8 @@ defmodule MachineManager.ScriptWriter do
 	@spec roles_for_tags([String.t]) :: [String.t]
 	def roles_for_tags(tags) do
 		tags
-		|> Enum.filter(fn tag -> tag |> String.starts_with?("role:") end)
-		|> Enum.map(fn tag -> tag |> String.replace_prefix("role:", "") end)
+		|> Enum.filter(fn tag -> String.starts_with?(tag, "role:") end)
+		|> Enum.map(fn tag -> String.replace_prefix(tag, "role:", "") end)
 	end
 
 	@doc """
