@@ -327,20 +327,21 @@ defmodule MachineManager.Core do
 		subdomains       = subdomains(all_machines_map |> Map.values)
 		hosts_file       = make_hosts_json_file(row, graphs, subdomains, all_machines_map)
 		case transfer_path("#{portable_erlang}/", row, ".cache/machine_manager/erlang",
-		                   before_rsync: "mkdir -p .cache/machine_manager/erlang") do
+		                   before_rsync: "mkdir -p .cache/machine_manager/erlang", compress: true) do
 			{"", 0}          -> nil
 			{out, exit_code} -> raise_upload_error(row.hostname, out, exit_code, "erlang")
 		end
+		# script_file is already compressed; do not use compress: true
 		case transfer_path(script_file, row, ".cache/machine_manager/script",
 		                   before_rsync: "mkdir -p .cache/machine_manager") do
 			{"", 0}          -> nil
 			{out, exit_code} -> raise_upload_error(row.hostname, out, exit_code, "configuration script")
 		end
-		case transfer_content(wireguard_config, row, ".cache/machine_manager/wg0.conf") do
+		case transfer_content(wireguard_config, row, ".cache/machine_manager/wg0.conf", compress: true) do
 			{"", 0}          -> nil
 			{out, exit_code} -> raise_upload_error(row.hostname, out, exit_code, "WireGuard configuration")
 		end
-		case transfer_content(hosts_file, row, ".cache/machine_manager/hosts.json") do
+		case transfer_content(hosts_file, row, ".cache/machine_manager/hosts.json", compress: true) do
 			{"", 0}          -> nil
 			{out, exit_code} -> raise_upload_error(row.hostname, out, exit_code, "hosts.json")
 		end
@@ -443,7 +444,7 @@ defmodule MachineManager.Core do
 	# Transfer content `content` using rsync to machine described by `row` to `dest`
 	#
 	# Returns {rsync_out, rsync_exit_code}
-	defp transfer_content(content, row, dest, opts \\ []) do
+	defp transfer_content(content, row, dest, opts) do
 		temp = FileUtil.temp_path("machine_manager_transfer_content")
 		File.write!(temp, content)
 		try do
@@ -464,24 +465,27 @@ defmodule MachineManager.Core do
 	# remote before the rsync transfer.  This can be used to create a directory
 	# needed for the transfer to succeed.
 	#
+	# If opts[:compress] is true, use rsync -z (--compress).
+	#
 	# If rsync appears to be missing on the remote, this will install rsync
 	# and try again.
 	#
 	# Returns {rsync_stdout_and_stderr, rsync_exit_code}
 	defp transfer_paths(source_paths, row, dest, opts) do
 		before_rsync = opts[:before_rsync]
-		args =
+		rsync_args =
 			(if before_rsync != nil, do: ["--rsync-path", "#{before_rsync} && rsync"], else: []) ++
+			(if opts[:compress],     do: ["--compress"], else: []) ++
 			["-e", "ssh -p #{row.ssh_port}", "--protect-args", "--recursive", "--delete", "--executability", "--links"] ++
 			source_paths ++
 			["root@#{to_ip_string(row.public_ip)}:#{dest}"]
-		case System.cmd("rsync", args, stderr_to_stdout: true) do
+		case System.cmd("rsync", rsync_args, stderr_to_stdout: true) do
 			{out, 0}         -> {out, 0}
 			{out, exit_code} ->
 				cond do
 					String.contains?(out, "rsync: command not found") ->
 						case install_rsync_on_machine(row) do
-							{_, 0}           -> System.cmd("rsync", args, stderr_to_stdout: true)
+							{_, 0}           -> System.cmd("rsync", rsync_args, stderr_to_stdout: true)
 							{out, exit_code} -> {out, exit_code}
 						end
 					true -> {out, exit_code}
