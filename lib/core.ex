@@ -663,7 +663,7 @@ defmodule MachineManager.Core do
 		{output, exit_code} = run_on_machine(row, command)
 		case exit_code do
 			0 ->
-				json = output |> get_json_from_probe_output
+				json = get_json_from_probe_output(output)
 				case Poison.decode(json, keys: :atoms!) do
 					{:ok, data}    -> data
 					{:error, _err} ->
