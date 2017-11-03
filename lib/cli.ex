@@ -22,11 +22,6 @@ defmodule MachineManager.CLI do
 	alias MachineManager.{Core, CPU, Counter}
 
 	def main(argv) do
-		# https://github.com/erlang/otp/pull/480 was rejected, so instead we have the
-		# wrapper script `mm` set this env var if stdout and stderr look like a terminal.
-		if System.get_env("MACHINE_MANAGER_ANSI_ENABLED") == "1" do
-			Application.put_env(:elixir, :ansi_enabled, true)
-		end
 		hostname_regexp_help = "Regular expression used to match hostnames. Automatically wrapped with ^ and $."
 		spec = Optimus.new!(
 			name:               "machine_manager",
@@ -41,7 +36,8 @@ defmodule MachineManager.CLI do
 						no_header: [long: "--no-header", help: "Don't print the column header"],
 					],
 					options: [
-						columns:   [short: "-c", long: "--column", multiple: true, help:
+						color:   color_option(),
+						columns: [short: "-c", long: "--column", multiple: true, help:
 							"""
 							Column to include in the output.  Can be specified multiple times.  One of: \
 							#{get_column_spec() |> Map.keys |> Enum.join(" ")}.                                           \
@@ -178,6 +174,9 @@ defmodule MachineManager.CLI do
 				get_tags: [
 					name:  "get-tags",
 					about: "Get tags for a machine in alphanumeric order, one tag per line",
+					options: [
+						color: color_option(),
+					],
 					args: [
 						hostname: [required: true],
 					],
@@ -208,6 +207,16 @@ defmodule MachineManager.CLI do
 			]
 		)
 		{[subcommand], %{args: args, options: options, flags: flags, unknown: unknown}} = Optimus.parse!(spec, argv)
+		# https://github.com/erlang/otp/pull/480 was rejected, so instead we have the
+		# wrapper script `mm` set this env var if stdout and stderr look like a terminal.
+		if System.get_env("MACHINE_MANAGER_ANSI_ENABLED") == "1" do
+			Application.put_env(:elixir, :ansi_enabled, true)
+		end
+		case options do
+			%{color: :always} -> Application.put_env(:elixir, :ansi_enabled, true)
+			%{color: :never}  -> Application.put_env(:elixir, :ansi_enabled, false)
+			_                 -> nil
+		end
 		case subcommand do
 			:ls               -> list(args.hostname_regexp, options.columns, (if flags.no_header, do: false, else: true))
 			:script           -> Core.write_script_for_machine(args.hostname, args.output_file, allow_warnings: flags.allow_warnings)
@@ -225,11 +234,27 @@ defmodule MachineManager.CLI do
 			:rm               -> Core.rm_many(Core.machines_matching_regexp(args.hostname_regexp))
 			:tag              -> Core.tag_many(Core.machines_matching_regexp(args.hostname_regexp),   all_arguments(args.tag, unknown))
 			:untag            -> Core.untag_many(Core.machines_matching_regexp(args.hostname_regexp), all_arguments(args.tag, unknown))
-			:get_tags         -> Core.get_tags(args.hostname) |> Enum.sort |> Enum.join("\n") |> Kernel.<>("\n") |> IO.write
+			:get_tags         -> get_tags(args.hostname)
 			:set_public_ip    -> Core.set_public_ip(args.hostname, args.public_ip)
 			:set_ssh_port     -> Core.set_ssh_port_many(Core.machines_matching_regexp(args.hostname_regexp), args.ssh_port)
 			:rekey_wireguard  -> Core.rekey_wireguard_many(Core.machines_matching_regexp(args.hostname_regexp))
 		end
+	end
+
+	defp color_option() do
+		[
+			long:     "--color",
+			help:     ~s(Default "auto"; use "always" to output ANSI color codes even to non-terminals; "never" to never output ANSI color codes even to terminals),
+			parser:   fn(s) ->
+				case s do
+					"auto"   -> {:ok, :auto}
+					"always" -> {:ok, :always}
+					"never"  -> {:ok, :never}
+					nil      -> {:ok, :auto}
+					other    -> {:error, "Unexpected value for --color: #{inspect other}"}
+				end
+			end,
+		]
 	end
 
 	# https://github.com/savonarola/optimus/issues/3
@@ -497,16 +522,27 @@ defmodule MachineManager.CLI do
 		end
 	end
 
+	def get_tags(hostname) do
+		Core.get_tags(hostname)
+		|> Enum.sort
+		|> Enum.map(fn tag -> colorize_tag(tag) end)
+		|> Enum.join("\n")
+		|> Kernel.<>("\n")
+		|> IO.write
+	end
+
 	defp format_tags(row, tag_frequency) do
 		row.tags
 		|> Enum.sort_by(fn tag -> -tag_frequency[tag] end)
-		|> Enum.map(fn tag ->
-				# Compute our own hash to avoid including the bold ANSI codes
-				# in the computation.
-				hash = :erlang.crc32(tag)
-				tag |> bold_first_part_if_multiple_parts |> colorize(hash)
-			end)
+		|> Enum.map(fn tag -> colorize_tag(tag) end)
 		|> Enum.join(" ")
+	end
+
+	defp colorize_tag(tag) do
+		# Compute our own hash to avoid including the bold ANSI codes
+		# in the computation.
+		hash = :erlang.crc32(tag)
+		tag |> bold_first_part_if_multiple_parts() |> colorize(hash)
 	end
 
 	defp width_fn(s) do
