@@ -22,6 +22,11 @@ defmodule MachineManager.CLI do
 	alias MachineManager.{Core, CPU, Counter}
 
 	def main(argv) do
+		# https://github.com/erlang/otp/pull/480 was rejected, so instead we have the
+		# wrapper script `mm` set this env var if stdout and stderr look like a terminal.
+		if System.get_env("MACHINE_MANAGER_ANSI_ENABLED") == "1" do
+			Application.put_env(:elixir, :ansi_enabled, true)
+		end
 		hostname_regexp_help = "Regular expression used to match hostnames. Automatically wrapped with ^ and $."
 		spec = Optimus.new!(
 			name:               "machine_manager",
@@ -566,29 +571,45 @@ defmodule MachineManager.CLI do
 		with_bgcolor(string, bg_color)
 	end
 
-	# Requires a terminal with true color support: https://gist.github.com/XVilka/8346728
 	@spec with_fgcolor(String.t, {integer, integer, integer}) :: String.t
 	defp with_fgcolor(text, {red, green, blue}) do
-		fg = 38
-		"\e[#{fg};2;#{red};#{green};#{blue}m#{text}\e[0m"
+		if IO.ANSI.enabled?() do
+			# Requires a terminal with true color support: https://gist.github.com/XVilka/8346728
+			fg = 38
+			"\e[#{fg};2;#{red};#{green};#{blue}m#{text}\e[0m"
+		else
+			text
+		end
 	end
 
-	# Requires a terminal with true color support: https://gist.github.com/XVilka/8346728
 	@spec with_bgcolor(String.t, {integer, integer, integer}) :: String.t
 	defp with_bgcolor(text, {red, green, blue}) do
-		bg = 48
-		"\e[#{bg};2;#{red};#{green};#{blue}m#{text}\e[0m"
+		if IO.ANSI.enabled?() do
+			# Requires a terminal with true color support: https://gist.github.com/XVilka/8346728
+			bg = 48
+			"\e[#{bg};2;#{red};#{green};#{blue}m#{text}\e[0m"
+		else
+			text
+		end
 	end
 
 	defp bold_first_part_if_multiple_parts(tag) do
-		case String.split(tag, ":", parts: 2) do
-			[first, rest] -> "#{bolded(first)}:#{rest}"
-			[first]       -> first
+		if IO.ANSI.enabled?() do
+			case String.split(tag, ":", parts: 2) do
+				[first, rest] -> "#{bolded(first)}:#{rest}"
+				[first]       -> first
+			end
+		else
+			tag
 		end
 	end
 
 	defp bolded(s) do
-		"#{IO.ANSI.bright()}#{s}#{IO.ANSI.normal()}"
+		if IO.ANSI.enabled?() do
+			"#{IO.ANSI.bright()}#{s}#{IO.ANSI.normal()}"
+		else
+			s
+		end
 	end
 
 	defp maybe_scramble_ip(inet) do
