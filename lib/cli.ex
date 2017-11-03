@@ -207,16 +207,17 @@ defmodule MachineManager.CLI do
 			]
 		)
 		{[subcommand], %{args: args, options: options, flags: flags, unknown: unknown}} = Optimus.parse!(spec, argv)
+
 		# https://github.com/erlang/otp/pull/480 was rejected, so instead we have the
-		# wrapper script `mm` set this env var if stdout and stderr look like a terminal.
-		if System.get_env("MACHINE_MANAGER_ANSI_ENABLED") == "1" do
-			Application.put_env(:elixir, :ansi_enabled, true)
+		# wrapper script `mm` set MACHINE_MANAGER_ANSI_ENABLED=1 if stdout and stderr
+		# look like a terminal.
+		ansi_enabled = case options do
+			%{color: :always} -> true
+			%{color: :never}  -> false
+			_                 -> System.get_env("MACHINE_MANAGER_ANSI_ENABLED") == "1"
 		end
-		case options do
-			%{color: :always} -> Application.put_env(:elixir, :ansi_enabled, true)
-			%{color: :never}  -> Application.put_env(:elixir, :ansi_enabled, false)
-			_                 -> nil
-		end
+		Application.put_env(:elixir, :ansi_enabled, ansi_enabled)
+
 		case subcommand do
 			:ls               -> list(args.hostname_regexp, options.columns, (if flags.no_header, do: false, else: true))
 			:script           -> Core.write_script_for_machine(args.hostname, args.output_file, allow_warnings: flags.allow_warnings)
