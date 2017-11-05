@@ -446,6 +446,8 @@ defmodule MachineManager.Core do
 	# Returns {rsync_out, rsync_exit_code}
 	defp transfer_content(content, row, dest, opts) do
 		temp = FileUtil.temp_path("machine_manager_transfer_content")
+		File.touch!(temp)
+		:ok = File.chmod!(temp, 0o600)
 		File.write!(temp, content)
 		try do
 			transfer_path(temp, row, dest, opts)
