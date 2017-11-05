@@ -312,6 +312,71 @@ defmodule MachineManager.Core do
 		nil
 	end
 
+	@doc """
+	Probe a machine and write the probe data to the database.
+	"""
+	def probe(row) do
+		data = get_probe_data(row)
+		# TODO: don't assume that it's the same machine; make sure some unique ID is the same
+		write_probe_data_to_db(row.hostname, data)
+		nil
+	end
+
+	@machine_probe_content File.read!(Path.join(__DIR__, "../../machine_probe/machine_probe"))
+
+	@doc """
+	Get probe data from a machine.
+	"""
+	def get_probe_data(row) do
+		portable_erlang = FileUtil.temp_dir("machine_manager_portable_erlang")
+		PortableErlang.make_portable_erlang(portable_erlang)
+		transfer_portable_erlang(portable_erlang, row)
+		case transfer_content(@machine_probe_content, row, ".cache/machine_manager/machine_probe",
+			                   before_rsync: "mkdir -p .cache/machine_manager", executable: true) do
+			{"", 0}          -> nil
+			{out, exit_code} -> raise_upload_error(row.hostname, out, exit_code, "machine_probe")
+		end
+		{output, exit_code} = run_on_machine(row, ".cache/machine_manager/erlang/bin/escript .cache/machine_manager/machine_probe")
+		case exit_code do
+			0 ->
+				json = get_json_from_probe_output(output)
+				case Poison.decode(json, keys: :atoms!) do
+					{:ok, data}    -> data
+					{:error, _err} ->
+						raise(ProbeError,
+							"""
+							Probing machine #{inspect row.hostname} failed because JSON was corrupted:
+
+							#{json}
+							""")
+				end
+			_ -> raise(ProbeError,
+				"""
+				Probing machine #{inspect row.hostname} failed with exit code #{exit_code}; output:
+
+				#{output}
+				""")
+		end
+	end
+
+	defp get_json_from_probe_output(s) do
+		# Skip past any warnings like
+		# "warning: the VM is running with native name encoding of latin1"
+		s
+		|> StringUtil.grep(~r/^\{/)
+		|> hd
+	end
+
+	def _atoms() do
+		# Make sure these atoms are in the atom table for our Poison.decode!
+		[
+			:ram_mb, :cpu_model_name, :cpu_architecture, :core_count, :thread_count,
+			:datacenter, :kernel, :boot_time_ms, :pending_upgrades, :time_offset,
+			# Keys in :pending_upgrades
+			:name, :old_version, :new_version, :origins, :architecture,
+		]
+	end
+
 	# This function assumes an up-to-date configuration script is already present
 	# in @script_cache (call write_scripts_for_machines first).
 	#
@@ -326,12 +391,8 @@ defmodule MachineManager.Core do
 		wireguard_config = WireGuard.make_wireguard_config(row.wireguard_privkey, to_ip_string(row.wireguard_ip), 51820, wireguard_peers)
 		subdomains       = subdomains(all_machines_map |> Map.values)
 		hosts_file       = make_hosts_json_file(row, graphs, subdomains, all_machines_map)
-		case transfer_path("#{portable_erlang}/", row, ".cache/machine_manager/erlang",
-		                   before_rsync: "mkdir -p .cache/machine_manager/erlang", compress: true) do
-			{"", 0}          -> nil
-			{out, exit_code} -> raise_upload_error(row.hostname, out, exit_code, "erlang")
-		end
-		# script_file is already compressed; do not use compress: true
+		transfer_portable_erlang(portable_erlang, row)
+		# script_file is already compressed, so don't use compress: true
 		case transfer_path(script_file, row, ".cache/machine_manager/script",
 		                   before_rsync: "mkdir -p .cache/machine_manager") do
 			{"", 0}          -> nil
@@ -366,6 +427,14 @@ defmodule MachineManager.Core do
 					0 -> :configured
 					_ -> raise_configure_error(row.hostname, out, exit_code)
 				end
+		end
+	end
+
+	defp transfer_portable_erlang(portable_erlang, row) do
+		case transfer_path("#{portable_erlang}/", row, ".cache/machine_manager/erlang",
+		                   before_rsync: "mkdir -p .cache/machine_manager/erlang", compress: true) do
+			{"", 0}          -> nil
+			{out, exit_code} -> raise_upload_error(row.hostname, out, exit_code, "erlang")
 		end
 	end
 
@@ -638,69 +707,6 @@ defmodule MachineManager.Core do
 	def shutdown_many(queryable, handle_exec_result, handle_waiting) do
 		command = "nohup sh -c 'sleep 2; systemctl poweroff' > /dev/null 2>&1 < /dev/null &"
 		exec_many(queryable, command, handle_exec_result, handle_waiting)
-	end
-
-	@doc """
-	Probe a machine and write the probe data to the database.
-	"""
-	def probe(row) do
-		data = get_probe_data(row)
-		# TODO: don't assume that it's the same machine; make sure some unique ID is the same
-		write_probe_data_to_db(row.hostname, data)
-		nil
-	end
-
-	@machine_probe_content File.read!(Path.join(__DIR__, "../../machine_probe/machine_probe"))
-
-	@doc """
-	Get probe data from a machine.
-	"""
-	def get_probe_data(row) do
-		case transfer_content(@machine_probe_content, row, ".cache/machine_manager/machine_probe", executable: true) do
-			{"", 0}          -> nil
-			{out, exit_code} -> raise_upload_error(row.hostname, out, exit_code, "machine_probe")
-		end
-		{output, exit_code} = run_on_machine(row, ".cache/machine_manager/erlang/bin/escript .cache/machine_manager/machine_probe")
-		case exit_code do
-			0 ->
-				json = get_json_from_probe_output(output)
-				case Poison.decode(json, keys: :atoms!) do
-					{:ok, data}    -> data
-					{:error, _err} ->
-						raise(ProbeError,
-							"""
-							Probing machine #{inspect row.hostname} failed because JSON was corrupted:
-
-							#{json}
-							""")
-				end
-			_ -> raise(ProbeError,
-				"""
-				Probing machine #{inspect row.hostname} failed with exit code #{exit_code}; output:
-
-				#{output}
-				""")
-		end
-	end
-
-	defp get_json_from_probe_output(s) do
-		# Skip past any warnings like
-		# "warning: the VM is running with native name encoding of latin1"
-		s
-		|> StringUtil.grep(~r/^\{/)
-		|> hd
-	end
-
-	def _atoms() do
-		# Make sure these atoms are in the atom table for our Poison.decode!
-		[
-			:ram_mb, :cpu_model_name, :cpu_architecture, :core_count, :thread_count,
-			:datacenter, :kernel, :boot_time_ms, :pending_upgrades, :time_offset,
-			# Keys in :pending_upgrades
-			:name, :old_version, :new_version, :origins, :architecture,
-			# TODO Remove after machine_probe is upgraded everywhere
-			:country
-		]
 	end
 
 	@spec run_on_machine(%{public_ip: Postgrex.INET.t, ssh_port: integer}, String.t, boolean) :: {String.t, integer}
