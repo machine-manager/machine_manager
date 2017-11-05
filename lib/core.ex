@@ -660,7 +660,7 @@ defmodule MachineManager.Core do
 			{"", 0}          -> nil
 			{out, exit_code} -> raise_upload_error(row.hostname, out, exit_code, "machine_probe")
 		end
-		{output, exit_code} = run_on_machine(row, "/root/.cache/machine_manager/erlang/bin/escript /root/.cache/machine_manager/machine_probe")
+		{output, exit_code} = run_on_machine(row, ".cache/machine_manager/erlang/bin/escript .cache/machine_manager/machine_probe")
 		case exit_code do
 			0 ->
 				json = get_json_from_probe_output(output)
