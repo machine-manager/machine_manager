@@ -667,7 +667,6 @@ defmodule MachineManager.Core do
 				# apt-get clean
 				# apt-get autoremove --quiet --assume-yes
 				command = """
-				wait-for-dpkg-lock || true;
 				apt-get update > /dev/null 2>&1 &&
 				env \
 					DEBIAN_FRONTEND=noninteractive \
