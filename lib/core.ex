@@ -447,7 +447,11 @@ defmodule MachineManager.Core do
 	defp transfer_content(content, row, dest, opts) do
 		temp = FileUtil.temp_path("machine_manager_transfer_content")
 		File.touch!(temp)
-		:ok = File.chmod!(temp, 0o600)
+		if opts[:executable] do
+			:ok = File.chmod!(temp, 0o700)
+		else
+			:ok = File.chmod!(temp, 0o600)
+		end
 		File.write!(temp, content)
 		try do
 			transfer_path(temp, row, dest, opts)
@@ -646,21 +650,17 @@ defmodule MachineManager.Core do
 		nil
 	end
 
+	@machine_probe_content File.read!(Path.join(__DIR__, "../../machine_probe/machine_probe"))
+
 	@doc """
 	Get probe data from a machine.
 	"""
 	def get_probe_data(row) do
-		# machine_probe expects that we already ran an `apt-get update` when
-		# it determines which packages can be upgraded.
-		#
-		# wait-for-dpkg-lock is included in the machine_probe package, but if
-		# it's not installed, we continue anyway.
-		command = """
-		wait-for-dpkg-lock || true;
-		apt-get update > /dev/null 2>&1;
-		machine_probe
-		"""
-		{output, exit_code} = run_on_machine(row, command)
+		case transfer_content(@machine_probe_content, row, ".cache/machine_manager/machine_probe", executable: true) do
+			{"", 0}          -> nil
+			{out, exit_code} -> raise_upload_error(row.hostname, out, exit_code, "machine_probe")
+		end
+		{output, exit_code} = run_on_machine(row, "/root/.cache/machine_manager/erlang/bin/escript /root/.cache/machine_manager/machine_probe")
 		case exit_code do
 			0 ->
 				json = get_json_from_probe_output(output)
