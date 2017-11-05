@@ -554,7 +554,7 @@ defmodule MachineManager.Core do
 			["-e", "ssh -p #{row.ssh_port}", "--protect-args", "--recursive", "--delete", "--executability", "--links"] ++
 			source_paths ++
 			["root@#{to_ip_string(row.public_ip)}:#{dest}"]
-		case System.cmd("rsync", rsync_args, stderr_to_stdout: true) do
+		case System.cmd("rsync", rsync_args, env: env_for_ssh(), stderr_to_stdout: true) do
 			{out, 0}         -> {out, 0}
 			{out, exit_code} ->
 				cond do
