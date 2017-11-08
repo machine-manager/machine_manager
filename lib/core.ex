@@ -331,10 +331,14 @@ defmodule MachineManager.Core do
 		portable_erlang = FileUtil.temp_dir("machine_manager_portable_erlang")
 		PortableErlang.make_portable_erlang(portable_erlang)
 		transfer_portable_erlang(portable_erlang, row)
+		case transfer_portable_erlang(portable_erlang, row) do
+			:ok                      -> nil
+			{:error, out, exit_code} -> raise_upload_error(ProbeError, row.hostname, out, exit_code, "erlang")
+		end
 		case transfer_content(@machine_probe_content, row, ".cache/machine_manager/machine_probe",
 			                   before_rsync: "mkdir -p .cache/machine_manager", executable: true) do
 			{"", 0}          -> nil
-			{out, exit_code} -> raise_upload_error(row.hostname, out, exit_code, "machine_probe")
+			{out, exit_code} -> raise_upload_error(ProbeError, row.hostname, out, exit_code, "machine_probe")
 		end
 		{output, exit_code} = run_on_machine(row, ".cache/machine_manager/erlang/bin/escript .cache/machine_manager/machine_probe")
 		case exit_code do
@@ -391,20 +395,23 @@ defmodule MachineManager.Core do
 		wireguard_config = WireGuard.make_wireguard_config(row.wireguard_privkey, to_ip_string(row.wireguard_ip), 51820, wireguard_peers)
 		subdomains       = subdomains(all_machines_map |> Map.values)
 		hosts_file       = make_hosts_json_file(row, graphs, subdomains, all_machines_map)
-		transfer_portable_erlang(portable_erlang, row)
+		case transfer_portable_erlang(portable_erlang, row) do
+			:ok                      -> nil
+			{:error, out, exit_code} -> raise_upload_error(ConfigureError, row.hostname, out, exit_code, "erlang")
+		end
 		# script_file is already compressed, so don't use compress: true
 		case transfer_path(script_file, row, ".cache/machine_manager/script",
 		                   before_rsync: "mkdir -p .cache/machine_manager") do
 			{"", 0}          -> nil
-			{out, exit_code} -> raise_upload_error(row.hostname, out, exit_code, "configuration script")
+			{out, exit_code} -> raise_upload_error(ConfigureError, row.hostname, out, exit_code, "configuration script")
 		end
 		case transfer_content(wireguard_config, row, ".cache/machine_manager/wg0.conf", compress: true) do
 			{"", 0}          -> nil
-			{out, exit_code} -> raise_upload_error(row.hostname, out, exit_code, "WireGuard configuration")
+			{out, exit_code} -> raise_upload_error(ConfigureError, row.hostname, out, exit_code, "WireGuard configuration")
 		end
 		case transfer_content(hosts_file, row, ".cache/machine_manager/hosts.json", compress: true) do
 			{"", 0}          -> nil
-			{out, exit_code} -> raise_upload_error(row.hostname, out, exit_code, "hosts.json")
+			{out, exit_code} -> raise_upload_error(ConfigureError, row.hostname, out, exit_code, "hosts.json")
 		end
 		arguments = [".cache/machine_manager/erlang/bin/escript", ".cache/machine_manager/script"] ++ row.tags
 		for arg <- arguments do
@@ -433,13 +440,13 @@ defmodule MachineManager.Core do
 	defp transfer_portable_erlang(portable_erlang, row) do
 		case transfer_path("#{portable_erlang}/", row, ".cache/machine_manager/erlang",
 		                   before_rsync: "mkdir -p .cache/machine_manager/erlang", compress: true) do
-			{"", 0}          -> nil
-			{out, exit_code} -> raise_upload_error(row.hostname, out, exit_code, "erlang")
+			{"", 0}          -> :ok
+			{out, exit_code} -> {:error, out, exit_code}
 		end
 	end
 
-	defp raise_upload_error(hostname, out, exit_code, upload_description) do
-		raise(ConfigureError,
+	defp raise_upload_error(error, hostname, out, exit_code, upload_description) do
+		raise(error,
 			"""
 			Uploading #{upload_description} to machine #{inspect hostname} \
 			failed with exit code #{exit_code}; output:
