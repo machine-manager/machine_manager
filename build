@@ -7,10 +7,4 @@ mix deps.get
 
 rm -rf _build
 MIX_ENV=prod mix deps.compile
-
-# Elixir's escript builder includes exec-port in the escript, even though
-# erlexec never looks for exec-port there.  (We actually patch erlexec to look
-# for it in /usr/bin.)  Remove exec-port from _build to prevent it from
-# bloating up the escript.
-rm -f _build/prod/lib/erlexec/priv/x86_64-pc-linux-gnu/exec-port
 MIX_ENV=prod mix escript.build

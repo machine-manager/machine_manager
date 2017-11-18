@@ -12,8 +12,8 @@ end
 
 defmodule MachineManager.Core do
 	alias MachineManager.{
-		ScriptWriter, Parallel, Repo, UpgradeError, ConfigureError,
-		ProbeError, WireGuard, ErlExecUtil, Graph, PortableErlang}
+		ScriptWriter, Parallel, Repo, UpgradeError, ConfigureError, ProbeError,
+		WireGuard, Graph, PortableErlang}
 	alias Gears.{StringUtil, FileUtil}
 	import Ecto.Query
 
@@ -730,22 +730,30 @@ defmodule MachineManager.Core do
 	`{output, exit_code}`.  If `capture` is `true`, `output` includes both
 	stdout and stderr; if `false`, both stdout and stderr are echoed to the
 	terminal and `output` is `""`.
+
+	Note that if user has OpenSSH < 7.3 and ssh is configured to use
+	ControlMaster, this function will hang and not return after ssh is done.
+	See https://bugzilla.mindrot.org/show_bug.cgi?id=1988
 	"""
 	@spec ssh(String.t, String.t, integer, String.t, boolean) :: {String.t, integer}
 	def ssh(user, ip, ssh_port, command, capture) do
-		{stdout, stderr} = case capture do
-			true  -> {true,    :stdout}
-			false -> {&echo/3, &echo/3}
+		case capture do
+			true ->
+				System.cmd("ssh", ["-q", "-p", "#{ssh_port}", "#{user}@#{ip}", command],
+					stderr_to_stdout: true,
+					env: env_for_ssh()
+				)
+			false ->
+				%Porcelain.Result{status: exit_code} = \
+					Porcelain.exec("ssh", ["-q", "-p", "#{ssh_port}", "#{user}@#{ip}", command],
+						out: {:file, Process.group_leader},
+						# "when using `Porcelain.Driver.Basic`, the only supported values
+						# are `nil` (stderr will be printed to the terminal) and `:out`."
+						err: nil,
+						env: env_for_ssh()
+					)
+				{"", exit_code}
 		end
-		# Use erlexec instead of System.cmd or Porcelain because Erlang's
-		# open_port({spawn_executable, ...}, ...) breaks with ssh ControlMaster:
-		# it waits for the daemonized ssh [mux] process to exit before returning.
-		# erlexec doesn't have this problem.  The probable cause of this problem
-		# is https://bugzilla.mindrot.org/show_bug.cgi?id=1988 (xenial comes with
-		# OpenSSH 7.2p2, released before the fix.)
-		args = ["-q", "-p", "#{ssh_port}", "#{user}@#{ip}", command]
-		Exexec.run(["/usr/bin/ssh" | args], stdout: stdout, stderr: stderr, sync: true, env: env_for_ssh())
-		|> ErlExecUtil.ret_to_tuple
 	end
 
 	def echo(_stream, _os_pid, data) do

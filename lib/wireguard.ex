@@ -17,24 +17,12 @@ defmodule MachineManager.WireGuard do
 	"""
 	@spec get_wireguard_pubkey(String.t) :: String.t
 	def get_wireguard_pubkey(privkey) when byte_size(privkey) == 44 do
-		# `wg pubkey` waits for EOF, but Erlang can't close stdin, so use erlexec.
-		{:ok, pid, os_pid} =
-			Exexec.run(["/usr/bin/wg", "pubkey"], stdin: true, stdout: true, monitor: true)
-		Exexec.send(pid, privkey <> "\n")
-		Exexec.send(pid, :eof)
-		pubkey = receive do
-			{:stdout, ^os_pid, stdout} -> stdout
-		after
-			5000 -> raise(RuntimeError, "No stdout from `wg pubkey` after 5 seconds")
-		end
-		|> String.trim_trailing("\n")
-		receive do
-			{:DOWN, ^os_pid, :process, ^pid, :normal}                   -> nil
-			{:DOWN, ^os_pid, :process, ^pid, {:exit_status, exit_code}} ->
-				raise(RuntimeError, "Got exit code #{exit_code} from `wg pubkey`")
-		after
-			5000 -> raise(RuntimeError, "`wg pubkey` did not exit after 5 seconds")
-		end
+		# `wg pubkey` waits for EOF, but Erlang can't close stdin, so use some
+		# bash that reads a single line and pipes it into `wg pubkey`.
+		# https://github.com/alco/porcelain/issues/37
+		%Porcelain.Result{status: 0, out: pubkey} =
+			Porcelain.exec("bash", ["-c", "head -n 1 | wg pubkey"], in: privkey <> "\n")
+		pubkey = String.trim_trailing(pubkey, "\n")
 		if byte_size(pubkey) != 44 do
 			raise(RuntimeError, "Public key from `wg pubkey` was of the wrong size")
 		end

@@ -15,22 +15,22 @@ defmodule MachineManager.Mixfile do
 
 	def application do
 		[
-			extra_applications: [:logger, :exexec, :erlexec],
+			extra_applications: [:logger],
 			mod:                {MachineManager.Application, []},
 		]
 	end
 
 	defp deps do
 		[
-			{:gears,    ">= 0.10.0"},
-			{:converge, ">= 0.1.0"},
-			{:mixmaker, ">= 0.1.0"},
-			{:ecto,     ">= 2.1"},
-			{:postgrex, ">= 0.13.0"},
-			{:optimus,  ">= 0.1.0"},
-			{:poison,   ">= 3.1.0"},
-			{:exexec,   ">= 0.1.0"},
-			{:decimal,  ">= 1.3.1"},
+			{:gears,     ">= 0.10.0"},
+			{:converge,  ">= 0.1.0"},
+			{:mixmaker,  ">= 0.1.0"},
+			{:porcelain, ">= 2.0.3"},
+			{:ecto,      ">= 2.1"},
+			{:postgrex,  ">= 0.13.0"},
+			{:optimus,   ">= 0.1.0"},
+			{:poison,    ">= 3.1.0"},
+			{:decimal,   ">= 1.3.1"},
 		]
 	end
 end
