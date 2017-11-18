@@ -119,6 +119,7 @@ defmodule MachineManager.Core do
 		if show_progress and length(rows) > 1 do
 			raise(ConfigureError, "Can't show progress when configuring more than one machine")
 		end
+		portable_erlang   = temp_portable_erlang()
 		# Even through we're building a connectivity graph that includes all
 		# machines, we don't actually need to do compile scripts for *all*
 		# machines because make_connectivity_graph just runs require_file on
@@ -129,7 +130,7 @@ defmodule MachineManager.Core do
 		graphs            = connectivity_graphs(all_machines)
 		wrapped_configure = fn row ->
 			try do
-				configure(row, graphs, all_machines_map, show_progress)
+				configure(row, graphs, all_machines_map, portable_erlang, show_progress)
 			rescue
 				e in ConfigureError -> {:configure_error, e.message}
 			end
@@ -315,8 +316,8 @@ defmodule MachineManager.Core do
 	@doc """
 	Probe a machine and write the probe data to the database.
 	"""
-	def probe(row) do
-		data = get_probe_data(row)
+	def probe(row, portable_erlang) do
+		data = get_probe_data(row, portable_erlang)
 		# TODO: don't assume that it's the same machine; make sure some unique ID is the same
 		write_probe_data_to_db(row.hostname, data)
 		nil
@@ -327,13 +328,15 @@ defmodule MachineManager.Core do
 	@doc """
 	Get probe data from a machine.
 	"""
-	def get_probe_data(row) do
-		portable_erlang = FileUtil.temp_dir("machine_manager_portable_erlang")
-		PortableErlang.make_portable_erlang(portable_erlang)
-		transfer_portable_erlang(portable_erlang, row)
-		case transfer_portable_erlang(portable_erlang, row) do
-			:ok                      -> nil
-			{:error, out, exit_code} -> raise_upload_error(ProbeError, row.hostname, out, exit_code, "erlang")
+	def get_probe_data(row, portable_erlang) do
+		# portable_erlang can be nil in this function, in case the caller is
+		# certain the machine already has it.
+		if portable_erlang != nil do
+			transfer_portable_erlang(portable_erlang, row)
+			case transfer_portable_erlang(portable_erlang, row) do
+				:ok                      -> nil
+				{:error, out, exit_code} -> raise_upload_error(ProbeError, row.hostname, out, exit_code, "erlang")
+			end
 		end
 		case transfer_content(@machine_probe_content, row, ".cache/machine_manager/machine_probe",
 			                   before_rsync: "mkdir -p .cache/machine_manager", executable: true) do
@@ -385,10 +388,7 @@ defmodule MachineManager.Core do
 	# in @script_cache (call write_scripts_for_machines first).
 	#
 	# Can raise ConfigureError
-	def configure(row, graphs, all_machines_map, show_progress \\ false) do
-		# TODO: only do this once even when configuring many machines
-		portable_erlang  = FileUtil.temp_dir("machine_manager_portable_erlang")
-		PortableErlang.make_portable_erlang(portable_erlang)
+	def configure(row, graphs, all_machines_map, portable_erlang, show_progress \\ false) do
 		roles            = ScriptWriter.roles_for_tags(row.tags)
 		script_file      = script_filename_for_roles(roles)
 		wireguard_peers  = get_wireguard_peers(row, graphs, all_machines_map)
@@ -585,9 +585,10 @@ defmodule MachineManager.Core do
 
 	def probe_many(queryable, handle_probe_result, handle_waiting) do
 		rows = list(queryable)
+		portable_erlang = temp_portable_erlang()
 		wrapped_probe = fn row ->
 			try do
-				{:probed, probe(row)}
+				{:probed, probe(row, portable_erlang)}
 			rescue
 				e in ProbeError -> {:probe_error, e.message}
 			end
@@ -639,6 +640,7 @@ defmodule MachineManager.Core do
 
 	def upgrade_many(queryable, handle_upgrade_result, handle_waiting) do
 		rows             = list(queryable)
+		portable_erlang  = temp_portable_erlang()
 		# upgrade calls configure, which expects updated scripts in @script_cache.
 		# Note that we don't need to compile scripts for machines with no pending
 		# upgrades, because they will not be upgraded and therefore not configured.
@@ -648,7 +650,7 @@ defmodule MachineManager.Core do
 		graphs           = connectivity_graphs(all_machines)
 		wrapped_upgrade = fn row ->
 			try do
-				upgrade(row, graphs, all_machines_map)
+				upgrade(row, graphs, all_machines_map, portable_erlang)
 			rescue
 				e in UpgradeError   -> {:upgrade_error,   e.message}
 				e in ConfigureError -> {:configure_error, e.message}
@@ -663,7 +665,7 @@ defmodule MachineManager.Core do
 	end
 
 	# Can raise UpgradeError or ConfigureError
-	def upgrade(row, graphs, all_machines_map) do
+	def upgrade(row, graphs, all_machines_map, portable_erlang) do
 		case row.pending_upgrades do
 			[]       -> :no_pending_upgrades
 			upgrades ->
@@ -698,9 +700,9 @@ defmodule MachineManager.Core do
 				end
 				# Because packages upgrades can do things we don't like (e.g. install
 				# files in /etc/cron.d), configure immediately after upgrading.
-				configure(row, graphs, all_machines_map)
+				configure(row, graphs, all_machines_map, portable_erlang)
 				# Probe the machine so that we don't have obsolete 'pending upgrade' list
-				probe(row)
+				probe(row, nil)
 				:upgraded
 		end
 	end
@@ -718,6 +720,12 @@ defmodule MachineManager.Core do
 	@spec run_on_machine(%{public_ip: Postgrex.INET.t, ssh_port: integer}, String.t, boolean) :: {String.t, integer}
 	defp run_on_machine(row, command, capture \\ true) do
 		ssh("root", to_ip_string(row.public_ip), row.ssh_port, command, capture)
+	end
+
+	defp temp_portable_erlang() do
+		portable_erlang  = FileUtil.temp_dir("machine_manager_portable_erlang")
+		PortableErlang.make_portable_erlang(portable_erlang)
+		portable_erlang
 	end
 
 	@doc """
