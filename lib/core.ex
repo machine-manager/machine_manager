@@ -30,7 +30,16 @@ defmodule MachineManager.Core do
 			from("machine_pending_upgrades")
 			|> select([u], %{
 					hostname:         u.hostname,
-					pending_upgrades: fragment("array_agg(json_build_object('package', ?::varchar, 'old_version', ?, 'new_version', ?))", u.package, u.old_version, u.new_version)
+					pending_upgrades: fragment(
+						"""
+						array_agg(
+							json_build_object(
+								'package',     ?::varchar,
+								'old_version', ?,
+								'new_version', ?
+							)
+						)
+						""", u.package, u.old_version, u.new_version)
 				})
 			|> group_by([u], u.hostname)
 
@@ -42,8 +51,8 @@ defmodule MachineManager.Core do
 				wireguard_pubkey:  m.wireguard_pubkey,
 				wireguard_privkey: m.wireguard_privkey,
 				ssh_port:          m.ssh_port,
-				tags:              t.tags,
-				pending_upgrades:  u.pending_upgrades,
+				tags:              fragment("coalesce(?, '{}'::varchar[])", t.tags),
+				pending_upgrades:  fragment("coalesce(?, '{}'::json[])",    u.pending_upgrades),
 				last_probe_time:   type(m.last_probe_time, :utc_datetime),
 				boot_time:         type(m.boot_time,       :utc_datetime),
 				datacenter:        m.datacenter,
@@ -59,18 +68,6 @@ defmodule MachineManager.Core do
 		|> join(:left, [m], u in subquery(pending_upgrades_aggregate), u.hostname == m.hostname)
 		|> order_by(asc: :hostname)
 		|> Repo.all
-		|> fix_aggregate(:tags)
-		|> fix_aggregate(:pending_upgrades)
-	end
-
-	defp fix_aggregate(rows, col) do
-		Enum.map(rows, fn row ->
-			fixed = case row[col] do
-				nil   -> []
-				other -> other
-			end
-			%{row | col => fixed}
-		end)
 	end
 
 	def ssh_config() do
