@@ -562,7 +562,7 @@ defmodule MachineManager.Core do
 			{out, 0}         -> {out, 0}
 			{out, exit_code} ->
 				cond do
-					String.contains?(out, "rsync: command not found") ->
+					String.contains?(out, "command not found") ->
 						case install_rsync_on_machine(row) do
 							{_, 0}           -> System.cmd("rsync", rsync_args, stderr_to_stdout: true)
 							{out, exit_code} -> {out, exit_code}
