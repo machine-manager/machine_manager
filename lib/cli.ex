@@ -534,7 +534,7 @@ defmodule MachineManager.CLI do
 
 	defp format_tags(row, tag_frequency) do
 		row.tags
-		|> Enum.sort_by(fn tag -> -tag_frequency[tag] end)
+		|> Enum.sort_by(fn tag -> {-tag_frequency[tag], tag} end)
 		|> Enum.map(fn tag -> colorize_tag(tag) end)
 		|> Enum.join(" ")
 	end
