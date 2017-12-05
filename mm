@@ -7,7 +7,7 @@ if [ "$OS" != "Windows_NT" ]; then
 	fi
 fi
 
-MM="$(dirname "$0")/machine_manager"
+MM="$(dirname -- "$(realpath -- "$0")")/machine_manager"
 if [ "$1" = "ls" ]; then
 	exec "$MM" "$@" | less -SR
 else
