@@ -1,0 +1,17 @@
+#!/bin/bash
+
+# Make a machine_manager directory including the converge script for a
+# particular machine.  Useful if you can't reach it over ssh, e.g. a new
+# install being done in a chroot.
+
+set -eu -o pipefail
+
+hostname=$1
+output=$2
+
+mkdir -p -- "$output"
+tags=$(mm get-tags "$hostname")
+echo -E "$tags"               > "$output"/tags
+mm wireguard_config $hostname > "$output"/wg0.conf
+mm hosts_json_file  $hostname > "$output"/hosts.json
+mm script           $hostname "$output"/script
