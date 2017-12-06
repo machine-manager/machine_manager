@@ -19,7 +19,7 @@ end
 
 
 defmodule MachineManager.CLI do
-	alias MachineManager.{Core, CPU, Counter}
+	alias MachineManager.{Core, CPU, Counter, PortableErlang}
 
 	def main(argv) do
 		hostname_regexp_help = "Regular expression used to match hostnames. Automatically wrapped with ^ and $."
@@ -73,6 +73,13 @@ defmodule MachineManager.CLI do
 					about: "Output the .wg and .pi hosts for a machine as JSON to stdout",
 					args: [
 						hostname: [required: true],
+					],
+				],
+				portable_erlang: [
+					name:  "portable_erlang",
+					about: "Write a portable Erlang installation to the given directory (must not exist)",
+					args: [
+						directory: [required: true],
 					],
 				],
 				script: [
@@ -226,6 +233,7 @@ defmodule MachineManager.CLI do
 			:connectivity     -> Core.connectivity(args.type)
 			:wireguard_config -> wireguard_config(args.hostname)
 			:hosts_json_file  -> hosts_json_file(args.hostname)
+			:portable_erlang  -> portable_erlang(args.directory)
 			:probe            -> probe_many(args.hostname_regexp)
 			:exec             -> exec_many(args.hostname_regexp, args.command)
 			:upgrade          -> upgrade_many(args.hostname_regexp)
@@ -276,6 +284,11 @@ defmodule MachineManager.CLI do
 
 	def hosts_json_file(hostname) do
 		:ok = IO.write(Core.hosts_json_file(hostname))
+	end
+
+	def portable_erlang(dest) do
+		File.mkdir!(dest)
+		PortableErlang.make_portable_erlang(dest)
 	end
 
 	def configure_many(hostname_regexp, show_progress, allow_warnings) do
