@@ -9,9 +9,12 @@ set -eu -o pipefail
 hostname=$1
 output=$2
 
+EXTRA="$(dirname -- "$(realpath -- "$0")")"
+
 mkdir -p -- "$output"
 tags=$(mm get-tags "$hostname")
-echo -E "$tags"               > "$output"/tags
-mm wireguard_config $hostname > "$output"/wg0.conf
-mm hosts_json_file  $hostname > "$output"/hosts.json
-mm script           $hostname "$output"/script
+echo -E "$tags"                               > "$output"/tags
+mm wireguard_config $hostname                 > "$output"/wg0.conf
+mm hosts_json_file  $hostname                 > "$output"/hosts.json
+mm script           $hostname                   "$output"/script
+cp -a               $EXTRA/systemctl_for_chroot "$output"/systemctl

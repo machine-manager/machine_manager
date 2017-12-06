@@ -1,0 +1,32 @@
+#!/bin/bash
+
+# Designed for use with a converge script running in a chroot. (Copy to
+# a `systemctl` in your PATH.)
+#
+# Motivation: systemctl refuses to `start` or `stop` anything in a chroot,
+# but we still want to configure the machine using base_system and roles
+# before we boot into it.
+
+command=$1
+if [[ "$command" = "start" ]]; then
+	exit 0
+elif [[ "$command" = "stop" ]]; then
+	exit 0
+elif [[ "$command" = "reload" ]]; then
+	exit 0
+elif [[ "$command" = "reload-or-restart" ]]; then
+	exit 0
+elif [[ "$command" = "status" ]]; then
+	# base_system expects systemd-timesyncd.service to be stopped,
+	# everything else to be started.
+	# $2 is "--"
+	if [[ "$3" = "systemd-timesyncd.service" ]]; then
+		exit 3
+	else
+		exit 0
+	fi
+elif [[ "$command" = "daemon-reload" ]]; then
+	exit 0
+else
+	exec /bin/systemctl "$@"
+fi
