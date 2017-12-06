@@ -1,0 +1,6 @@
+#!/bin/sh
+
+# Designed for use with a converge script running in a chroot. (Copy to
+# a `dig` in your PATH.)
+#
+# Bypass the check-if-unbound works function in base_system.
