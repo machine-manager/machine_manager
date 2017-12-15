@@ -19,3 +19,18 @@ mm hosts_json_file  $hostname                 > "$output"/hosts.json
 mm script           $hostname                   "$output"/script
 cp -a               $EXTRA/systemctl_for_chroot "$output"/systemctl
 cp -a               $EXTRA/dig_for_chroot       "$output"/dig
+mm portable_erlang  "$output/erlang"
+
+echo '#!/bin/sh
+SELF="$(dirname -- "$(realpath -- "$0")")"
+cd "$SELF"
+./erlang/bin/escript script $(cat tags)
+' > "$output"/configure_normal
+chmod +x "$output"/configure_normal
+
+echo '#!/bin/sh
+SELF="$(dirname -- "$(realpath -- "$0")")"
+cd "$SELF"
+PATH="$SELF:$PATH" ./erlang/bin/escript script $(cat tags)
+' > "$output"/configure_chroot
+chmod +x "$output"/configure_chroot
