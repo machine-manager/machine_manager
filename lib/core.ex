@@ -470,6 +470,7 @@ defmodule MachineManager.Core do
 	end
 
 	defp get_wireguard_peers(self_row, graphs, all_machines_map) do
+		wireguard_snat_host = Converge.Util.tag_value(self_row.tags, "wireguard_snat_host")
 		(graphs.wireguard[self_row.hostname] || [])
 		|> Enum.map(fn hostname ->
 				peer_row = all_machines_map[hostname]
@@ -477,10 +478,14 @@ defmodule MachineManager.Core do
 					true  -> "#{to_ip_string(peer_row.public_ip)}:51820"
 					false -> nil
 				end
+				allowed_ips = case hostname do
+					^wireguard_snat_host -> ["0.0.0.0/0"]
+					_                    -> [to_ip_string(peer_row.wireguard_ip)]
+				end
 				%{
 					public_key:  peer_row.wireguard_pubkey,
 					endpoint:    endpoint,
-					allowed_ips: [to_ip_string(peer_row.wireguard_ip)],
+					allowed_ips: allowed_ips,
 					comment:     peer_row.hostname,
 				}
 			end)
