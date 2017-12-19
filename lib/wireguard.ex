@@ -35,14 +35,14 @@ defmodule MachineManager.WireGuard do
 	@doc """
 	Return a WireGuard config file as a string.
 	"""
-	@spec make_wireguard_config(String.t, String.t, integer, [map]) :: String.t
-	def make_wireguard_config(private_key, address, listen_port, peers) do
+	@spec make_wireguard_config(String.t, [String.t], integer, [map]) :: String.t
+	def make_wireguard_config(private_key, addresses, listen_port, peers) do
 		peer_sections = Enum.map(peers, &peer_section/1)
 		"""
 		[Interface]
 		PrivateKey = #{private_key}
 		ListenPort = #{listen_port}
-		Address    = #{address}
+		Address    = #{Enum.join(addresses, ", ")}
 
 		#{Enum.join(peer_sections, "\n")}\
 		"""

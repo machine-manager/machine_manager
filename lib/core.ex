@@ -95,10 +95,19 @@ defmodule MachineManager.Core do
 		all_machines     = from("machines") |> list
 		all_machines_map = all_machines |> Enum.map(fn row -> {row.hostname, row} end) |> Map.new
 		row              = all_machines_map[hostname]
-		listen_port      = 51820
 		graphs           = connectivity_graphs(all_machines)
+		wireguard_config_for_machine(row, graphs, all_machines_map)
+	end
+
+	defp wireguard_config_for_machine(row, graphs, all_machines_map) do
+		listen_port      = 51820
 		wireguard_peers  = get_wireguard_peers(row, graphs, all_machines_map)
-		WireGuard.make_wireguard_config(row.wireguard_privkey, to_ip_string(row.wireguard_ip), listen_port, wireguard_peers)
+		addresses        =
+			case Converge.Util.tag_values(row.tags, "wireguard_address") do
+				[]        -> [to_ip_string(row.wireguard_ip)]
+				addresses -> addresses
+			end
+		WireGuard.make_wireguard_config(row.wireguard_privkey, addresses, listen_port, wireguard_peers)
 	end
 
 	@spec hosts_json_file(String.t) :: String.t
@@ -388,8 +397,7 @@ defmodule MachineManager.Core do
 	def configure(row, graphs, all_machines_map, portable_erlang, show_progress \\ false) do
 		roles            = ScriptWriter.roles_for_tags(row.tags)
 		script_file      = script_filename_for_roles(roles)
-		wireguard_peers  = get_wireguard_peers(row, graphs, all_machines_map)
-		wireguard_config = WireGuard.make_wireguard_config(row.wireguard_privkey, to_ip_string(row.wireguard_ip), 51820, wireguard_peers)
+		wireguard_config = wireguard_config_for_machine(row, graphs, all_machines_map)
 		subdomains       = subdomains(all_machines_map |> Map.values)
 		hosts_file       = make_hosts_json_file(row, graphs, subdomains, all_machines_map)
 		case transfer_portable_erlang(portable_erlang, row) do
