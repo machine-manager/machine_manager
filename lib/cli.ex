@@ -148,7 +148,6 @@ defmodule MachineManager.CLI do
 					],
 					options: [
 						public_ip:  [short: "-i", long: "--public-ip", required: true,                    help: "Public IP address"],
-						datacenter: [short: "-d", long: "--dc",        required: true,                    help: "Datacenter"],
 						ssh_port:   [short: "-p", long: "--ssh-port",  required: true,  parser: :integer, help: "SSH port"],
 						tag:        [short: "-t", long: "--tag",       required: false, multiple: true,   help: "Tag"],
 					],
@@ -239,7 +238,7 @@ defmodule MachineManager.CLI do
 			:upgrade          -> upgrade_many(args.hostname_regexp)
 			:reboot           -> reboot_many(args.hostname_regexp)
 			:shutdown         -> shutdown_many(args.hostname_regexp)
-			:add              -> Core.add(args.hostname, options.public_ip, options.ssh_port, options.datacenter, options.tag)
+			:add              -> Core.add(args.hostname, options.public_ip, options.ssh_port, options.tag)
 			:rm               -> Core.rm_many(Core.machines_matching_regexp(args.hostname_regexp))
 			:tag              -> Core.tag_many(Core.machines_matching_regexp(args.hostname_regexp),   all_arguments(args.tag, unknown))
 			:untag            -> Core.untag_many(Core.machines_matching_regexp(args.hostname_regexp), all_arguments(args.tag, unknown))
@@ -481,7 +480,7 @@ defmodule MachineManager.CLI do
 	defp default_columns() do
 		[
 			"hostname", "public_ip", "wireguard_ip", "ssh_port", "tags",
-			"datacenter", "ram_mb", "cpu_model_name", "core_count",
+			"ram_mb", "cpu_model_name", "core_count",
 			"thread_count", "last_probe_time", "boot_time", "time_offset",
 			"kernel", "pending_upgrades",
 		]
@@ -494,7 +493,6 @@ defmodule MachineManager.CLI do
 			"wireguard_ip"     => {"WIREGUARD",        fn row, _ -> row.wireguard_ip |> Core.to_ip_string end},
 			"ssh_port"         => {"SSH",              fn row, _ -> row.ssh_port end},
 			"tags"             => {"TAGS",             &format_tags/2},
-			"datacenter"       => {"DC",               fn row, _ -> row.datacenter |> colorize end},
 			"ram_mb"           => {"RAM",              fn row, _ -> row.ram_mb end},
 			"cpu_model_name"   => {"CPU",              fn row, _ -> if row.cpu_model_name   != nil, do: row.cpu_model_name |> CPU.short_description end},
 			"cpu_architecture" => {"ARCH",             fn row, _ -> row.cpu_architecture end},

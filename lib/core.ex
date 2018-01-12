@@ -55,7 +55,6 @@ defmodule MachineManager.Core do
 				pending_upgrades:  fragment("coalesce(?, '{}'::json[])",    u.pending_upgrades),
 				last_probe_time:   type(m.last_probe_time, :utc_datetime),
 				boot_time:         type(m.boot_time,       :utc_datetime),
-				datacenter:        m.datacenter,
 				cpu_model_name:    m.cpu_model_name,
 				cpu_architecture:  m.cpu_architecture,
 				ram_mb:            m.ram_mb,
@@ -384,7 +383,7 @@ defmodule MachineManager.Core do
 		# Make sure these atoms are in the atom table for our Poison.decode!
 		[
 			:ram_mb, :cpu_model_name, :cpu_architecture, :core_count, :thread_count,
-			:datacenter, :kernel, :boot_time_ms, :pending_upgrades, :time_offset,
+			:kernel, :boot_time_ms, :pending_upgrades, :time_offset,
 			# Keys in :pending_upgrades
 			:name, :old_version, :new_version, :origins, :architecture,
 		]
@@ -782,8 +781,8 @@ defmodule MachineManager.Core do
 	@doc """
 	Adds a machine from the database.
 	"""
-	@spec add(String.t, String.t, integer, String.t, [String.t]) :: nil
-	def add(hostname, public_ip, ssh_port, datacenter, tags) do
+	@spec add(String.t, String.t, integer, [String.t]) :: nil
+	def add(hostname, public_ip, ssh_port, tags) do
 		wireguard_privkey = WireGuard.make_wireguard_privkey()
 		wireguard_pubkey  = WireGuard.get_wireguard_pubkey(wireguard_privkey)
 		{:ok, _} = Repo.transaction(fn ->
@@ -793,7 +792,6 @@ defmodule MachineManager.Core do
 				wireguard_ip:      to_ip_postgrex(get_unused_wireguard_ip()),
 				wireguard_privkey: wireguard_privkey,
 				wireguard_pubkey:  wireguard_pubkey,
-				datacenter:        datacenter,
 				ssh_port:          ssh_port,
 			]])
 			tag(hostname, tags)
