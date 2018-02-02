@@ -29,7 +29,7 @@ defmodule MachineManager.Mixfile do
 			{:ecto,      ">= 2.1"},
 			{:postgrex,  ">= 0.13.0"},
 			{:optimus,   ">= 0.1.0"},
-			{:poison,    ">= 3.1.0"},
+			{:jason,     ">= 1.0.0"},
 			{:decimal,   ">= 1.3.1"},
 		]
 	end

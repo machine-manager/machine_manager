@@ -40,7 +40,7 @@ defmodule MachineManager.CoreTest do
 		graphs           = %{wireguard: %{}, public: %{}}
 		subdomains       = %{wireguard: %{}, public: %{}}
 		all_machines_map = %{"me" => self_row}
-		assert Core.make_hosts_json_file(self_row, graphs, subdomains, all_machines_map) |> Poison.decode! == [
+		assert Core.make_hosts_json_file(self_row, graphs, subdomains, all_machines_map) |> Jason.decode! == [
 			["10.10.0.1", "me.wg"],
 			[],
 			["1.1.1.1",   "me.pi"],
@@ -53,7 +53,7 @@ defmodule MachineManager.CoreTest do
 		graphs           = %{wireguard: %{}, public: %{"me" => ["peer"]}}
 		subdomains       = %{wireguard: %{},                 public: %{}}
 		all_machines_map = %{"me" => self_row, "peer" => peer_row}
-		assert Core.make_hosts_json_file(self_row, graphs, subdomains, all_machines_map) |> Poison.decode! == [
+		assert Core.make_hosts_json_file(self_row, graphs, subdomains, all_machines_map) |> Jason.decode! == [
 			["10.10.0.1", "me.wg"],
 			[],
 			["1.1.1.1",   "me.pi"],
@@ -67,7 +67,7 @@ defmodule MachineManager.CoreTest do
 		graphs           = %{wireguard: %{"me" => ["peer"]}, public: %{}}
 		subdomains       = %{wireguard: %{},                 public: %{}}
 		all_machines_map = %{"me" => self_row, "peer" => peer_row}
-		assert Core.make_hosts_json_file(self_row, graphs, subdomains, all_machines_map) |> Poison.decode! == [
+		assert Core.make_hosts_json_file(self_row, graphs, subdomains, all_machines_map) |> Jason.decode! == [
 			["10.10.0.1", "me.wg"],
 			["10.10.0.2", "peer.wg"],
 			[],
@@ -81,7 +81,7 @@ defmodule MachineManager.CoreTest do
 		graphs           = %{wireguard: %{"me" => ["peer"]},         public: %{}}
 		subdomains       = %{wireguard: %{"me" => ["chat", "mail"]}, public: %{"me" => ["public"]}}
 		all_machines_map = %{"me" => self_row, "peer" => peer_row}
-		assert Core.make_hosts_json_file(self_row, graphs, subdomains, all_machines_map) |> Poison.decode! == [
+		assert Core.make_hosts_json_file(self_row, graphs, subdomains, all_machines_map) |> Jason.decode! == [
 			["10.10.0.1", "me.wg"],
 			["10.10.0.1", "chat.me.wg"],
 			["10.10.0.1", "mail.me.wg"],

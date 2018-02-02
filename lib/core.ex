@@ -352,7 +352,7 @@ defmodule MachineManager.Core do
 		case exit_code do
 			0 ->
 				json = get_json_from_probe_output(output)
-				case Poison.decode(json, keys: :atoms!) do
+				case Jason.decode(json, keys: :atoms!) do
 					{:ok, data}    -> data
 					{:error, _err} ->
 						raise(ProbeError,
@@ -380,7 +380,7 @@ defmodule MachineManager.Core do
 	end
 
 	def _atoms() do
-		# Make sure these atoms are in the atom table for our Poison.decode!
+		# Make sure these atoms are in the atom table for our Jason.decode!
 		[
 			:ram_mb, :cpu_model_name, :cpu_architecture, :core_count, :thread_count,
 			:kernel, :boot_time_ms, :pending_upgrades, :time_offset,
@@ -511,7 +511,7 @@ defmodule MachineManager.Core do
 						false -> []
 					end
 				end)
-		Poison.encode!(wireguard_hosts ++ [[]] ++ public_hosts)
+		Jason.encode!(wireguard_hosts ++ [[]] ++ public_hosts)
 	end
 
 	defp hostnames(base, subdomains) do
