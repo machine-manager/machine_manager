@@ -63,8 +63,8 @@ defmodule MachineManager.Core do
 				time_offset:       m.time_offset,
 				kernel:            m.kernel,
 			})
-		|> join(:left, [m], t in subquery(tags_aggregate),             t.hostname == m.hostname)
-		|> join(:left, [m], u in subquery(pending_upgrades_aggregate), u.hostname == m.hostname)
+		|> join(:left, [m], t in subquery(tags_aggregate),             on: t.hostname == m.hostname)
+		|> join(:left, [m], u in subquery(pending_upgrades_aggregate), on: u.hostname == m.hostname)
 		|> order_by(asc: :hostname)
 		|> Repo.all
 	end
