@@ -16,6 +16,7 @@ defmodule MachineManager.Core do
 		WireGuard, Graph, PortableErlang}
 	alias Gears.{StringUtil, FileUtil}
 	import Ecto.Query
+	import Converge.Util, only: [architecture_for_tags: 1]
 
 	def list(queryable) do
 		tags_aggregate =
@@ -135,7 +136,7 @@ defmodule MachineManager.Core do
 		all_machines_map  = all_machines |> Enum.map(fn row -> {row.hostname, row} end) |> Map.new
 		graphs            = connectivity_graphs(all_machines)
 		wrapped_configure = fn row ->
-			portable_erlang = portable_erlangs[architecture_for_machine(row)]
+			portable_erlang = portable_erlangs[architecture_for_tags(row.tags)]
 			try do
 				configure(row, graphs, all_machines_map, portable_erlang, show_progress)
 			rescue
@@ -153,15 +154,8 @@ defmodule MachineManager.Core do
 
 	defp get_machine_architectures(rows) do
 		rows
-		|> Enum.map(&architecture_for_machine/1)
+		|> Enum.map(fn row -> architecture_for_tags(row.tags) end)
 		|> MapSet.new
-	end
-
-	def architecture_for_machine(row) do
-		case Converge.Util.tag_value(row.tags, "arch") do
-			nil   -> "amd64"
-			other -> other
-		end
 	end
 
 	# We use this to avoid compiling a script N times for N machines with the same roles.
@@ -612,7 +606,7 @@ defmodule MachineManager.Core do
 		architectures    = get_machine_architectures(rows)
 		portable_erlangs = temp_portable_erlangs(architectures)
 		wrapped_probe    = fn row ->
-			portable_erlang = portable_erlangs[architecture_for_machine(row)]
+			portable_erlang = portable_erlangs[architecture_for_tags(row.tags)]
 			try do
 				{:probed, probe(row, portable_erlang)}
 			rescue
@@ -676,7 +670,7 @@ defmodule MachineManager.Core do
 		all_machines_map = all_machines |> Enum.map(fn row -> {row.hostname, row} end) |> Map.new
 		graphs           = connectivity_graphs(all_machines)
 		wrapped_upgrade = fn row ->
-			portable_erlang = portable_erlangs[architecture_for_machine(row)]
+			portable_erlang = portable_erlangs[architecture_for_tags(row.tags)]
 			try do
 				upgrade(row, graphs, all_machines_map, portable_erlang)
 			rescue

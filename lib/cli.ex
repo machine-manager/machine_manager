@@ -288,7 +288,7 @@ defmodule MachineManager.CLI do
 
 	def portable_erlang(hostname, dest) do
 		row  = Core.list(Core.machine(hostname)) |> hd
-		arch = Core.architecture_for_machine(row)
+		arch = Converge.Util.architecture_for_tags(row.tags)
 		File.mkdir!(dest)
 		PortableErlang.make_portable_erlang(dest, arch)
 	end
