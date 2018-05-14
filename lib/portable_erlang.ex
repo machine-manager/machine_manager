@@ -3,7 +3,11 @@ defmodule MachineManager.PortableErlang do
 	Create a portable Erlang installation at `dest` (must be an already-existing empty directory)
 	"""
 	def make_portable_erlang(dest, arch) do
-		erlang_base        = "/usr/lib/erlang"
+		unless arch =~ ~r/\A[a-z0-9]{3,10}\z/ do
+			raise("Unexpected architecture: #{inspect arch}")
+		end
+		unpacked_base      = __DIR__ |> Path.dirname |> Path.dirname |> Path.join("portable_erlang") |> Path.join(arch)
+		erlang_base        = "#{unpacked_base}/usr/lib/erlang"
 		[erts]             = Path.wildcard("#{erlang_base}/erts-*")
 		erlang_libs        = File.ls!("#{erlang_base}/lib")
 		erlang_bins        = File.ls!("#{erlang_base}/bin")
@@ -29,6 +33,7 @@ defmodule MachineManager.PortableErlang do
 		exclude_args = Enum.flat_map(excludes, fn path -> ["--exclude", path] end)
 		{"", 0} = System.cmd("rsync", exclude_args ++ ["-a", "--", "#{erlang_base}/", dest], stderr_to_stdout: true)
 		fix_bin_erl(Path.join(dest, "bin/erl"))
+		nil
 	end
 
 	# Make bin/erl work when installed to any location

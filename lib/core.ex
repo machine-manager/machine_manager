@@ -753,7 +753,8 @@ defmodule MachineManager.Core do
 	defp temp_portable_erlangs(architectures) do
 		for arch <- architectures do
 			portable_erlang = FileUtil.temp_dir("machine_manager_portable_erlang")
-			{arch, PortableErlang.make_portable_erlang(portable_erlang, arch)}
+			PortableErlang.make_portable_erlang(portable_erlang, arch)
+			{arch, portable_erlang}
 		end
 		|> Map.new
 	end
