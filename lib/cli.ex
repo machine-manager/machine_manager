@@ -77,8 +77,9 @@ defmodule MachineManager.CLI do
 				],
 				portable_erlang: [
 					name:  "portable_erlang",
-					about: "Write a portable Erlang installation to the given directory (must not exist)",
+					about: "Write a portable Erlang installation for a machine to the given directory (must not exist)",
 					args: [
+						hostname:  [required: true],
 						directory: [required: true],
 					],
 				],
@@ -232,7 +233,7 @@ defmodule MachineManager.CLI do
 			:connectivity     -> Core.connectivity(args.type)
 			:wireguard_config -> wireguard_config(args.hostname)
 			:hosts_json_file  -> hosts_json_file(args.hostname)
-			:portable_erlang  -> portable_erlang(args.directory)
+			:portable_erlang  -> portable_erlang(args.hostname, args.directory)
 			:probe            -> probe_many(args.hostname_regexp)
 			:exec             -> exec_many(args.hostname_regexp, args.command)
 			:upgrade          -> upgrade_many(args.hostname_regexp)
@@ -285,9 +286,11 @@ defmodule MachineManager.CLI do
 		:ok = IO.write(Core.hosts_json_file(hostname))
 	end
 
-	def portable_erlang(dest) do
+	def portable_erlang(hostname, dest) do
+		row  = Core.list(Core.machine(hostname)) |> hd
+		arch = Core.architecture_for_machine(row)
 		File.mkdir!(dest)
-		PortableErlang.make_portable_erlang(dest)
+		PortableErlang.make_portable_erlang(dest, arch)
 	end
 
 	def configure_many(hostname_regexp, show_progress, allow_warnings) do

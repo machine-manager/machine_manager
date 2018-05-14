@@ -19,7 +19,7 @@ mm hosts_json_file  $hostname                 > "$output"/hosts.json
 mm script           $hostname                   "$output"/script
 cp -a               $EXTRA/systemctl_for_chroot "$output"/systemctl
 cp -a               $EXTRA/dig_for_chroot       "$output"/dig
-mm portable_erlang  "$output/erlang"
+mm portable_erlang  $hostname                   "$output/erlang"
 
 echo '#!/bin/sh
 SELF="$(dirname -- "$(realpath -- "$0")")"

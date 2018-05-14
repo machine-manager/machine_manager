@@ -124,7 +124,8 @@ defmodule MachineManager.Core do
 		if show_progress and length(rows) > 1 do
 			raise(ConfigureError, "Can't show progress when configuring more than one machine")
 		end
-		portable_erlang   = temp_portable_erlang()
+		architectures     = get_machine_architectures(rows)
+		portable_erlangs  = temp_portable_erlangs(architectures)
 		# Even through we're building a connectivity graph that includes all
 		# machines, we don't actually need to do compile scripts for *all*
 		# machines because make_connectivity_graph just runs require_file on
@@ -134,6 +135,7 @@ defmodule MachineManager.Core do
 		all_machines_map  = all_machines |> Enum.map(fn row -> {row.hostname, row} end) |> Map.new
 		graphs            = connectivity_graphs(all_machines)
 		wrapped_configure = fn row ->
+			portable_erlang = portable_erlangs[architecture_for_machine(row)]
 			try do
 				configure(row, graphs, all_machines_map, portable_erlang, show_progress)
 			rescue
@@ -148,6 +150,19 @@ defmodule MachineManager.Core do
 	end
 
 	@script_cache Path.expand("~/.cache/machine_manager/script_cache")
+
+	defp get_machine_architectures(rows) do
+		rows
+		|> Enum.map(&architecture_for_machine/1)
+		|> MapSet.new
+	end
+
+	def architecture_for_machine(row) do
+		case Converge.Util.tag_value(row.tags, "arch") do
+			nil   -> "amd64"
+			other -> other
+		end
+	end
 
 	# We use this to avoid compiling a script N times for N machines with the same roles.
 	defp write_scripts_for_machines(rows, allow_warnings \\ false) do
@@ -593,9 +608,11 @@ defmodule MachineManager.Core do
 	end
 
 	def probe_many(queryable, handle_probe_result, handle_waiting) do
-		rows = list(queryable)
-		portable_erlang = temp_portable_erlang()
-		wrapped_probe = fn row ->
+		rows             = list(queryable)
+		architectures    = get_machine_architectures(rows)
+		portable_erlangs = temp_portable_erlangs(architectures)
+		wrapped_probe    = fn row ->
+			portable_erlang = portable_erlangs[architecture_for_machine(row)]
 			try do
 				{:probed, probe(row, portable_erlang)}
 			rescue
@@ -649,7 +666,8 @@ defmodule MachineManager.Core do
 
 	def upgrade_many(queryable, handle_upgrade_result, handle_waiting) do
 		rows             = list(queryable)
-		portable_erlang  = temp_portable_erlang()
+		architectures    = get_machine_architectures(rows)
+		portable_erlangs = temp_portable_erlangs(architectures)
 		# upgrade calls configure, which expects updated scripts in @script_cache.
 		# Note that we don't need to compile scripts for machines with no pending
 		# upgrades, because they will not be upgraded and therefore not configured.
@@ -658,6 +676,7 @@ defmodule MachineManager.Core do
 		all_machines_map = all_machines |> Enum.map(fn row -> {row.hostname, row} end) |> Map.new
 		graphs           = connectivity_graphs(all_machines)
 		wrapped_upgrade = fn row ->
+			portable_erlang = portable_erlangs[architecture_for_machine(row)]
 			try do
 				upgrade(row, graphs, all_machines_map, portable_erlang)
 			rescue
@@ -731,10 +750,12 @@ defmodule MachineManager.Core do
 		ssh("root", to_ip_string(row.public_ip), row.ssh_port, command, capture)
 	end
 
-	defp temp_portable_erlang() do
-		portable_erlang  = FileUtil.temp_dir("machine_manager_portable_erlang")
-		PortableErlang.make_portable_erlang(portable_erlang)
-		portable_erlang
+	defp temp_portable_erlangs(architectures) do
+		for arch <- architectures do
+			portable_erlang = FileUtil.temp_dir("machine_manager_portable_erlang")
+			{arch, PortableErlang.make_portable_erlang(portable_erlang, arch)}
+		end
+		|> Map.new
 	end
 
 	@doc """

@@ -2,7 +2,7 @@ defmodule MachineManager.PortableErlang do
 	@doc """
 	Create a portable Erlang installation at `dest` (must be an already-existing empty directory)
 	"""
-	def make_portable_erlang(dest) do
+	def make_portable_erlang(dest, arch) do
 		erlang_base        = "/usr/lib/erlang"
 		[erts]             = Path.wildcard("#{erlang_base}/erts-*")
 		erlang_libs        = File.ls!("#{erlang_base}/lib")
