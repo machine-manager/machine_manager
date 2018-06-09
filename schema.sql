@@ -10,7 +10,7 @@
 SET ROLE machine_manager;
 
 CREATE DOMAIN hostname         AS varchar(32)  CHECK(VALUE ~ '\A[-_a-z0-9]+\Z');
-CREATE DOMAIN ssh_port         AS integer      CHECK(VALUE > 0 AND VALUE <= 65536);
+CREATE DOMAIN port             AS integer      CHECK(VALUE > 0 AND VALUE <= 65536);
 CREATE DOMAIN int4_gt0         AS integer      CHECK(VALUE > 0);
 CREATE DOMAIN int2_gt0         AS integer      CHECK(VALUE > 0);
 CREATE DOMAIN tag              AS varchar      CHECK(VALUE ~ '\A[^\x00-\x20]+\Z');
@@ -25,9 +25,10 @@ CREATE TABLE machines (
 	hostname          hostname      NOT NULL PRIMARY KEY,
 	public_ip         inet          NOT NULL,
 	wireguard_ip      inet          NOT NULL,
+	wireguard_port    port          NOT NULL,
 	wireguard_privkey wireguard_key NOT NULL,
 	wireguard_pubkey  wireguard_key NOT NULL,
-	ssh_port          ssh_port      NOT NULL,
+	ssh_port          port          NOT NULL,
 
 	-- Probed information
 	ram_mb            int4_gt0,
