@@ -100,7 +100,7 @@ defmodule MachineManager.Core do
 	end
 
 	defp wireguard_config_for_machine(row, graphs, all_machines_map) do
-		listen_port      = 51820
+		listen_port      = 904
 		wireguard_peers  = get_wireguard_peers(row, graphs, all_machines_map)
 		addresses        =
 			case Converge.Util.tag_values(row.tags, "wireguard_address") do
@@ -483,7 +483,7 @@ defmodule MachineManager.Core do
 		|> Enum.map(fn hostname ->
 				peer_row = all_machines_map[hostname]
 				endpoint = case ip_connectable?(self_row.public_ip, peer_row.public_ip) do
-					true  -> "#{to_ip_string(peer_row.public_ip)}:51820"
+					true  -> "#{to_ip_string(peer_row.public_ip)}:904"
 					false -> nil
 				end
 				allowed_ips = case hostname do
