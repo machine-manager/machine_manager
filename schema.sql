@@ -29,6 +29,7 @@ CREATE TABLE machines (
 	wireguard_privkey wireguard_key NOT NULL,
 	wireguard_pubkey  wireguard_key NOT NULL,
 	ssh_port          port          NOT NULL,
+	host_machine      hostname,
 
 	-- Probed information
 	ram_mb            int4_gt0,
@@ -47,11 +48,11 @@ CREATE TABLE machines (
 	UNIQUE (public_ip, ssh_port),
 	UNIQUE (wireguard_ip),
 	UNIQUE (wireguard_privkey),
-	UNIQUE (wireguard_pubkey)
+	UNIQUE (wireguard_pubkey),
+	FOREIGN KEY (host_machine) references machines(hostname)
 );
--- tags are like
--- state:mess, boot:ovh_vps, dc:ovh_bhs, role:custom_packages_server
--- state = {mess,zygote,converged,needs_converge,decommissioning}
+
+CREATE INDEX host_machine_idx ON machines (host_machine);
 
 CREATE TABLE machine_tags (
 	hostname  hostname NOT NULL REFERENCES machines,
