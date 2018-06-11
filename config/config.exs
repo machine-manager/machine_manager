@@ -1,7 +1,6 @@
 use Mix.Config
 
 config :machine_manager, MachineManager.Repo,
-	adapter: Ecto.Adapters.Postgres,
 	database: "machine_manager",
 	username: "machine_manager",
 	password: "xphxLTUX1o4zuAVnHTYj1Q",
