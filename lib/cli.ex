@@ -482,10 +482,9 @@ defmodule MachineManager.CLI do
 
 	defp default_columns() do
 		[
-			"hostname", "public_ip", "wireguard_ip", "ssh_port", "tags",
-			"ram_mb", "cpu_model_name", "core_count",
-			"thread_count", "last_probe_time", "boot_time", "time_offset",
-			"kernel", "pending_upgrades",
+			"hostname", "public_ip", "wireguard_ip", "wireguard_port", "ssh_port",
+			"tags", "ram_mb", "cpu_model_name", "core_count", "thread_count",
+			"last_probe_time", "boot_time", "time_offset", "kernel", "pending_upgrades",
 		]
 	end
 
@@ -493,7 +492,8 @@ defmodule MachineManager.CLI do
 		%{
 			"hostname"         => {"HOSTNAME",         fn row, _ -> row.hostname end},
 			"public_ip"        => {"PUBLIC IP",        fn row, _ -> row.public_ip    |> maybe_scramble_ip |> Core.to_ip_string end},
-			"wireguard_ip"     => {"WIREGUARD",        fn row, _ -> row.wireguard_ip |> Core.to_ip_string end},
+			"wireguard_ip"     => {"WIREGUARD IP",     fn row, _ -> row.wireguard_ip |> Core.to_ip_string end},
+			"wireguard_port"   => {"WG",               fn row, _ -> row.wireguard_port end},
 			"ssh_port"         => {"SSH",              fn row, _ -> row.ssh_port end},
 			"tags"             => {"TAGS",             &format_tags/2},
 			"ram_mb"           => {"RAM",              fn row, _ -> row.ram_mb end},

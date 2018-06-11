@@ -49,6 +49,7 @@ defmodule MachineManager.Core do
 				hostname:          m.hostname,
 				public_ip:         m.public_ip,
 				wireguard_ip:      m.wireguard_ip,
+				wireguard_port:    m.wireguard_port,
 				wireguard_pubkey:  m.wireguard_pubkey,
 				wireguard_privkey: m.wireguard_privkey,
 				ssh_port:          m.ssh_port,
