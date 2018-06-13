@@ -30,8 +30,8 @@ defmodule MachineManager.ScriptWriter do
 				end
 			end
 			""")
-		{_, 0} = System.cmd("mix", ["deps.get"], cd: temp_dir)
-		case System.cmd("mix", ["compile", "--warnings-as-errors"], cd: temp_dir, env: [{"MIX_ENV", "prod"}], stderr_to_stdout: true) do
+		{_, 0} = System.cmd("nice", ["-n", "10", "mix", "deps.get"], cd: temp_dir)
+		case System.cmd("nice", ["-n", "10", "mix", "compile", "--warnings-as-errors"], cd: temp_dir, env: [{"MIX_ENV", "prod"}], stderr_to_stdout: true) do
 			{out, 0} ->
 				# Even with --warnings-as-errors, warnings in dependencies don't
 				# result in a non-0 exit from `mix compile`.  Parse the output and
@@ -42,7 +42,7 @@ defmodule MachineManager.ScriptWriter do
 			{out, _code} ->
 				raise(ScriptCompilationError, "mix compile failed:\n\n#{out}")
 		end
-		{_, 0} = System.cmd("nice", ["-n", "5", "mix", "escript.build"], cd: temp_dir, env: [{"MIX_ENV", "prod"}])
+		{_, 0} = System.cmd("nice", ["-n", "10", "mix", "escript.build"], cd: temp_dir, env: [{"MIX_ENV", "prod"}])
 		File.cp!(Path.join(temp_dir, app_name), output_filename)
 		File.rm_rf!(temp_dir)
 		nil
