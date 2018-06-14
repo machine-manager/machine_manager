@@ -798,18 +798,19 @@ defmodule MachineManager.Core do
 	@doc """
 	Adds a machine from the database.
 	"""
-	@spec add(String.t, String.t, integer, [String.t]) :: nil
-	def add(hostname, public_ip, ssh_port, tags) do
+	@spec add(String.t, String.t, integer, integer, [String.t]) :: nil
+	def add(hostname, public_ip, ssh_port, wireguard_port, tags) do
 		wireguard_privkey = WireGuard.make_wireguard_privkey()
 		wireguard_pubkey  = WireGuard.get_wireguard_pubkey(wireguard_privkey)
 		{:ok, _} = Repo.transaction(fn ->
 			Repo.insert_all("machines", [[
 				hostname:          hostname,
 				public_ip:         to_ip_postgrex(public_ip),
+				ssh_port:          ssh_port,
+				wireguard_port:    wireguard_port,
 				wireguard_ip:      to_ip_postgrex(get_unused_wireguard_ip()),
 				wireguard_privkey: wireguard_privkey,
 				wireguard_pubkey:  wireguard_pubkey,
-				ssh_port:          ssh_port,
 			]])
 			tag(hostname, tags)
 		end)
@@ -912,6 +913,13 @@ defmodule MachineManager.Core do
 	def set_ssh_port_many(queryable, ssh_port) do
 		queryable
 		|> Repo.update_all(set: [ssh_port: ssh_port])
+		nil
+	end
+
+	@spec set_wireguard_port_many(Ecto.Queryable.t, integer) :: nil
+	def set_wireguard_port_many(queryable, wireguard_port) do
+		queryable
+		|> Repo.update_all(set: [wireguard_port: wireguard_port])
 		nil
 	end
 

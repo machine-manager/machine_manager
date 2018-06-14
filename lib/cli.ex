@@ -148,9 +148,10 @@ defmodule MachineManager.CLI do
 						hostname: [required: true],
 					],
 					options: [
-						public_ip:  [short: "-i", long: "--public-ip", required: true,                    help: "Public IP address"],
-						ssh_port:   [short: "-p", long: "--ssh-port",  required: true,  parser: :integer, help: "SSH port"],
-						tag:        [short: "-t", long: "--tag",       required: false, multiple: true,   help: "Tag"],
+						public_ip:      [short: "-i", long: "--public-ip",      required: true,                  help: "Public IP address"],
+						ssh_port:       [short: "-p", long: "--ssh-port",       parser: :integer, default: 904,  help: "SSH port"],
+						wireguard_port: [             long: "--wireguard-port", parser: :integer, default: 904,  help: "WireGuard port"],
+						tag:            [short: "-t", long: "--tag",            required: false, multiple: true, help: "Tag"],
 					],
 				],
 				rm: [
@@ -204,6 +205,14 @@ defmodule MachineManager.CLI do
 						ssh_port:        [required: true, parser: :integer],
 					],
 				],
+				set_wireguard_port: [
+					name:  "set-wireguard-port",
+					about: "Set a new WireGuard port for machines",
+					args: [
+						hostname_regexp: [required: true, help: hostname_regexp_help],
+						wireguard_port:  [required: true, parser: :integer],
+					],
+				],
 				rekey_wireguard: [
 					name:  "rekey-wireguard",
 					about: "Regenerate WireGuard keys for machines",
@@ -226,27 +235,28 @@ defmodule MachineManager.CLI do
 		Application.put_env(:elixir, :ansi_enabled, ansi_enabled)
 
 		case subcommand do
-			:ls               -> list(args.hostname_regexp, options.columns, (if flags.no_header, do: false, else: true))
-			:script           -> Core.write_script_for_machine(args.hostname, args.output_file, allow_warnings: flags.allow_warnings)
-			:configure        -> configure_many(args.hostname_regexp, flags.show_progress, flags.allow_warnings)
-			:ssh_config       -> ssh_config()
-			:connectivity     -> Core.connectivity(args.type)
-			:wireguard_config -> wireguard_config(args.hostname)
-			:hosts_json_file  -> hosts_json_file(args.hostname)
-			:portable_erlang  -> portable_erlang(args.hostname, args.directory)
-			:probe            -> probe_many(args.hostname_regexp)
-			:exec             -> exec_many(args.hostname_regexp, args.command)
-			:upgrade          -> upgrade_many(args.hostname_regexp)
-			:reboot           -> reboot_many(args.hostname_regexp)
-			:shutdown         -> shutdown_many(args.hostname_regexp)
-			:add              -> Core.add(args.hostname, options.public_ip, options.ssh_port, options.tag)
-			:rm               -> Core.rm_many(Core.machines_matching_regexp(args.hostname_regexp))
-			:tag              -> Core.tag_many(Core.machines_matching_regexp(args.hostname_regexp),   all_arguments(args.tag, unknown))
-			:untag            -> Core.untag_many(Core.machines_matching_regexp(args.hostname_regexp), all_arguments(args.tag, unknown))
-			:get_tags         -> get_tags(args.hostname)
-			:set_public_ip    -> Core.set_public_ip(args.hostname, args.public_ip)
-			:set_ssh_port     -> Core.set_ssh_port_many(Core.machines_matching_regexp(args.hostname_regexp), args.ssh_port)
-			:rekey_wireguard  -> Core.rekey_wireguard_many(Core.machines_matching_regexp(args.hostname_regexp))
+			:ls                 -> list(args.hostname_regexp, options.columns, (if flags.no_header, do: false, else: true))
+			:script             -> Core.write_script_for_machine(args.hostname, args.output_file, allow_warnings: flags.allow_warnings)
+			:configure          -> configure_many(args.hostname_regexp, flags.show_progress, flags.allow_warnings)
+			:ssh_config         -> ssh_config()
+			:connectivity       -> Core.connectivity(args.type)
+			:wireguard_config   -> wireguard_config(args.hostname)
+			:hosts_json_file    -> hosts_json_file(args.hostname)
+			:portable_erlang    -> portable_erlang(args.hostname, args.directory)
+			:probe              -> probe_many(args.hostname_regexp)
+			:exec               -> exec_many(args.hostname_regexp, args.command)
+			:upgrade            -> upgrade_many(args.hostname_regexp)
+			:reboot             -> reboot_many(args.hostname_regexp)
+			:shutdown           -> shutdown_many(args.hostname_regexp)
+			:add                -> Core.add(args.hostname, options.public_ip, options.ssh_port, options.wireguard_port, options.tag)
+			:rm                 -> Core.rm_many(Core.machines_matching_regexp(args.hostname_regexp))
+			:tag                -> Core.tag_many(Core.machines_matching_regexp(args.hostname_regexp),   all_arguments(args.tag, unknown))
+			:untag              -> Core.untag_many(Core.machines_matching_regexp(args.hostname_regexp), all_arguments(args.tag, unknown))
+			:get_tags           -> get_tags(args.hostname)
+			:set_public_ip      -> Core.set_public_ip(args.hostname, args.public_ip)
+			:set_ssh_port       -> Core.set_ssh_port_many(Core.machines_matching_regexp(args.hostname_regexp), args.ssh_port)
+			:set_wireguard_port -> Core.set_wireguard_port_many(Core.machines_matching_regexp(args.hostname_regexp), args.wireguard_port)
+			:rekey_wireguard    -> Core.rekey_wireguard_many(Core.machines_matching_regexp(args.hostname_regexp))
 		end
 	end
 
