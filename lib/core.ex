@@ -568,20 +568,32 @@ defmodule MachineManager.Core do
 	#
 	# If opts[:compress] is true, use rsync -z (--compress).
 	#
+	# If opts[:port_override] is given, use the given port instead of
+	# row.ssh_port.  Note that this function will already try the default
+	# SSH port 22 if row.ssh_port fails.
+	#
 	# If rsync appears to be missing on the remote, this will install rsync
 	# and try again.
 	#
 	# Returns {rsync_stdout_and_stderr, rsync_exit_code}
 	defp transfer_paths(source_paths, row, dest, opts) do
 		before_rsync = opts[:before_rsync]
+		port = case opts[:port_override] do
+			nil                      -> row.ssh_port
+			num when is_integer(num) -> num
+		end
 		rsync_args =
 			(if before_rsync != nil, do: ["--rsync-path", "#{before_rsync} && rsync"], else: []) ++
 			(if opts[:compress],     do: ["--compress"], else: []) ++
-			["-e", "ssh -p #{row.ssh_port}", "--protect-args", "--recursive", "--delete", "--executability", "--links"] ++
+			["-e", "ssh -p #{port}", "--protect-args", "--recursive", "--delete", "--executability", "--links"] ++
 			source_paths ++
 			["root@#{to_ip_string(row.public_ip)}:#{dest}"]
+		default_ssh_port = 22
 		case System.cmd("rsync", rsync_args, env: env_for_ssh(), stderr_to_stdout: true) do
-			{out, 0}         -> {out, 0}
+			{out, 0}
+				-> {out, 0}
+			{_, 255} when port != default_ssh_port ->
+				transfer_paths(source_paths, row, dest, [port_override: default_ssh_port] ++ opts)
 			{out, exit_code} ->
 				cond do
 					String.contains?(out, "command not found") ->
@@ -623,9 +635,11 @@ defmodule MachineManager.Core do
 
 	def exec_many(queryable, command, handle_exec_result, handle_waiting) do
 		rows = list(queryable)
+		# Don't allow retry on run_on_machine because the command may return exit code 255
+		# (matching ssh's connection failure exit code) and not be safe to run again
 		task_map =
 			rows
-			|> Enum.map(fn row -> {row.hostname, Task.async(fn -> run_on_machine(row, command) end)} end)
+			|> Enum.map(fn row -> {row.hostname, Task.async(fn -> run_on_machine(row, command, true, false) end)} end)
 			|> Map.new
 		Parallel.block_on_tasks(task_map, handle_exec_result, handle_waiting, 2000)
 	end
@@ -741,8 +755,14 @@ defmodule MachineManager.Core do
 	end
 
 	@spec run_on_machine(%{public_ip: Postgrex.INET.t, ssh_port: integer}, String.t, boolean) :: {String.t, integer}
-	defp run_on_machine(row, command, capture \\ true) do
-		ssh("root", to_ip_string(row.public_ip), row.ssh_port, command, capture)
+	defp run_on_machine(row, command, capture \\ true, retry_on_default_port \\ true) do
+		case ssh("root", to_ip_string(row.public_ip), row.ssh_port, command, capture) do
+			{"", 255} when retry_on_default_port ->
+				# Fall back to default port in case the machine has not been configured yet
+				default_ssh_port = 22
+				ssh("root", to_ip_string(row.public_ip), default_ssh_port, command, capture)
+			{out, code} -> {out, code}
+		end
 	end
 
 	defp temp_portable_erlangs(architectures) do
