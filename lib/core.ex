@@ -635,8 +635,9 @@ defmodule MachineManager.Core do
 
 	def exec_many(queryable, command, handle_exec_result, handle_waiting) do
 		rows = list(queryable)
-		# Don't allow retry on run_on_machine because the command may return exit code 255
-		# (matching ssh's connection failure exit code) and not be safe to run again
+		# When calling run_on_machine, don't allow retry because the command may
+		# return exit code 255 (the same as ssh's connection failure exit code)
+		# and yet not be safe to run again.
 		task_map =
 			rows
 			|> Enum.map(fn row -> {row.hostname, Task.async(fn -> run_on_machine(row, command, true, false) end)} end)
