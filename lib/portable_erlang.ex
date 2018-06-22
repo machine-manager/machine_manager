@@ -16,7 +16,7 @@ defmodule MachineManager.PortableErlang do
 		# will crash if it is not available (because compiler is listed in elixir.app.src)
 		# 2) some users of converge may want to use the compiler for some reason
 		unwanted_libs      = Enum.reject(erlang_libs,      fn n -> n =~ ~r/\A(kernel|stdlib|compiler)-/ end)
-		unwanted_bins      = Enum.reject(erlang_bins,      fn n -> n =~ ~r/\A(erl|escript|start_clean\.boot)\z/ end)
+		unwanted_bins      = Enum.reject(erlang_bins,      fn n -> n =~ ~r/\A(erl|escript|start\.boot|no_dot_erlang\.boot)\z/ end)
 		unwanted_erts_bins = Enum.reject(erlang_erts_bins, fn n -> n =~ ~r/\A(erlexec|erl_child_setup|inet_gethost|beam\.smp)\z/ end)
 		excludes           =
 			Enum.map(unwanted_libs,      fn n -> "/lib/#{n}" end) ++
