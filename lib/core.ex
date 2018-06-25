@@ -129,29 +129,56 @@ defmodule MachineManager.Core do
 		if show_progress and length(rows) > 1 do
 			raise(ConfigureError, "Can't show progress when configuring more than one machine")
 		end
-		architectures     = get_machine_architectures(rows)
-		portable_erlangs  = temp_portable_erlangs(architectures)
-		# Even through we're building a connectivity graph that includes all
-		# machines, we don't actually need to do compile scripts for *all*
-		# machines because make_connectivity_graph just runs require_file on
-		# connections.exs files.
-		write_scripts_for_machines(rows, allow_warnings)
-		all_machines      = from("machines") |> list
-		all_machines_map  = all_machines |> Enum.map(fn row -> {row.hostname, row} end) |> Map.new
-		graphs            = connectivity_graphs(all_machines)
-		wrapped_configure = fn row ->
+		act_many(:configure, rows, retry_on_port, handle_configure_result, handle_waiting, show_progress: show_progress, allow_warnings: allow_warnings)
+	end
+
+	def upgrade_many(queryable, retry_on_port, handle_upgrade_result, handle_waiting) do
+		rows = list(queryable)
+		act_many(:upgrade, rows, retry_on_port, handle_upgrade_result, handle_waiting)
+	end
+
+	@machine_probe_content File.read!(Path.join(__DIR__, "../../machine_probe/machine_probe"))
+
+	defp act_many(command, rows, retry_on_port, handle_result, handle_waiting, opts \\ []) do
+		architectures    = get_machine_architectures(rows)
+		portable_erlangs = temp_portable_erlangs(architectures)
+		case command do
+			# Even through we're building a connectivity graph that includes all
+			# machines, we don't actually need to do compile scripts for *all*
+			# machines because make_connectivity_graph just runs require_file on
+			# connections.exs files.
+			:configure -> write_scripts_for_machines(rows, opts[:allow_warnings])
+
+			# upgrade calls configure, which expects updated scripts in @script_cache.
+			# But we don't need to compile scripts for machines with no pending
+			# upgrades, because they will not be upgraded and therefore not configured.
+			:upgrade   -> write_scripts_for_machines(Enum.reject(rows, fn row -> row.pending_upgrades == [] end))
+		end
+		all_machines     = from("machines") |> list
+		all_machines_map = all_machines |> Enum.map(fn row -> {row.hostname, row} end) |> Map.new
+		graphs           = connectivity_graphs(all_machines)
+		wrapped = fn row ->
 			portable_erlang = portable_erlangs[architecture_for_tags(row.tags)]
+			machine_probe = if command in [:upgrade, :probe] do
+				temp_dir = FileUtil.temp_dir("machine_manager_probe_many")
+				write_temp_file(temp_dir, "machine_probe", @machine_probe_content, executable: true)
+			end
 			try do
-				configure(row, graphs, all_machines_map, portable_erlang, retry_on_port, show_progress)
+				case command do
+					:configure -> configure(row, graphs, all_machines_map, portable_erlang, retry_on_port, opts[:show_progress])
+					:upgrade   -> upgrade(  row, graphs, all_machines_map, portable_erlang, retry_on_port, machine_probe)
+				end
 			rescue
+				e in UpgradeError   -> {:upgrade_error,   e.message}
 				e in ConfigureError -> {:configure_error, e.message}
+				e in ProbeError     -> {:probe_error,     e.message}
 			end
 		end
 		task_map =
 			rows
-			|> Enum.map(fn row -> {row.hostname, Task.async(fn -> wrapped_configure.(row) end)} end)
+			|> Enum.map(fn row -> {row.hostname, Task.async(fn -> wrapped.(row) end)} end)
 			|> Map.new
-		Parallel.block_on_tasks(task_map, handle_configure_result, handle_waiting, 2000)
+		Parallel.block_on_tasks(task_map, handle_result, handle_waiting, 2000)
 	end
 
 	@script_cache Path.expand("~/.cache/machine_manager/script_cache")
@@ -594,8 +621,6 @@ defmodule MachineManager.Core do
 			retry_on_port: retry_on_port)
 	end
 
-	@machine_probe_content File.read!(Path.join(__DIR__, "../../machine_probe/machine_probe"))
-
 	def probe_many(queryable, retry_on_port, handle_probe_result, handle_waiting) do
 		rows             = list(queryable)
 		architectures    = get_machine_architectures(rows)
@@ -660,38 +685,8 @@ defmodule MachineManager.Core do
 		end)
 	end
 
-	def upgrade_many(queryable, retry_on_port, handle_upgrade_result, handle_waiting) do
-		rows             = list(queryable)
-		architectures    = get_machine_architectures(rows)
-		portable_erlangs = temp_portable_erlangs(architectures)
-		# upgrade calls configure, which expects updated scripts in @script_cache.
-		# Note that we don't need to compile scripts for machines with no pending
-		# upgrades, because they will not be upgraded and therefore not configured.
-		write_scripts_for_machines(Enum.reject(rows, fn row -> row.pending_upgrades == [] end))
-		all_machines     = from("machines") |> list
-		all_machines_map = all_machines |> Enum.map(fn row -> {row.hostname, row} end) |> Map.new
-		graphs           = connectivity_graphs(all_machines)
-		wrapped_upgrade = fn row ->
-			portable_erlang = portable_erlangs[architecture_for_tags(row.tags)]
-			temp_dir        = FileUtil.temp_dir("machine_manager_probe_many")
-			machine_probe   = write_temp_file(temp_dir, "machine_probe", @machine_probe_content, executable: true)
-			try do
-				upgrade(row, graphs, all_machines_map, portable_erlang, machine_probe, retry_on_port)
-			rescue
-				e in UpgradeError   -> {:upgrade_error,   e.message}
-				e in ConfigureError -> {:configure_error, e.message}
-				e in ProbeError     -> {:probe_error,     e.message}
-			end
-		end
-		task_map =
-			rows
-			|> Enum.map(fn row -> {row.hostname, Task.async(fn -> wrapped_upgrade.(row) end)} end)
-			|> Map.new
-		Parallel.block_on_tasks(task_map, handle_upgrade_result, handle_waiting, 2000)
-	end
-
 	# Can raise UpgradeError or ConfigureError
-	def upgrade(row, graphs, all_machines_map, portable_erlang, machine_probe, retry_on_port) do
+	def upgrade(row, graphs, all_machines_map, portable_erlang, retry_on_port, machine_probe) do
 		case row.pending_upgrades do
 			[]       -> :no_pending_upgrades
 			upgrades ->
