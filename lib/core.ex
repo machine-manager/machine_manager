@@ -408,24 +408,29 @@ defmodule MachineManager.Core do
 		wireguard_config = wireguard_config_for_machine(row, graphs, all_machines_map)
 		subdomains       = subdomains(all_machines_map |> Map.values)
 		hosts_file       = make_hosts_json_file(row, graphs, subdomains, all_machines_map)
+
 		case transfer_portable_erlang(portable_erlang, row, retry_on_port) do
 			:ok                      -> nil
 			{:error, out, exit_code} -> raise_upload_error(ConfigureError, row.hostname, out, exit_code, "erlang")
 		end
-		# script_file is already compressed, so don't use compress: true
-		case transfer_path(script_file, row, ".cache/machine_manager/script",
-		                   before_rsync: "mkdir -p .cache/machine_manager", retry_on_port: retry_on_port) do
-			{"", 0}          -> nil
-			{out, exit_code} -> raise_upload_error(ConfigureError, row.hostname, out, exit_code, "configuration script")
+
+		temp_dir = FileUtil.temp_dir("machine_manager_configure")
+		try do
+			script     = Path.join(temp_dir, "script")
+			File.ln!(script_file, script)
+			wg0_conf   = write_temp_file(temp_dir, "wg0.conf",   wireguard_config)
+			hosts_json = write_temp_file(temp_dir, "hosts.json", hosts_file)
+			files      = [script, wg0_conf, hosts_json]
+			# script is already compressed, so don't use compress: true
+			case transfer_paths(files, row, ".cache/machine_manager/",
+		                   	before_rsync: "mkdir -p .cache/machine_manager", retry_on_port: retry_on_port) do
+				{"", 0}          -> nil
+				{out, exit_code} -> raise_upload_error(ConfigureError, row.hostname, out, exit_code, inspect(files))
+			end
+		after
+			File.rm_rf!(temp_dir)
 		end
-		case transfer_content(wireguard_config, row, ".cache/machine_manager/wg0.conf", compress: true, retry_on_port: retry_on_port) do
-			{"", 0}          -> nil
-			{out, exit_code} -> raise_upload_error(ConfigureError, row.hostname, out, exit_code, "WireGuard configuration")
-		end
-		case transfer_content(hosts_file, row, ".cache/machine_manager/hosts.json", compress: true, retry_on_port: retry_on_port) do
-			{"", 0}          -> nil
-			{out, exit_code} -> raise_upload_error(ConfigureError, row.hostname, out, exit_code, "hosts.json")
-		end
+
 		arguments = [".cache/machine_manager/erlang/bin/escript", ".cache/machine_manager/script"] ++ all_tags(row)
 		for arg <- arguments do
 			if String.contains?(arg, " ") do
@@ -433,6 +438,7 @@ defmodule MachineManager.Core do
 					"Argument list #{inspect arguments} contains an argument with a space: #{inspect arg}")
 			end
 		end
+
 		case show_progress do
 			true ->
 				{"", exit_code} = run_on_machine(row, Enum.join(arguments, " "), capture: false, retry_on_port: retry_on_port)
@@ -539,19 +545,25 @@ defmodule MachineManager.Core do
 	#
 	# Returns {rsync_out, rsync_exit_code}
 	defp transfer_content(content, row, dest, opts) do
-		temp = FileUtil.temp_path("machine_manager_transfer_content")
-		File.touch!(temp)
-		if opts[:executable] do
-			:ok = File.chmod!(temp, 0o700)
-		else
-			:ok = File.chmod!(temp, 0o600)
-		end
-		File.write!(temp, content)
+		temp_dir = FileUtil.temp_dir("machine_manager_transfer_content")
 		try do
+			temp = write_temp_file(temp_dir, content, opts)
 			transfer_path(temp, row, dest, opts)
 		after
-			FileUtil.rm_f!(temp)
+			File.rm_rf!(temp_dir)
 		end
+	end
+
+	defp write_temp_file(temp_dir, filename, content, opts \\ []) do
+		temp     = Path.join(temp_dir, filename)
+		mode     = case opts[:executable] do
+			true -> 0o700
+			_    -> 0o600
+		end
+		File.touch!(temp)
+		:ok = File.chmod!(temp, mode)
+		File.write!(temp, content)
+		temp
 	end
 
 	defp transfer_path(source_path, row, dest, opts) do
