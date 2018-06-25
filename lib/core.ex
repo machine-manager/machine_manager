@@ -768,9 +768,9 @@ defmodule MachineManager.Core do
 		case run_on_machine(row, "true") do
 			{_, 0} -> {"", 0}
 			{_, _} ->
-				# Try again
+				# Maybe try again
 				case attempt do
-					0 -> raise "Gave up waiting for #{row.hostname}"
+					0 -> {"Gave up waiting", 1}
 					_ -> wait_for_machine(row, attempt - 1)
 				end
 		end
