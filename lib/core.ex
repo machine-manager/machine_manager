@@ -732,14 +732,16 @@ defmodule MachineManager.Core do
 	end
 
 	def reboot_many(queryable, handle_exec_result, handle_waiting) do
-		command = "nohup sh -c 'sleep 2; systemctl reboot' > /dev/null 2>&1 < /dev/null &"
+		command = "nohup sh -c 'sleep #{delay_before_shutdown()}; systemctl reboot' > /dev/null 2>&1 < /dev/null &"
 		exec_many(queryable, command, handle_exec_result, handle_waiting)
 	end
 
 	def shutdown_many(queryable, handle_exec_result, handle_waiting) do
-		command = "nohup sh -c 'sleep 2; systemctl poweroff' > /dev/null 2>&1 < /dev/null &"
+		command = "nohup sh -c 'sleep #{delay_before_shutdown()}; systemctl poweroff' > /dev/null 2>&1 < /dev/null &"
 		exec_many(queryable, command, handle_exec_result, handle_waiting)
 	end
+
+	defp delay_before_shutdown(), do: 2
 
 	def wait_many(queryable, handle_exec_result, handle_waiting) do
 		rows = list(queryable)
@@ -748,6 +750,8 @@ defmodule MachineManager.Core do
 			|> Enum.map(fn row -> {
 					row.hostname,
 					Task.async(fn ->
+						# Wait for an existing reboot/shutdown command to start
+						Process.sleep(1000 * (delay_before_shutdown() + 1))
 						# Assume ~10 seconds per attempt (due to ConnectTimeout=10),
 						# for a max wait time of ~30 minutes
 						wait_for_machine(row, 180)
