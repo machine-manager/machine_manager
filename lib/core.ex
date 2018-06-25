@@ -121,7 +121,7 @@ defmodule MachineManager.Core do
 		make_hosts_json_file(row, graphs, subdomains, all_machines_map)
 	end
 
-	def configure_many(queryable, handle_configure_result, handle_waiting, show_progress, allow_warnings) do
+	def configure_many(queryable, retry_on_port, handle_configure_result, handle_waiting, show_progress, allow_warnings) do
 		rows = list(queryable)
 		if show_progress and length(rows) > 1 do
 			raise(ConfigureError, "Can't show progress when configuring more than one machine")
@@ -139,7 +139,7 @@ defmodule MachineManager.Core do
 		wrapped_configure = fn row ->
 			portable_erlang = portable_erlangs[architecture_for_tags(row.tags)]
 			try do
-				configure(row, graphs, all_machines_map, portable_erlang, show_progress)
+				configure(row, graphs, all_machines_map, portable_erlang, retry_on_port, show_progress)
 			rescue
 				e in ConfigureError -> {:configure_error, e.message}
 			end
@@ -331,8 +331,8 @@ defmodule MachineManager.Core do
 	@doc """
 	Probe a machine and write the probe data to the database.
 	"""
-	def probe(row, portable_erlang) do
-		data = get_probe_data(row, portable_erlang)
+	def probe(row, portable_erlang, retry_on_port) do
+		data = get_probe_data(row, portable_erlang, retry_on_port)
 		# TODO: don't assume that it's the same machine; make sure some unique ID is the same
 		write_probe_data_to_db(row.hostname, data)
 		nil
@@ -343,12 +343,11 @@ defmodule MachineManager.Core do
 	@doc """
 	Get probe data from a machine.
 	"""
-	def get_probe_data(row, portable_erlang) do
+	def get_probe_data(row, portable_erlang, retry_on_port) do
 		# portable_erlang can be nil in this function, in case the caller is
 		# certain the machine already has it.
 		if portable_erlang != nil do
-			transfer_portable_erlang(portable_erlang, row)
-			case transfer_portable_erlang(portable_erlang, row) do
+			case transfer_portable_erlang(portable_erlang, row, retry_on_port) do
 				:ok                      -> nil
 				{:error, out, exit_code} -> raise_upload_error(ProbeError, row.hostname, out, exit_code, "erlang")
 			end
@@ -358,7 +357,7 @@ defmodule MachineManager.Core do
 			{"", 0}          -> nil
 			{out, exit_code} -> raise_upload_error(ProbeError, row.hostname, out, exit_code, "machine_probe")
 		end
-		{output, exit_code} = run_on_machine(row, ".cache/machine_manager/erlang/bin/escript .cache/machine_manager/machine_probe")
+		{output, exit_code} = run_on_machine(row, ".cache/machine_manager/erlang/bin/escript .cache/machine_manager/machine_probe", retry_on_port: retry_on_port)
 		case exit_code do
 			0 ->
 				json = get_json_from_probe_output(output)
@@ -403,27 +402,27 @@ defmodule MachineManager.Core do
 	# in @script_cache (call write_scripts_for_machines first).
 	#
 	# Can raise ConfigureError
-	def configure(row, graphs, all_machines_map, portable_erlang, show_progress \\ false) do
+	def configure(row, graphs, all_machines_map, portable_erlang, retry_on_port, show_progress \\ false) do
 		roles            = ScriptWriter.roles_for_tags(row.tags)
 		script_file      = script_filename_for_roles(roles)
 		wireguard_config = wireguard_config_for_machine(row, graphs, all_machines_map)
 		subdomains       = subdomains(all_machines_map |> Map.values)
 		hosts_file       = make_hosts_json_file(row, graphs, subdomains, all_machines_map)
-		case transfer_portable_erlang(portable_erlang, row) do
+		case transfer_portable_erlang(portable_erlang, row, retry_on_port) do
 			:ok                      -> nil
 			{:error, out, exit_code} -> raise_upload_error(ConfigureError, row.hostname, out, exit_code, "erlang")
 		end
 		# script_file is already compressed, so don't use compress: true
 		case transfer_path(script_file, row, ".cache/machine_manager/script",
-		                   before_rsync: "mkdir -p .cache/machine_manager") do
+		                   before_rsync: "mkdir -p .cache/machine_manager", retry_on_port: retry_on_port) do
 			{"", 0}          -> nil
 			{out, exit_code} -> raise_upload_error(ConfigureError, row.hostname, out, exit_code, "configuration script")
 		end
-		case transfer_content(wireguard_config, row, ".cache/machine_manager/wg0.conf", compress: true) do
+		case transfer_content(wireguard_config, row, ".cache/machine_manager/wg0.conf", compress: true, retry_on_port: retry_on_port) do
 			{"", 0}          -> nil
 			{out, exit_code} -> raise_upload_error(ConfigureError, row.hostname, out, exit_code, "WireGuard configuration")
 		end
-		case transfer_content(hosts_file, row, ".cache/machine_manager/hosts.json", compress: true) do
+		case transfer_content(hosts_file, row, ".cache/machine_manager/hosts.json", compress: true, retry_on_port: retry_on_port) do
 			{"", 0}          -> nil
 			{out, exit_code} -> raise_upload_error(ConfigureError, row.hostname, out, exit_code, "hosts.json")
 		end
@@ -436,14 +435,14 @@ defmodule MachineManager.Core do
 		end
 		case show_progress do
 			true ->
-				{"", exit_code} = run_on_machine(row, Enum.join(arguments, " "), false)
+				{"", exit_code} = run_on_machine(row, Enum.join(arguments, " "), capture: false, retry_on_port: retry_on_port)
 				case exit_code do
 					0 -> :configured
 					_ -> raise(ConfigureError,
 						"Configuring machine #{inspect row.hostname} failed with exit code #{exit_code}")
 				end
 			false ->
-				{out, exit_code} = run_on_machine(row, Enum.join(arguments, " "))
+				{out, exit_code} = run_on_machine(row, Enum.join(arguments, " "), retry_on_port: retry_on_port)
 				case exit_code do
 					0 -> :configured
 					_ -> raise_configure_error(row.hostname, out, exit_code)
@@ -451,9 +450,9 @@ defmodule MachineManager.Core do
 		end
 	end
 
-	defp transfer_portable_erlang(portable_erlang, row) do
+	defp transfer_portable_erlang(portable_erlang, row, retry_on_port) do
 		case transfer_path("#{portable_erlang}/", row, ".cache/machine_manager/erlang",
-		                   before_rsync: "mkdir -p .cache/machine_manager/erlang", compress: true) do
+		                   before_rsync: "mkdir -p .cache/machine_manager/erlang", compress: true, retry_on_port: retry_on_port) do
 			{"", 0}          -> :ok
 			{out, exit_code} -> {:error, out, exit_code}
 		end
@@ -568,36 +567,31 @@ defmodule MachineManager.Core do
 	#
 	# If opts[:compress] is true, use rsync -z (--compress).
 	#
-	# If opts[:port_override] is given, use the given port instead of
-	# row.ssh_port.  Note that this function will already try the default
-	# SSH port 22 if row.ssh_port fails.
+	# If opts[:retry_on_port] is not nil, retry on that port if a connection to
+	# the configured port fails.
 	#
 	# If rsync appears to be missing on the remote, this will install rsync
 	# and try again.
 	#
 	# Returns {rsync_stdout_and_stderr, rsync_exit_code}
 	defp transfer_paths(source_paths, row, dest, opts) do
-		before_rsync = opts[:before_rsync]
-		port = case opts[:port_override] do
-			nil                      -> row.ssh_port
-			num when is_integer(num) -> num
-		end
-		rsync_args =
+		before_rsync  = opts[:before_rsync]
+		retry_on_port = opts[:retry_on_port]
+		rsync_args    =
 			(if before_rsync != nil, do: ["--rsync-path", "#{before_rsync} && rsync"], else: []) ++
 			(if opts[:compress],     do: ["--compress"], else: []) ++
-			["-e", "ssh -p #{port}", "--protect-args", "--recursive", "--delete", "--executability", "--links"] ++
+			["--protect-args", "--recursive", "--delete", "--executability", "--links"] ++
 			source_paths ++
 			["root@#{to_ip_string(row.public_ip)}:#{dest}"]
-		default_ssh_port = 22
-		case System.cmd("rsync", rsync_args, env: env_for_ssh(), stderr_to_stdout: true) do
-			{out, 0}
-				-> {out, 0}
-			{_, 255} when port != default_ssh_port ->
-				transfer_paths(source_paths, row, dest, [port_override: default_ssh_port] ++ opts)
+		case System.cmd("rsync", rsync_ssh_args(row.ssh_port) ++ rsync_args, env: env_for_ssh(), stderr_to_stdout: true) do
+			{out, 0} ->
+				{out, 0}
+			{_, 255} when retry_on_port != nil ->
+				System.cmd("rsync", rsync_ssh_args(retry_on_port) ++ rsync_args, stderr_to_stdout: true)
 			{out, exit_code} ->
 				cond do
 					String.contains?(out, "command not found") ->
-						case install_rsync_on_machine(row) do
+						case install_rsync_on_machine(row, retry_on_port) do
 							{_, 0}           -> System.cmd("rsync", rsync_args, stderr_to_stdout: true)
 							{out, exit_code} -> {out, exit_code}
 						end
@@ -606,22 +600,27 @@ defmodule MachineManager.Core do
 		end
 	end
 
-	defp install_rsync_on_machine(row) do
+	defp rsync_ssh_args(port) do
+		["-e", "ssh -p #{port} -o ConnectTimeout=10"]
+	end
+
+	defp install_rsync_on_machine(row, retry_on_port) do
 		run_on_machine(row,
 			"""
 			(apt-get update -q || apt-get update -q || echo "apt-get update failed twice but continuing anyway") &&
 			env DEBIAN_FRONTEND=noninteractive apt-get --quiet --assume-yes --no-install-recommends install rsync
-			""")
+			""",
+			retry_on_port: retry_on_port)
 	end
 
-	def probe_many(queryable, handle_probe_result, handle_waiting) do
+	def probe_many(queryable, retry_on_port, handle_probe_result, handle_waiting) do
 		rows             = list(queryable)
 		architectures    = get_machine_architectures(rows)
 		portable_erlangs = temp_portable_erlangs(architectures)
 		wrapped_probe    = fn row ->
 			portable_erlang = portable_erlangs[architecture_for_tags(row.tags)]
 			try do
-				{:probed, probe(row, portable_erlang)}
+				{:probed, probe(row, portable_erlang, retry_on_port)}
 			rescue
 				e in ProbeError -> {:probe_error, e.message}
 			end
@@ -640,7 +639,7 @@ defmodule MachineManager.Core do
 		# and yet not be safe to run again.
 		task_map =
 			rows
-			|> Enum.map(fn row -> {row.hostname, Task.async(fn -> run_on_machine(row, command, true, false) end)} end)
+			|> Enum.map(fn row -> {row.hostname, Task.async(fn -> run_on_machine(row, command) end)} end)
 			|> Map.new
 		Parallel.block_on_tasks(task_map, handle_exec_result, handle_waiting, 2000)
 	end
@@ -674,7 +673,7 @@ defmodule MachineManager.Core do
 		end)
 	end
 
-	def upgrade_many(queryable, handle_upgrade_result, handle_waiting) do
+	def upgrade_many(queryable, retry_on_port, handle_upgrade_result, handle_waiting) do
 		rows             = list(queryable)
 		architectures    = get_machine_architectures(rows)
 		portable_erlangs = temp_portable_erlangs(architectures)
@@ -688,7 +687,7 @@ defmodule MachineManager.Core do
 		wrapped_upgrade = fn row ->
 			portable_erlang = portable_erlangs[architecture_for_tags(row.tags)]
 			try do
-				upgrade(row, graphs, all_machines_map, portable_erlang)
+				upgrade(row, graphs, all_machines_map, portable_erlang, retry_on_port)
 			rescue
 				e in UpgradeError   -> {:upgrade_error,   e.message}
 				e in ConfigureError -> {:configure_error, e.message}
@@ -703,7 +702,7 @@ defmodule MachineManager.Core do
 	end
 
 	# Can raise UpgradeError or ConfigureError
-	def upgrade(row, graphs, all_machines_map, portable_erlang) do
+	def upgrade(row, graphs, all_machines_map, portable_erlang, retry_on_port) do
 		case row.pending_upgrades do
 			[]       -> :no_pending_upgrades
 			upgrades ->
@@ -738,9 +737,9 @@ defmodule MachineManager.Core do
 				end
 				# Because packages upgrades can do things we don't like (e.g. install
 				# files in /etc/cron.d), configure immediately after upgrading.
-				configure(row, graphs, all_machines_map, portable_erlang)
+				configure(row, graphs, all_machines_map, portable_erlang, retry_on_port)
 				# Probe the machine so that we don't have obsolete 'pending upgrade' list
-				probe(row, nil)
+				probe(row, nil, retry_on_port)
 				:upgraded
 		end
 	end
@@ -755,14 +754,18 @@ defmodule MachineManager.Core do
 		exec_many(queryable, command, handle_exec_result, handle_waiting)
 	end
 
-	@spec run_on_machine(%{public_ip: Postgrex.INET.t, ssh_port: integer}, String.t, boolean) :: {String.t, integer}
-	defp run_on_machine(row, command, capture \\ true, retry_on_default_port \\ true) do
+	defp run_on_machine(row, command, options \\ []) do
+		retry_on_port = options[:retry_on_port]
+		capture = case options[:capture] do
+			nil   -> true
+			true  -> true
+			false -> false
+		end
 		case ssh("root", to_ip_string(row.public_ip), row.ssh_port, command, capture) do
-			{"", 255} when retry_on_default_port ->
-				# Fall back to default port in case the machine has not been configured yet
-				default_ssh_port = 22
-				ssh("root", to_ip_string(row.public_ip), default_ssh_port, command, capture)
-			{out, code} -> {out, code}
+			{"", 255} when retry_on_port != nil ->
+				ssh("root", to_ip_string(row.public_ip), retry_on_port, command, capture)
+			{out, code} ->
+				{out, code}
 		end
 	end
 
@@ -789,13 +792,13 @@ defmodule MachineManager.Core do
 	def ssh(user, ip, ssh_port, command, capture) do
 		case capture do
 			true ->
-				System.cmd("ssh", ["-q", "-p", "#{ssh_port}", "#{user}@#{ip}", command],
+				System.cmd("ssh", ["-o", "ConnectTimeout=10", "-q", "-p", "#{ssh_port}", "#{user}@#{ip}", command],
 					stderr_to_stdout: true,
 					env: env_for_ssh()
 				)
 			false ->
 				%Porcelain.Result{status: exit_code} = \
-					Porcelain.exec("ssh", ["-q", "-p", "#{ssh_port}", "#{user}@#{ip}", command],
+					Porcelain.exec("ssh", ["-o", "ConnectTimeout=10", "-q", "-p", "#{ssh_port}", "#{user}@#{ip}", command],
 						out: {:file, Process.group_leader},
 						# "when using `Porcelain.Driver.Basic`, the only supported values
 						# are `nil` (stderr will be printed to the terminal) and `:out`."

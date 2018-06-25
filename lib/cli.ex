@@ -98,8 +98,11 @@ defmodule MachineManager.CLI do
 					name:  "configure",
 					about: "Configure machines",
 					flags: [
-						show_progress:  [long: "--progress", help: "Show configure progress.  Works only when configuring a single server."],
-						allow_warnings: [long: "--allow-warnings", help: "Write the script even if there are warnings during the build."],
+						show_progress:   [long: "--progress",        help: "Show configure progress.  Works only when configuring a single server."],
+						allow_warnings:  [long: "--allow-warnings",  help: "Write the script even if there are warnings during the build."],
+					],
+					options: [
+						backup_ssh_port: [long: "--backup-ssh-port", help: "Retry on this SSH port if the configured SSH ports fails.", default: 22],
 					],
 					args: [
 						hostname_regexp: [required: true, help: hostname_regexp_help],
@@ -110,6 +113,9 @@ defmodule MachineManager.CLI do
 					about: "Upgrade all packages to the new versions in our 'pending upgrades' list for machines",
 					args: [
 						hostname_regexp: [required: true, help: hostname_regexp_help],
+					],
+					options: [
+						backup_ssh_port: [long: "--backup-ssh-port", help: "Retry on this SSH port if the configured SSH ports fails.", default: 22],
 					],
 				],
 				reboot: [
@@ -131,6 +137,9 @@ defmodule MachineManager.CLI do
 					about: "Probe machines",
 					args: [
 						hostname_regexp: [required: true, help: hostname_regexp_help],
+					],
+					options: [
+						backup_ssh_port: [long: "--backup-ssh-port", help: "Retry on this SSH port if the configured SSH ports fails.", default: 22],
 					],
 				],
 				exec: [
@@ -237,15 +246,15 @@ defmodule MachineManager.CLI do
 		case subcommand do
 			:ls                 -> list(args.hostname_regexp, options.columns, (if flags.no_header, do: false, else: true))
 			:script             -> Core.write_script_for_machine(args.hostname, args.output_file, allow_warnings: flags.allow_warnings)
-			:configure          -> configure_many(args.hostname_regexp, flags.show_progress, flags.allow_warnings)
+			:configure          -> configure_many(args.hostname_regexp, options.backup_ssh_port, flags.show_progress, flags.allow_warnings)
 			:ssh_config         -> ssh_config()
 			:connectivity       -> Core.connectivity(args.type)
 			:wireguard_config   -> wireguard_config(args.hostname)
 			:hosts_json_file    -> hosts_json_file(args.hostname)
 			:portable_erlang    -> portable_erlang(args.hostname, args.directory)
-			:probe              -> probe_many(args.hostname_regexp)
+			:probe              -> probe_many(args.hostname_regexp, options.backup_ssh_port)
 			:exec               -> exec_many(args.hostname_regexp, args.command)
-			:upgrade            -> upgrade_many(args.hostname_regexp)
+			:upgrade            -> upgrade_many(args.hostname_regexp, options.backup_ssh_port)
 			:reboot             -> reboot_many(args.hostname_regexp)
 			:shutdown           -> shutdown_many(args.hostname_regexp)
 			:add                -> Core.add(args.hostname, options.public_ip, options.ssh_port, options.wireguard_port, options.tag)
@@ -303,7 +312,7 @@ defmodule MachineManager.CLI do
 		PortableErlang.make_portable_erlang(dest, arch)
 	end
 
-	def configure_many(hostname_regexp, show_progress, allow_warnings) do
+	def configure_many(hostname_regexp, retry_on_port, show_progress, allow_warnings) do
 		error_counter = Counter.new()
 		# If Core.configure is printing converge output to the terminal, we don't
 		# want to overlap it with "# Waiting on host" output.
@@ -313,6 +322,7 @@ defmodule MachineManager.CLI do
 		end
 		Core.configure_many(
 			Core.machines_matching_regexp(hostname_regexp),
+			retry_on_port,
 			with_error_counter(&handle_configure_result/3, error_counter),
 			handle_waiting,
 			show_progress,
@@ -335,10 +345,11 @@ defmodule MachineManager.CLI do
 		end
 	end
 
-	def upgrade_many(hostname_regexp) do
+	def upgrade_many(hostname_regexp, backup_ssh_port) do
 		error_counter = Counter.new()
 		Core.upgrade_many(
 			Core.machines_matching_regexp(hostname_regexp),
+			backup_ssh_port,
 			with_error_counter(&handle_upgrade_result/3, error_counter),
 			&handle_waiting/1
 		)
@@ -417,10 +428,11 @@ defmodule MachineManager.CLI do
 		end
 	end
 
-	def probe_many(hostname_regexp) do
+	def probe_many(hostname_regexp, retry_on_port) do
 		error_counter = Counter.new()
 		Core.probe_many(
 			Core.machines_matching_regexp(hostname_regexp),
+			retry_on_port,
 			with_error_counter(&handle_probe_result/3, error_counter),
 			&handle_waiting/1
 		)
