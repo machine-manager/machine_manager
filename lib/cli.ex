@@ -160,6 +160,7 @@ defmodule MachineManager.CLI do
 						public_ip:      [short: "-i", long: "--public-ip",      required: true,                  help: "Public IP address"],
 						ssh_port:       [short: "-p", long: "--ssh-port",       parser: :integer, default: 904,  help: "SSH port"],
 						wireguard_port: [             long: "--wireguard-port", parser: :integer, default: 904,  help: "WireGuard port"],
+						country:        [short: "-c", long: "--country",        required: true,                  help: "Country code"],
 						tag:            [short: "-t", long: "--tag",            required: false, multiple: true, help: "Tag"],
 					],
 				],
@@ -257,7 +258,7 @@ defmodule MachineManager.CLI do
 			:upgrade            -> upgrade_many(args.hostname_regexp, options.backup_ssh_port)
 			:reboot             -> reboot_many(args.hostname_regexp)
 			:shutdown           -> shutdown_many(args.hostname_regexp)
-			:add                -> Core.add(args.hostname, options.public_ip, options.ssh_port, options.wireguard_port, options.tag)
+			:add                -> Core.add(args.hostname, options.public_ip, options.ssh_port, options.wireguard_port, options.country, options.tag)
 			:rm                 -> Core.rm_many(Core.machines_matching_regexp(args.hostname_regexp))
 			:tag                -> Core.tag_many(Core.machines_matching_regexp(args.hostname_regexp),   all_arguments(args.tag, unknown))
 			:untag              -> Core.untag_many(Core.machines_matching_regexp(args.hostname_regexp), all_arguments(args.tag, unknown))
@@ -505,7 +506,7 @@ defmodule MachineManager.CLI do
 	defp default_columns() do
 		[
 			"hostname", "public_ip", "wireguard_ip", "wireguard_port", "ssh_port",
-			"tags", "ram_mb", "cpu_model_name", "core_count", "thread_count",
+			"country", "tags", "ram_mb", "cpu_model_name", "core_count", "thread_count",
 			"last_probe_time", "boot_time", "time_offset", "kernel", "pending_upgrades",
 		]
 	end
@@ -517,6 +518,7 @@ defmodule MachineManager.CLI do
 			"wireguard_ip"     => {"WIREGUARD IP",     fn row, _ -> row.wireguard_ip |> Core.to_ip_string end},
 			"wireguard_port"   => {"WG",               fn row, _ -> row.wireguard_port end},
 			"ssh_port"         => {"SSH",              fn row, _ -> row.ssh_port end},
+			"country"          => {"CC",               fn row, _ -> if row.country          != nil, do: row.country |> colorize end},
 			"tags"             => {"TAGS",             &format_tags/2},
 			"ram_mb"           => {"RAM",              fn row, _ -> row.ram_mb end},
 			"cpu_model_name"   => {"CPU",              fn row, _ -> if row.cpu_model_name   != nil, do: row.cpu_model_name |> CPU.short_description end},
