@@ -408,22 +408,15 @@ defmodule MachineManager.Core do
 		wireguard_config = wireguard_config_for_machine(row, graphs, all_machines_map)
 		subdomains       = subdomains(all_machines_map |> Map.values)
 		hosts_file       = make_hosts_json_file(row, graphs, subdomains, all_machines_map)
-
-		case transfer_portable_erlang(portable_erlang, row, retry_on_port) do
-			:ok                      -> nil
-			{:error, out, exit_code} -> raise_upload_error(ConfigureError, row.hostname, out, exit_code, "erlang")
-		end
-
-		temp_dir = FileUtil.temp_dir("machine_manager_configure")
+		temp_dir         = FileUtil.temp_dir("machine_manager_configure")
 		try do
 			script     = Path.join(temp_dir, "script")
 			File.ln!(script_file, script)
 			wg0_conf   = write_temp_file(temp_dir, "wg0.conf",   wireguard_config)
 			hosts_json = write_temp_file(temp_dir, "hosts.json", hosts_file)
-			files      = [script, wg0_conf, hosts_json]
-			# script is already compressed, so don't use compress: true
+			files      = [portable_erlang, script, wg0_conf, hosts_json]
 			case transfer_paths(files, row, ".cache/machine_manager/",
-		                   	before_rsync: "mkdir -p .cache/machine_manager", retry_on_port: retry_on_port) do
+		                   	before_rsync: "mkdir -p .cache/machine_manager", compress: true, retry_on_port: retry_on_port) do
 				{"", 0}          -> nil
 				{out, exit_code} -> raise_upload_error(ConfigureError, row.hostname, out, exit_code, inspect(files))
 			end
@@ -783,7 +776,9 @@ defmodule MachineManager.Core do
 
 	defp temp_portable_erlangs(architectures) do
 		for arch <- architectures do
-			portable_erlang = FileUtil.temp_dir("machine_manager_portable_erlang")
+			temp_dir        = FileUtil.temp_dir("machine_manager_portable_erlang")
+			portable_erlang = Path.join(temp_dir, "erlang")
+			File.mkdir!(portable_erlang)
 			PortableErlang.make_portable_erlang(portable_erlang, arch)
 			{arch, portable_erlang}
 		end
