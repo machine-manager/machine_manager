@@ -190,7 +190,7 @@ defmodule MachineManager.CLI do
 				],
 				get_tags: [
 					name:  "get-tags",
-					about: "Get tags for a machine in alphanumeric order, one tag per line",
+					about: "Get tags (including virtual tags) for a machine in alphanumeric order, one tag per line",
 					options: [
 						color: color_option(),
 					],

@@ -979,10 +979,11 @@ defmodule MachineManager.Core do
 
 	@spec get_tags(String.t) :: [String.t]
 	def get_tags(hostname) do
-		from("machine_tags")
-		|> where([hostname: ^hostname])
-		|> select([m], m.tag)
-		|> Repo.all
+		row =
+			machine(hostname)
+			|> list()
+			|> hd
+		all_tags(row)
 	end
 
 	def machine(hostname) do
