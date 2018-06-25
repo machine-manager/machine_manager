@@ -620,21 +620,26 @@ defmodule MachineManager.Core do
 	defp transfer_paths(source_paths, row, dest, opts) do
 		before_rsync  = opts[:before_rsync]
 		retry_on_port = opts[:retry_on_port]
+		port          = case opts[:port_override] do
+			nil                 -> row.ssh_port
+			p when is_number(p) -> p
+		end
 		rsync_args    =
 			(if before_rsync != nil, do: ["--rsync-path", "#{before_rsync} && rsync"], else: []) ++
 			(if opts[:compress],     do: ["--compress"], else: []) ++
 			["--protect-args", "--recursive", "--delete", "--executability", "--links"] ++
 			source_paths ++
 			["root@#{to_ip_string(row.public_ip)}:#{dest}"]
-		case System.cmd("rsync", rsync_ssh_args(row.ssh_port) ++ rsync_args, env: env_for_ssh(), stderr_to_stdout: true) do
+		case System.cmd("rsync", rsync_ssh_args(port) ++ rsync_args, env: env_for_ssh(), stderr_to_stdout: true) do
 			{out, 0} ->
 				{out, 0}
 			{_, 255} when retry_on_port != nil ->
-				System.cmd("rsync", rsync_ssh_args(retry_on_port) ++ rsync_args, stderr_to_stdout: true)
+				opts = [retry_on_port: nil, port_override: retry_on_port] ++ opts
+				transfer_paths(source_paths, row, dest, opts)
 			{out, exit_code} ->
 				cond do
 					String.contains?(out, "command not found") ->
-						case install_rsync_on_machine(row, retry_on_port) do
+						case install_rsync_on_machine(row, retry_on_port: port) do
 							{_, 0}           -> System.cmd("rsync", rsync_args, stderr_to_stdout: true)
 							{out, exit_code} -> {out, exit_code}
 						end
@@ -649,13 +654,13 @@ defmodule MachineManager.Core do
 
 	defp ssh_connect_timeout(), do: 10
 
-	defp install_rsync_on_machine(row, retry_on_port) do
+	defp install_rsync_on_machine(row, opts) do
 		run_on_machine(row,
 			"""
 			(apt-get update -q || apt-get update -q || echo "apt-get update failed twice but continuing anyway") &&
 			env DEBIAN_FRONTEND=noninteractive apt-get --quiet --assume-yes --no-install-recommends install rsync
 			""",
-			retry_on_port: retry_on_port)
+			opts)
 	end
 
 	def exec_many(queryable, command, handle_exec_result, handle_waiting) do
