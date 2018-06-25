@@ -54,6 +54,8 @@ defmodule MachineManager.Core do
 				wireguard_privkey: m.wireguard_privkey,
 				ssh_port:          m.ssh_port,
 				country:           m.country,
+				release:           m.release,
+				boot:              m.boot,
 				tags:              coalesce(t.tags,             fragment("'{}'::varchar[]")),
 				pending_upgrades:  coalesce(u.pending_upgrades, fragment("'{}'::json[]")),
 				last_probe_time:   type(m.last_probe_time, :utc_datetime),
@@ -802,6 +804,8 @@ defmodule MachineManager.Core do
 			{"wireguard_port", row.wireguard_port},
 			{"ssh_port",       row.ssh_port},
 			{"country",        row.country},
+			{"release",        row.release},
+			{"boot",           row.boot},
 		]
 		virtual_tags = for {key, value} <- virtual_tag_pairs do
 			case Converge.Util.tag_values(row.tags, key) do
@@ -836,8 +840,8 @@ defmodule MachineManager.Core do
 	@doc """
 	Adds a machine from the database.
 	"""
-	@spec add(String.t, String.t, integer, integer, String.t, [String.t]) :: nil
-	def add(hostname, public_ip, ssh_port, wireguard_port, country, tags) do
+	@spec add(String.t, String.t, integer, integer, String.t, String.t, String.t, [String.t]) :: nil
+	def add(hostname, public_ip, ssh_port, wireguard_port, country, release, boot, tags) do
 		wireguard_privkey = WireGuard.make_wireguard_privkey()
 		wireguard_pubkey  = WireGuard.get_wireguard_pubkey(wireguard_privkey)
 		{:ok, _} = Repo.transaction(fn ->
@@ -850,6 +854,8 @@ defmodule MachineManager.Core do
 				wireguard_privkey: wireguard_privkey,
 				wireguard_pubkey:  wireguard_pubkey,
 				country:           country,
+				release:           release,
+				boot:              boot,
 			]])
 			tag(hostname, tags)
 		end)

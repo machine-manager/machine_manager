@@ -12,6 +12,8 @@ SET ROLE machine_manager;
 CREATE DOMAIN hostname         AS varchar(32)  CHECK(VALUE ~ '\A[-_a-z0-9]+\Z');
 CREATE DOMAIN port             AS integer      CHECK(VALUE > 0 AND VALUE <= 65536);
 CREATE DOMAIN country          AS character(2) CHECK(VALUE ~ '\A[a-z]{2}\Z');
+CREATE DOMAIN release          AS varchar(10)  CHECK(VALUE ~ '\A[a-z]{2,10}\Z');
+CREATE DOMAIN boot             AS varchar(14)  CHECK(VALUE ~ '\A[a-z]{3,14}\Z');
 CREATE DOMAIN int4_gt0         AS integer      CHECK(VALUE > 0);
 CREATE DOMAIN int2_gt0         AS integer      CHECK(VALUE > 0);
 CREATE DOMAIN tag              AS varchar      CHECK(VALUE ~ '\A[^\x00-\x20]+\Z');
@@ -32,6 +34,8 @@ CREATE TABLE machines (
 	ssh_port          port          NOT NULL,
 	host_machine      hostname,
 	country           country       NOT NULL,
+	release           release       NOT NULL,
+	boot              boot          NOT NULL,
 
 	-- Probed information
 	ram_mb            int4_gt0,
