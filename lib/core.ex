@@ -453,12 +453,12 @@ defmodule MachineManager.Core do
 	#
 	# Can raise ConfigureError, ProbeError, UpgradeError, or WaitError
 	def setup(row, graphs, all_machines_map, portable_erlang, retry_on_port, machine_probe) do
-		configure(row, graphs, all_machines_map, portable_erlang, retry_on_port)
-		probe(row, nil, machine_probe, retry_on_port)
-		upgrade(row, graphs, all_machines_map, portable_erlang, retry_on_port, machine_probe)
+		:configured = configure(row, graphs, all_machines_map, portable_erlang, retry_on_port)
+		:probed     = probe(row, nil, machine_probe, retry_on_port)
+		:upgraded   = upgrade(row, graphs, all_machines_map, portable_erlang, retry_on_port, machine_probe)
 		reboot(row)
 		wait(row)
-		probe(row, nil, machine_probe, retry_on_port)
+		:probed     = probe(row, nil, machine_probe, retry_on_port)
 		:setup
 	end
 
