@@ -22,8 +22,9 @@ defmodule MachineManager.CLI do
 	alias MachineManager.{Core, CPU, Counter, PortableErlang}
 
 	def main(argv) do
-		hostname_regexp_help = "Regular expression used to match hostnames. Automatically wrapped with ^ and $."
-		boot_mode_help       = "Boot mode (outside, mbr, uefi, or scaleway_kexec); use outside for containers"
+		hostname_regexp_help   = "Regular expression used to match hostnames. Automatically wrapped with ^ and $."
+		boot_mode_help         = "Boot mode (outside, mbr, uefi, or scaleway_kexec); use outside for containers"
+		option_backup_ssh_port = [long: "--backup-ssh-port", help: "Retry on this SSH port if the configured SSH ports fails.", default: 22]
 		spec = Optimus.new!(
 			name:               "machine_manager",
 			description:        "machine_manager",
@@ -103,7 +104,7 @@ defmodule MachineManager.CLI do
 						allow_warnings:  [long: "--allow-warnings",  help: "Write the script even if there are warnings during the build."],
 					],
 					options: [
-						backup_ssh_port: [long: "--backup-ssh-port", help: "Retry on this SSH port if the configured SSH ports fails.", default: 22],
+						backup_ssh_port: option_backup_ssh_port,
 					],
 					args: [
 						hostname_regexp: [required: true, help: hostname_regexp_help],
@@ -116,7 +117,7 @@ defmodule MachineManager.CLI do
 						hostname_regexp: [required: true, help: hostname_regexp_help],
 					],
 					options: [
-						backup_ssh_port: [long: "--backup-ssh-port", help: "Retry on this SSH port if the configured SSH ports fails.", default: 22],
+						backup_ssh_port: option_backup_ssh_port,
 					],
 				],
 				reboot: [
@@ -140,6 +141,16 @@ defmodule MachineManager.CLI do
 						hostname_regexp: [required: true, help: hostname_regexp_help],
 					],
 				],
+				setup: [
+					name:  "setup",
+					about: "Perform initial setup on machines: configure, probe, upgrade, reboot, wait, probe",
+					args: [
+						hostname_regexp: [required: true, help: hostname_regexp_help],
+					],
+					options: [
+						backup_ssh_port: option_backup_ssh_port,
+					],
+				],
 				probe: [
 					name:  "probe",
 					about: "Probe machines",
@@ -147,7 +158,7 @@ defmodule MachineManager.CLI do
 						hostname_regexp: [required: true, help: hostname_regexp_help],
 					],
 					options: [
-						backup_ssh_port: [long: "--backup-ssh-port", help: "Retry on this SSH port if the configured SSH ports fails.", default: 22],
+						backup_ssh_port: option_backup_ssh_port,
 					],
 				],
 				exec: [
@@ -258,6 +269,7 @@ defmodule MachineManager.CLI do
 			:ls                 -> list(args.hostname_regexp, options.columns, (if flags.no_header, do: false, else: true))
 			:script             -> Core.write_script_for_machine(args.hostname, args.output_file, allow_warnings: flags.allow_warnings)
 			:configure          -> configure_many(args.hostname_regexp, options.backup_ssh_port, flags.show_progress, flags.allow_warnings)
+			:setup              -> setup_many(args.hostname_regexp, options.backup_ssh_port)
 			:ssh_config         -> ssh_config()
 			:connectivity       -> Core.connectivity(args.type)
 			:wireguard_config   -> wireguard_config(args.hostname)
@@ -335,7 +347,7 @@ defmodule MachineManager.CLI do
 		Core.configure_many(
 			Core.machines_matching_regexp(hostname_regexp),
 			retry_on_port,
-			with_error_counter(&handle_configure_result/3, error_counter),
+			fn hostname, task_result -> handle_message_result(:configured, hostname, task_result, error_counter) end,
 			handle_waiting,
 			show_progress,
 			allow_warnings
@@ -343,18 +355,15 @@ defmodule MachineManager.CLI do
 		nonzero_exit_if_errors(error_counter)
 	end
 
-	defp handle_configure_result(hostname, task_result, error_counter) do
-		pretty_hostname = hostname |> String.pad_trailing(16) |> bolded
-		case task_result do
-			{:ok, :configured} ->
-				IO.puts("#{pretty_hostname} configured")
-			{:ok, {:configure_error, message}} ->
-				IO.puts("#{pretty_hostname} configure failed: #{message}")
-				Counter.increment(error_counter)
-			{:exit, reason} ->
-				IO.puts("#{pretty_hostname} configure task failed: #{reason}")
-				Counter.increment(error_counter)
-		end
+	def setup_many(hostname_regexp, retry_on_port) do
+		error_counter = Counter.new()
+		Core.setup_many(
+			Core.machines_matching_regexp(hostname_regexp),
+			retry_on_port,
+			fn hostname, task_result -> handle_message_result(:setup, hostname, task_result, error_counter) end,
+			&handle_waiting/1
+		)
+		nonzero_exit_if_errors(error_counter)
 	end
 
 	def upgrade_many(hostname_regexp, backup_ssh_port) do
@@ -362,17 +371,17 @@ defmodule MachineManager.CLI do
 		Core.upgrade_many(
 			Core.machines_matching_regexp(hostname_regexp),
 			backup_ssh_port,
-			with_error_counter(&handle_upgrade_result/3, error_counter),
+			fn hostname, task_result -> handle_message_result(:upgraded, hostname, task_result, error_counter) end,
 			&handle_waiting/1
 		)
 		nonzero_exit_if_errors(error_counter)
 	end
 
-	defp handle_upgrade_result(hostname, task_result, error_counter) do
+	defp handle_message_result(expected, hostname, task_result, error_counter) do
 		pretty_hostname = hostname |> String.pad_trailing(16) |> bolded
 		case task_result do
-			{:ok, :upgraded} ->
-				IO.puts("#{pretty_hostname} upgraded")
+			{:ok, ^expected} ->
+				IO.puts("#{pretty_hostname} #{Atom.to_string(expected)}")
 			{:ok, :no_pending_upgrades} ->
 				IO.puts("#{pretty_hostname} had no pending upgrades in database; probe again if needed")
 			{:ok, {:upgrade_error, message}} ->
@@ -384,8 +393,11 @@ defmodule MachineManager.CLI do
 			{:ok, {:probe_error, message}} ->
 				IO.puts("#{pretty_hostname} probe failed: #{message}")
 				Counter.increment(error_counter)
+			{:ok, {:wait_error, message}} ->
+				IO.puts("#{pretty_hostname} wait failed: #{message}")
+				Counter.increment(error_counter)
 			{:exit, reason} ->
-				IO.puts("#{pretty_hostname} upgrade task failed: #{reason}")
+				IO.puts("#{pretty_hostname} #{Atom.to_string(expected)} task failed: #{reason}")
 				Counter.increment(error_counter)
 		end
 	end
@@ -394,7 +406,7 @@ defmodule MachineManager.CLI do
 		error_counter = Counter.new()
 		Core.reboot_many(
 			Core.machines_matching_regexp(hostname_regexp),
-			with_error_counter(&handle_exec_result/3, error_counter),
+			fn hostname, task_result -> handle_exec_result(hostname, task_result, error_counter) end,
 			&handle_waiting/1
 		)
 		nonzero_exit_if_errors(error_counter)
@@ -404,7 +416,7 @@ defmodule MachineManager.CLI do
 		error_counter = Counter.new()
 		Core.shutdown_many(
 			Core.machines_matching_regexp(hostname_regexp),
-			with_error_counter(&handle_exec_result/3, error_counter),
+			fn hostname, task_result -> handle_exec_result(hostname, task_result, error_counter) end,
 			&handle_waiting/1
 		)
 		nonzero_exit_if_errors(error_counter)
@@ -414,7 +426,7 @@ defmodule MachineManager.CLI do
 		error_counter = Counter.new()
 		Core.wait_many(
 			Core.machines_matching_regexp(hostname_regexp),
-			with_error_counter(&handle_exec_result/3, error_counter),
+			fn hostname, task_result -> handle_exec_result(hostname, task_result, error_counter) end,
 			&handle_waiting/1
 		)
 		nonzero_exit_if_errors(error_counter)
@@ -425,7 +437,7 @@ defmodule MachineManager.CLI do
 		Core.exec_many(
 			Core.machines_matching_regexp(hostname_regexp),
 			command,
-			with_error_counter(&handle_exec_result/3, error_counter),
+			fn hostname, task_result -> handle_exec_result(hostname, task_result, error_counter) end,
 			&handle_waiting/1
 		)
 		nonzero_exit_if_errors(error_counter)
@@ -455,24 +467,10 @@ defmodule MachineManager.CLI do
 		Core.probe_many(
 			Core.machines_matching_regexp(hostname_regexp),
 			retry_on_port,
-			with_error_counter(&handle_probe_result/3, error_counter),
+			fn hostname, task_result -> handle_message_result(:probed, hostname, task_result, error_counter) end,
 			&handle_waiting/1
 		)
 		nonzero_exit_if_errors(error_counter)
-	end
-
-	defp handle_probe_result(hostname, task_result, error_counter) do
-		pretty_hostname = hostname |> String.pad_trailing(16) |> bolded
-		case task_result do
-			{:ok, :probed} ->
-				IO.puts("#{pretty_hostname} probed")
-			{:ok, {:probe_error, message}} ->
-				IO.puts("#{pretty_hostname} probe failed: #{message}")
-				Counter.increment(error_counter)
-			{:exit, reason} ->
-				IO.puts("#{pretty_hostname} probe task failed: #{reason}")
-				Counter.increment(error_counter)
-		end
 	end
 
 	defp handle_waiting(waiting_task_map) do
@@ -480,11 +478,6 @@ defmodule MachineManager.CLI do
 			"# Waiting on: #{waiting_task_map |> Map.keys |> Enum.join(" ")}"
 			|> with_fgcolor({150, 150, 150})
 		)
-	end
-
-	# Curry error_counter at the end of a two-arity function
-	defp with_error_counter(func, error_counter) do
-		fn hostname, task_result -> func.(hostname, task_result, error_counter) end
 	end
 
 	defp nonzero_exit_if_errors(error_counter) do

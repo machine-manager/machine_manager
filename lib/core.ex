@@ -10,10 +10,14 @@ defmodule MachineManager.ProbeError do
 	defexception [:message]
 end
 
+defmodule MachineManager.WaitError do
+	defexception [:message]
+end
+
 defmodule MachineManager.Core do
 	alias MachineManager.{
 		ScriptWriter, Parallel, Repo, UpgradeError, ConfigureError, ProbeError,
-		WireGuard, Graph, PortableErlang}
+		WaitError, WireGuard, Graph, PortableErlang}
 	alias Gears.{StringUtil, FileUtil}
 	import Ecto.Query
 	import Converge.Util, only: [architecture_for_tags: 1]
@@ -137,6 +141,11 @@ defmodule MachineManager.Core do
 		act_many(:upgrade, rows, retry_on_port, handle_upgrade_result, handle_waiting)
 	end
 
+	def setup_many(queryable, retry_on_port, handle_setup_result, handle_waiting) do
+		rows = list(queryable)
+		act_many(:setup, rows, retry_on_port, handle_setup_result, handle_waiting)
+	end
+
 	def probe_many(queryable, retry_on_port, handle_probe_result, handle_waiting) do
 		rows = list(queryable)
 		act_many(:probe, rows, retry_on_port, handle_probe_result, handle_waiting)
@@ -152,14 +161,17 @@ defmodule MachineManager.Core do
 			# machines, we don't actually need to do compile scripts for *all*
 			# machines because make_connectivity_graph just runs require_file on
 			# connections.exs files.
-			:configure -> write_scripts_for_machines(rows, opts[:allow_warnings])
+			c when c in [:configure, :setup] ->
+				write_scripts_for_machines(rows, opts[:allow_warnings])
 
 			# upgrade calls configure, which expects updated scripts in @script_cache.
 			# But we don't need to compile scripts for machines with no pending
 			# upgrades, because they will not be upgraded and therefore not configured.
-			:upgrade   -> write_scripts_for_machines(Enum.reject(rows, fn row -> row.pending_upgrades == [] end))
+			:upgrade ->
+				write_scripts_for_machines(Enum.reject(rows, fn row -> row.pending_upgrades == [] end))
 
-			:probe     -> nil
+			:probe ->
+				nil
 		end
 		all_machines     = from("machines") |> list
 		all_machines_map = all_machines |> Enum.map(fn row -> {row.hostname, row} end) |> Map.new
@@ -167,12 +179,13 @@ defmodule MachineManager.Core do
 		wrapped = fn row ->
 			portable_erlang = portable_erlangs[architecture_for_tags(row.tags)]
 			temp_dir        = FileUtil.temp_dir("machine_manager_act_many")
-			machine_probe   = if command in [:upgrade, :probe] do
+			machine_probe   = if command in [:setup, :upgrade, :probe] do
 				write_temp_file(temp_dir, "machine_probe", @machine_probe_content, executable: true)
 			end
 			try do
 				case command do
 					:configure -> configure(row, graphs, all_machines_map, portable_erlang, retry_on_port, opts[:show_progress])
+					:setup     -> setup(row, graphs, all_machines_map, portable_erlang, retry_on_port, machine_probe)
 					:upgrade   -> upgrade(row, graphs, all_machines_map, portable_erlang, retry_on_port, machine_probe)
 					:probe     -> probe(row, portable_erlang, machine_probe, retry_on_port)
 				end
@@ -180,6 +193,7 @@ defmodule MachineManager.Core do
 				e in UpgradeError   -> {:upgrade_error,   e.message}
 				e in ConfigureError -> {:configure_error, e.message}
 				e in ProbeError     -> {:probe_error,     e.message}
+				e in WaitError      -> {:wait_error,      e.message}
 			after
 				File.rm_rf(temp_dir)
 			end
@@ -432,6 +446,19 @@ defmodule MachineManager.Core do
 			# Keys in :pending_upgrades
 			:name, :old_version, :new_version, :origins, :architecture,
 		]
+	end
+
+	# This function assumes an up-to-date configuration script is already present
+	# in @script_cache (call write_scripts_for_machines first).
+	#
+	# Can raise ConfigureError, ProbeError, UpgradeError, or WaitError
+	def setup(row, graphs, all_machines_map, portable_erlang, retry_on_port, machine_probe) do
+		configure(row, graphs, all_machines_map, portable_erlang, retry_on_port)
+		probe(row, nil, machine_probe, retry_on_port)
+		upgrade(row, graphs, all_machines_map, portable_erlang, retry_on_port, machine_probe)
+		reboot(row)
+		wait(row)
+		probe(row, nil, machine_probe, retry_on_port)
 	end
 
 	# This function assumes an up-to-date configuration script is already present
@@ -715,14 +742,32 @@ defmodule MachineManager.Core do
 		end
 	end
 
-	def reboot_many(queryable, handle_exec_result, handle_waiting) do
-		command = "nohup sh -c 'sleep #{delay_before_shutdown()}; systemctl reboot' > /dev/null 2>&1 < /dev/null &"
-		exec_many(queryable, command, handle_exec_result, handle_waiting)
+	defp reboot(row) do
+		{_, 0} = run_on_machine(row, reboot_command())
 	end
+
+	def reboot_many(queryable, handle_exec_result, handle_waiting) do
+		exec_many(queryable, reboot_command(), handle_exec_result, handle_waiting)
+	end
+
+	defp reboot_command(), do: "nohup sh -c 'sleep #{delay_before_shutdown()}; systemctl reboot' > /dev/null 2>&1 < /dev/null &"
 
 	def shutdown_many(queryable, handle_exec_result, handle_waiting) do
 		command = "nohup sh -c 'sleep #{delay_before_shutdown()}; systemctl poweroff' > /dev/null 2>&1 < /dev/null &"
 		exec_many(queryable, command, handle_exec_result, handle_waiting)
+	end
+
+	@max_reboot_wait_time 1200
+
+	defp wait(row) do
+		# Wait for an existing reboot/shutdown command to start
+		Process.sleep(1000 * (delay_before_shutdown() + 1))
+
+		attempts = @max_reboot_wait_time / ssh_connect_timeout()
+		case wait_for_machine(row, attempts) do
+			{_, 0}       -> nil
+			{message, 1} -> raise(WaitError, message)
+		end
 	end
 
 	def wait_many(queryable, handle_exec_result, handle_waiting) do
@@ -735,8 +780,7 @@ defmodule MachineManager.Core do
 						# Wait for an existing reboot/shutdown command to start
 						Process.sleep(1000 * (delay_before_shutdown() + 1))
 
-						max_wait_time = 1800
-						attempts      = max_wait_time / ssh_connect_timeout()
+						attempts = @max_reboot_wait_time / ssh_connect_timeout()
 						wait_for_machine(row, attempts)
 					end)
 				} end)
