@@ -331,31 +331,27 @@ defmodule MachineManager.Core do
 	@doc """
 	Probe a machine and write the probe data to the database.
 	"""
-	def probe(row, portable_erlang, retry_on_port) do
-		data = get_probe_data(row, portable_erlang, retry_on_port)
+	def probe(row, portable_erlang, machine_probe, retry_on_port) do
+		data = get_probe_data(row, portable_erlang, machine_probe, retry_on_port)
 		# TODO: don't assume that it's the same machine; make sure some unique ID is the same
 		write_probe_data_to_db(row.hostname, data)
 		nil
 	end
 
-	@machine_probe_content File.read!(Path.join(__DIR__, "../../machine_probe/machine_probe"))
-
 	@doc """
 	Get probe data from a machine.
 	"""
-	def get_probe_data(row, portable_erlang, retry_on_port) do
+	def get_probe_data(row, portable_erlang, machine_probe, retry_on_port) do
 		# portable_erlang can be nil in this function, in case the caller is
 		# certain the machine already has it.
-		if portable_erlang != nil do
-			case transfer_portable_erlang(portable_erlang, row, retry_on_port) do
-				:ok                      -> nil
-				{:error, out, exit_code} -> raise_upload_error(ProbeError, row.hostname, out, exit_code, "erlang")
-			end
+		files = case portable_erlang do
+			nil -> [machine_probe]
+			_   -> [portable_erlang, machine_probe]
 		end
-		case transfer_content(@machine_probe_content, row, ".cache/machine_manager/machine_probe",
-			                   before_rsync: "mkdir -p .cache/machine_manager", executable: true) do
+		case transfer_paths(files, row, ".cache/machine_manager/",
+			                 before_rsync: "mkdir -p .cache/machine_manager", compress: true) do
 			{"", 0}          -> nil
-			{out, exit_code} -> raise_upload_error(ProbeError, row.hostname, out, exit_code, "machine_probe")
+			{out, exit_code} -> raise_upload_error(ProbeError, row.hostname, out, exit_code, inspect(files))
 		end
 		{output, exit_code} = run_on_machine(row, ".cache/machine_manager/erlang/bin/escript .cache/machine_manager/machine_probe", retry_on_port: retry_on_port)
 		case exit_code do
@@ -449,14 +445,6 @@ defmodule MachineManager.Core do
 		end
 	end
 
-	defp transfer_portable_erlang(portable_erlang, row, retry_on_port) do
-		case transfer_path("#{portable_erlang}/", row, ".cache/machine_manager/erlang",
-		                   before_rsync: "mkdir -p .cache/machine_manager/erlang", compress: true, retry_on_port: retry_on_port) do
-			{"", 0}          -> :ok
-			{out, exit_code} -> {:error, out, exit_code}
-		end
-	end
-
 	defp raise_upload_error(error, hostname, out, exit_code, upload_description) do
 		raise(error,
 			"""
@@ -534,19 +522,6 @@ defmodule MachineManager.Core do
 		Path.join(@script_cache, basename)
 	end
 
-	# Transfer content `content` using rsync to machine described by `row` to `dest`
-	#
-	# Returns {rsync_out, rsync_exit_code}
-	defp transfer_content(content, row, dest, opts) do
-		temp_dir = FileUtil.temp_dir("machine_manager_transfer_content")
-		try do
-			temp = write_temp_file(temp_dir, content, opts)
-			transfer_path(temp, row, dest, opts)
-		after
-			File.rm_rf!(temp_dir)
-		end
-	end
-
 	defp write_temp_file(temp_dir, filename, content, opts \\ []) do
 		temp     = Path.join(temp_dir, filename)
 		mode     = case opts[:executable] do
@@ -557,10 +532,6 @@ defmodule MachineManager.Core do
 		:ok = File.chmod!(temp, mode)
 		File.write!(temp, content)
 		temp
-	end
-
-	defp transfer_path(source_path, row, dest, opts) do
-		transfer_paths([source_path], row, dest, opts)
 	end
 
 	# Transfer files/directories `source_paths` using rsync to machine described
@@ -618,16 +589,22 @@ defmodule MachineManager.Core do
 			retry_on_port: retry_on_port)
 	end
 
+	@machine_probe_content File.read!(Path.join(__DIR__, "../../machine_probe/machine_probe"))
+
 	def probe_many(queryable, retry_on_port, handle_probe_result, handle_waiting) do
 		rows             = list(queryable)
 		architectures    = get_machine_architectures(rows)
 		portable_erlangs = temp_portable_erlangs(architectures)
 		wrapped_probe    = fn row ->
 			portable_erlang = portable_erlangs[architecture_for_tags(row.tags)]
+			temp_dir        = FileUtil.temp_dir("machine_manager_probe_many")
+			machine_probe   = write_temp_file(temp_dir, "machine_probe", @machine_probe_content, executable: true)
 			try do
-				{:probed, probe(row, portable_erlang, retry_on_port)}
+				{:probed, probe(row, portable_erlang, machine_probe, retry_on_port)}
 			rescue
 				e in ProbeError -> {:probe_error, e.message}
+			after
+				File.rm_rf(temp_dir)
 			end
 		end
 		task_map =
@@ -691,8 +668,10 @@ defmodule MachineManager.Core do
 		graphs           = connectivity_graphs(all_machines)
 		wrapped_upgrade = fn row ->
 			portable_erlang = portable_erlangs[architecture_for_tags(row.tags)]
+			temp_dir        = FileUtil.temp_dir("machine_manager_probe_many")
+			machine_probe   = write_temp_file(temp_dir, "machine_probe", @machine_probe_content, executable: true)
 			try do
-				upgrade(row, graphs, all_machines_map, portable_erlang, retry_on_port)
+				upgrade(row, graphs, all_machines_map, portable_erlang, machine_probe, retry_on_port)
 			rescue
 				e in UpgradeError   -> {:upgrade_error,   e.message}
 				e in ConfigureError -> {:configure_error, e.message}
@@ -707,7 +686,7 @@ defmodule MachineManager.Core do
 	end
 
 	# Can raise UpgradeError or ConfigureError
-	def upgrade(row, graphs, all_machines_map, portable_erlang, retry_on_port) do
+	def upgrade(row, graphs, all_machines_map, portable_erlang, machine_probe, retry_on_port) do
 		case row.pending_upgrades do
 			[]       -> :no_pending_upgrades
 			upgrades ->
@@ -744,7 +723,7 @@ defmodule MachineManager.Core do
 				# files in /etc/cron.d), configure immediately after upgrading.
 				configure(row, graphs, all_machines_map, portable_erlang, retry_on_port)
 				# Probe the machine so that we don't have obsolete 'pending upgrade' list
-				probe(row, nil, retry_on_port)
+				probe(row, nil, machine_probe, retry_on_port)
 				:upgraded
 		end
 	end
