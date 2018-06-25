@@ -133,6 +133,13 @@ defmodule MachineManager.CLI do
 						hostname_regexp: [required: true, help: hostname_regexp_help],
 					],
 				],
+				wait: [
+					name:  "wait",
+					about: "Wait for machines to boot and have SSH connectivity",
+					args: [
+						hostname_regexp: [required: true, help: hostname_regexp_help],
+					],
+				],
 				probe: [
 					name:  "probe",
 					about: "Probe machines",
@@ -261,6 +268,7 @@ defmodule MachineManager.CLI do
 			:upgrade            -> upgrade_many(args.hostname_regexp, options.backup_ssh_port)
 			:reboot             -> reboot_many(args.hostname_regexp)
 			:shutdown           -> shutdown_many(args.hostname_regexp)
+			:wait               -> wait_many(args.hostname_regexp)
 			:add                -> Core.add(args.hostname, options.public_ip, options.ssh_port, options.wireguard_port, options.country, options.release, options.boot, options.tag)
 			:rm                 -> Core.rm_many(Core.machines_matching_regexp(args.hostname_regexp))
 			:tag                -> Core.tag_many(Core.machines_matching_regexp(args.hostname_regexp),   all_arguments(args.tag, unknown))
@@ -395,6 +403,16 @@ defmodule MachineManager.CLI do
 	def shutdown_many(hostname_regexp) do
 		error_counter = Counter.new()
 		Core.shutdown_many(
+			Core.machines_matching_regexp(hostname_regexp),
+			with_error_counter(&handle_exec_result/3, error_counter),
+			&handle_waiting/1
+		)
+		nonzero_exit_if_errors(error_counter)
+	end
+
+	def wait_many(hostname_regexp) do
+		error_counter = Counter.new()
+		Core.wait_many(
 			Core.machines_matching_regexp(hostname_regexp),
 			with_error_counter(&handle_exec_result/3, error_counter),
 			&handle_waiting/1

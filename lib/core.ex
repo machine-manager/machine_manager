@@ -741,6 +741,34 @@ defmodule MachineManager.Core do
 		exec_many(queryable, command, handle_exec_result, handle_waiting)
 	end
 
+	def wait_many(queryable, handle_exec_result, handle_waiting) do
+		rows = list(queryable)
+		task_map =
+			rows
+			|> Enum.map(fn row -> {
+					row.hostname,
+					Task.async(fn ->
+						# Assume ~10 seconds per attempt (due to ConnectTimeout=10),
+						# for a max wait time of ~30 minutes
+						wait_for_machine(row, 180)
+					end)
+				} end)
+			|> Map.new
+		Parallel.block_on_tasks(task_map, handle_exec_result, handle_waiting, 2000)
+	end
+
+	defp wait_for_machine(row, attempt) do
+		case run_on_machine(row, "true") do
+			{_, 0} -> {"", 0}
+			{_, _} ->
+				# Try again
+				case attempt do
+					0 -> raise "Gave up waiting for #{row.hostname}"
+					_ -> wait_for_machine(row, attempt - 1)
+				end
+		end
+	end
+
 	defp run_on_machine(row, command, options \\ []) do
 		retry_on_port = options[:retry_on_port]
 		capture = case options[:capture] do
