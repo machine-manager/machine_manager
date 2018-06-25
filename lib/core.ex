@@ -758,12 +758,12 @@ defmodule MachineManager.Core do
 		exec_many(queryable, reboot_command(), handle_exec_result, handle_waiting)
 	end
 
-	defp reboot_command(), do: "nohup sh -c 'sleep #{delay_before_shutdown()}; systemctl reboot' > /dev/null 2>&1 < /dev/null &"
-
 	def shutdown_many(queryable, handle_exec_result, handle_waiting) do
-		command = "nohup sh -c 'sleep #{delay_before_shutdown()}; systemctl poweroff' > /dev/null 2>&1 < /dev/null &"
-		exec_many(queryable, command, handle_exec_result, handle_waiting)
+		exec_many(queryable, shutdown_command(), handle_exec_result, handle_waiting)
 	end
+
+	defp reboot_command(),   do: "nohup sh -c 'sleep #{delay_before_shutdown()}; systemctl reboot'   > /dev/null 2>&1 < /dev/null &"
+	defp shutdown_command(), do: "nohup sh -c 'sleep #{delay_before_shutdown()}; systemctl poweroff' > /dev/null 2>&1 < /dev/null &"
 
 	@max_reboot_wait_time 1200
 
