@@ -580,8 +580,10 @@ defmodule MachineManager.Core do
 	end
 
 	defp rsync_ssh_args(port) do
-		["-e", "ssh -p #{port} -o ConnectTimeout=10"]
+		["-e", "ssh -p #{port} -o ConnectTimeout=#{ssh_connect_timeout()}"]
 	end
+
+	defp ssh_connect_timeout(), do: 10
 
 	defp install_rsync_on_machine(row, retry_on_port) do
 		run_on_machine(row,
@@ -741,8 +743,6 @@ defmodule MachineManager.Core do
 		exec_many(queryable, command, handle_exec_result, handle_waiting)
 	end
 
-	defp delay_before_shutdown(), do: 2
-
 	def wait_many(queryable, handle_exec_result, handle_waiting) do
 		rows = list(queryable)
 		task_map =
@@ -752,14 +752,17 @@ defmodule MachineManager.Core do
 					Task.async(fn ->
 						# Wait for an existing reboot/shutdown command to start
 						Process.sleep(1000 * (delay_before_shutdown() + 1))
-						# Assume ~10 seconds per attempt (due to ConnectTimeout=10),
-						# for a max wait time of ~30 minutes
-						wait_for_machine(row, 180)
+
+						max_wait_time = 1800
+						attempts      = max_wait_time / ssh_connect_timeout()
+						wait_for_machine(row, attempts)
 					end)
 				} end)
 			|> Map.new
 		Parallel.block_on_tasks(task_map, handle_exec_result, handle_waiting, 2000)
 	end
+
+	defp delay_before_shutdown(), do: 2
 
 	defp wait_for_machine(row, attempt) do
 		case run_on_machine(row, "true") do
@@ -811,15 +814,13 @@ defmodule MachineManager.Core do
 	"""
 	@spec ssh(String.t, String.t, integer, String.t, boolean) :: {String.t, integer}
 	def ssh(user, ip, ssh_port, command, capture) do
+		args = ["-o", "ConnectTimeout=#{ssh_connect_timeout()}", "-q", "-p", "#{ssh_port}", "#{user}@#{ip}", command]
 		case capture do
 			true ->
-				System.cmd("ssh", ["-o", "ConnectTimeout=10", "-q", "-p", "#{ssh_port}", "#{user}@#{ip}", command],
-					stderr_to_stdout: true,
-					env: env_for_ssh()
-				)
+				System.cmd("ssh", args, stderr_to_stdout: true, env: env_for_ssh())
 			false ->
 				%Porcelain.Result{status: exit_code} = \
-					Porcelain.exec("ssh", ["-o", "ConnectTimeout=10", "-q", "-p", "#{ssh_port}", "#{user}@#{ip}", command],
+					Porcelain.exec("ssh", args,
 						out: {:file, Process.group_leader},
 						# "when using `Porcelain.Driver.Basic`, the only supported values
 						# are `nil` (stderr will be printed to the terminal) and `:out`."
