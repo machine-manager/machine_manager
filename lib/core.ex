@@ -455,6 +455,8 @@ defmodule MachineManager.Core do
 	def setup(row, graphs, all_machines_map, portable_erlang, retry_on_port, machine_probe) do
 		:configured = configure(row, graphs, all_machines_map, portable_erlang, retry_on_port)
 		:probed     = probe(row, nil, machine_probe, retry_on_port)
+		# Get updated row with package upgrades
+		[row]       = list(machine(row.hostname))
 		:upgraded   = upgrade(row, graphs, all_machines_map, portable_erlang, retry_on_port, machine_probe)
 		reboot(row)
 		wait(row)
