@@ -427,7 +427,7 @@ defmodule MachineManager.Core do
 			{"", 0}          -> nil
 			{out, exit_code} -> raise_upload_error(ConfigureError, row.hostname, out, exit_code, "hosts.json")
 		end
-		arguments = [".cache/machine_manager/erlang/bin/escript", ".cache/machine_manager/script"] ++ row.tags
+		arguments = [".cache/machine_manager/erlang/bin/escript", ".cache/machine_manager/script"] ++ all_tags(row)
 		for arg <- arguments do
 			if String.contains?(arg, " ") do
 				raise(ConfigureError,
@@ -804,6 +804,21 @@ defmodule MachineManager.Core do
 					)
 				{"", exit_code}
 		end
+	end
+
+	defp all_tags(row) do
+		virtual_tag_pairs = [
+			{"hostname", row.hostname},
+			{"wireguard_port", row.wireguard_port},
+			{"ssh_port", row.ssh_port},
+		]
+		virtual_tags = for {key, value} <- virtual_tag_pairs do
+			case Converge.Util.tag_values(row.tags, key) do
+				[]   -> "#{key}:#{value}"
+				tags -> raise "Unexpected non-virtual tags #{inspect tags} conflict with virtual tag #{inspect "#{key}:#{value}"}"
+			end
+		end
+		row.tags ++ virtual_tags
 	end
 
 	def echo(_stream, _os_pid, data) do
