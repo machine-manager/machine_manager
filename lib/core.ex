@@ -459,6 +459,7 @@ defmodule MachineManager.Core do
 		reboot(row)
 		wait(row)
 		probe(row, nil, machine_probe, retry_on_port)
+		:setup
 	end
 
 	# This function assumes an up-to-date configuration script is already present
