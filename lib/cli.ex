@@ -464,7 +464,7 @@ defmodule MachineManager.CLI do
 	defp handle_probe_result(hostname, task_result, error_counter) do
 		pretty_hostname = hostname |> String.pad_trailing(16) |> bolded
 		case task_result do
-			{:ok, {:probed, nil}} ->
+			{:ok, :probed} ->
 				IO.puts("#{pretty_hostname} probed")
 			{:ok, {:probe_error, message}} ->
 				IO.puts("#{pretty_hostname} probe failed: #{message}")

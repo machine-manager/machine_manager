@@ -137,6 +137,11 @@ defmodule MachineManager.Core do
 		act_many(:upgrade, rows, retry_on_port, handle_upgrade_result, handle_waiting)
 	end
 
+	def probe_many(queryable, retry_on_port, handle_probe_result, handle_waiting) do
+		rows = list(queryable)
+		act_many(:probe, rows, retry_on_port, handle_probe_result, handle_waiting)
+	end
+
 	@machine_probe_content File.read!(Path.join(__DIR__, "../../machine_probe/machine_probe"))
 
 	defp act_many(command, rows, retry_on_port, handle_result, handle_waiting, opts \\ []) do
@@ -153,25 +158,30 @@ defmodule MachineManager.Core do
 			# But we don't need to compile scripts for machines with no pending
 			# upgrades, because they will not be upgraded and therefore not configured.
 			:upgrade   -> write_scripts_for_machines(Enum.reject(rows, fn row -> row.pending_upgrades == [] end))
+
+			:probe     -> nil
 		end
 		all_machines     = from("machines") |> list
 		all_machines_map = all_machines |> Enum.map(fn row -> {row.hostname, row} end) |> Map.new
 		graphs           = connectivity_graphs(all_machines)
 		wrapped = fn row ->
 			portable_erlang = portable_erlangs[architecture_for_tags(row.tags)]
-			machine_probe = if command in [:upgrade, :probe] do
-				temp_dir = FileUtil.temp_dir("machine_manager_probe_many")
+			temp_dir        = FileUtil.temp_dir("machine_manager_act_many")
+			machine_probe   = if command in [:upgrade, :probe] do
 				write_temp_file(temp_dir, "machine_probe", @machine_probe_content, executable: true)
 			end
 			try do
 				case command do
 					:configure -> configure(row, graphs, all_machines_map, portable_erlang, retry_on_port, opts[:show_progress])
-					:upgrade   -> upgrade(  row, graphs, all_machines_map, portable_erlang, retry_on_port, machine_probe)
+					:upgrade   -> upgrade(row, graphs, all_machines_map, portable_erlang, retry_on_port, machine_probe)
+					:probe     -> probe(row, portable_erlang, machine_probe, retry_on_port)
 				end
 			rescue
 				e in UpgradeError   -> {:upgrade_error,   e.message}
 				e in ConfigureError -> {:configure_error, e.message}
 				e in ProbeError     -> {:probe_error,     e.message}
+			after
+				File.rm_rf(temp_dir)
 			end
 		end
 		task_map =
@@ -365,7 +375,7 @@ defmodule MachineManager.Core do
 		data = get_probe_data(row, portable_erlang, machine_probe, retry_on_port)
 		# TODO: don't assume that it's the same machine; make sure some unique ID is the same
 		write_probe_data_to_db(row.hostname, data)
-		nil
+		:probed
 	end
 
 	@doc """
@@ -619,29 +629,6 @@ defmodule MachineManager.Core do
 			env DEBIAN_FRONTEND=noninteractive apt-get --quiet --assume-yes --no-install-recommends install rsync
 			""",
 			retry_on_port: retry_on_port)
-	end
-
-	def probe_many(queryable, retry_on_port, handle_probe_result, handle_waiting) do
-		rows             = list(queryable)
-		architectures    = get_machine_architectures(rows)
-		portable_erlangs = temp_portable_erlangs(architectures)
-		wrapped_probe    = fn row ->
-			portable_erlang = portable_erlangs[architecture_for_tags(row.tags)]
-			temp_dir        = FileUtil.temp_dir("machine_manager_probe_many")
-			machine_probe   = write_temp_file(temp_dir, "machine_probe", @machine_probe_content, executable: true)
-			try do
-				{:probed, probe(row, portable_erlang, machine_probe, retry_on_port)}
-			rescue
-				e in ProbeError -> {:probe_error, e.message}
-			after
-				File.rm_rf(temp_dir)
-			end
-		end
-		task_map =
-			rows
-			|> Enum.map(fn row -> {row.hostname, Task.async(fn -> wrapped_probe.(row) end)} end)
-			|> Map.new
-		Parallel.block_on_tasks(task_map, handle_probe_result, handle_waiting, 2000)
 	end
 
 	def exec_many(queryable, command, handle_exec_result, handle_waiting) do
