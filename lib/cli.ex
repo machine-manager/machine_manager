@@ -327,26 +327,26 @@ defmodule MachineManager.CLI do
 		end
 	end
 
-	def ssh_config() do
+	defp ssh_config() do
 		:ok = IO.write(Core.ssh_config())
 	end
 
-	def wireguard_config(hostname) do
+	defp wireguard_config(hostname) do
 		:ok = IO.write(Core.wireguard_config(hostname))
 	end
 
-	def hosts_json_file(hostname) do
+	defp hosts_json_file(hostname) do
 		:ok = IO.write(Core.hosts_json_file(hostname))
 	end
 
-	def portable_erlang(hostname, dest) do
+	defp portable_erlang(hostname, dest) do
 		row  = Core.list(Core.machine(hostname)) |> hd
 		arch = Converge.Util.architecture_for_tags(row.tags)
 		File.mkdir!(dest)
 		PortableErlang.make_portable_erlang(dest, arch)
 	end
 
-	def configure_many(hostname_regexp, retry_on_port, show_progress, allow_warnings) do
+	defp configure_many(hostname_regexp, retry_on_port, show_progress, allow_warnings) do
 		error_counter = Counter.new()
 		# If Core.configure is printing converge output to the terminal, we don't
 		# want to overlap it with "# Waiting on host" output.
@@ -365,7 +365,7 @@ defmodule MachineManager.CLI do
 		nonzero_exit_if_errors(error_counter)
 	end
 
-	def setup_many(hostname_regexp, retry_on_port) do
+	defp setup_many(hostname_regexp, retry_on_port) do
 		error_counter = Counter.new()
 		Core.setup_many(
 			Core.machines_matching_regexp(hostname_regexp),
@@ -376,7 +376,7 @@ defmodule MachineManager.CLI do
 		nonzero_exit_if_errors(error_counter)
 	end
 
-	def upgrade_many(hostname_regexp, backup_ssh_port) do
+	defp upgrade_many(hostname_regexp, backup_ssh_port) do
 		error_counter = Counter.new()
 		Core.upgrade_many(
 			Core.machines_matching_regexp(hostname_regexp),
@@ -412,7 +412,7 @@ defmodule MachineManager.CLI do
 		end
 	end
 
-	def reboot_many(hostname_regexp) do
+	defp reboot_many(hostname_regexp) do
 		error_counter = Counter.new()
 		Core.reboot_many(
 			Core.machines_matching_regexp(hostname_regexp),
@@ -422,7 +422,7 @@ defmodule MachineManager.CLI do
 		nonzero_exit_if_errors(error_counter)
 	end
 
-	def shutdown_many(hostname_regexp) do
+	defp shutdown_many(hostname_regexp) do
 		error_counter = Counter.new()
 		Core.shutdown_many(
 			Core.machines_matching_regexp(hostname_regexp),
@@ -432,7 +432,7 @@ defmodule MachineManager.CLI do
 		nonzero_exit_if_errors(error_counter)
 	end
 
-	def wait_many(hostname_regexp) do
+	defp wait_many(hostname_regexp) do
 		error_counter = Counter.new()
 		Core.wait_many(
 			Core.machines_matching_regexp(hostname_regexp),
@@ -442,7 +442,7 @@ defmodule MachineManager.CLI do
 		nonzero_exit_if_errors(error_counter)
 	end
 
-	def exec_many(hostname_regexp, command) do
+	defp exec_many(hostname_regexp, command) do
 		error_counter = Counter.new()
 		Core.exec_many(
 			Core.machines_matching_regexp(hostname_regexp),
@@ -472,7 +472,7 @@ defmodule MachineManager.CLI do
 		end
 	end
 
-	def probe_many(hostname_regexp, retry_on_port) do
+	defp probe_many(hostname_regexp, retry_on_port) do
 		error_counter = Counter.new()
 		Core.probe_many(
 			Core.machines_matching_regexp(hostname_regexp),
@@ -505,7 +505,7 @@ defmodule MachineManager.CLI do
 		Core.set_host_machine_many(Core.machines_matching_regexp(hostname_regexp), host_machine)
 	end
 
-	def list(hostname_regexp, columns, print_header) do
+	defp list(hostname_regexp, columns, print_header) do
 		hostname_regexp = case hostname_regexp do
 			nil -> ".*"
 			_   -> hostname_regexp
@@ -606,7 +606,7 @@ defmodule MachineManager.CLI do
 		end
 	end
 
-	def get_tags(hostname) do
+	defp get_tags(hostname) do
 		Core.get_tags(hostname)
 		|> Enum.sort
 		|> Enum.map(fn tag -> colorize_tag(tag) end)
@@ -644,7 +644,7 @@ defmodule MachineManager.CLI do
 		end)
 	end
 
-	def sql_row_to_table_row(column_spec, columns, row, tag_frequency) do
+	defp sql_row_to_table_row(column_spec, columns, row, tag_frequency) do
 		columns
 		|> Enum.map(fn column -> {_, func} = column_spec[column]; func.(row, tag_frequency) end)
 		|> Enum.map(fn value ->
@@ -751,7 +751,7 @@ defmodule MachineManager.CLI do
 		%Postgrex.INET{address: address}
 	end
 
-	def pretty_datetime(datetime) do
+	defp pretty_datetime(datetime) do
 		datetime
 		|> DateTime.to_iso8601
 		|> String.split(".")
