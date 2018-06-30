@@ -25,17 +25,19 @@ CREATE DOMAIN wireguard_key    AS bytea        CHECK(length(VALUE) = 44);
 
 CREATE TABLE machines (
 	-- Access information
-	hostname          hostname      NOT NULL PRIMARY KEY,
-	public_ip         inet          NOT NULL,
-	wireguard_ip      inet          NOT NULL,
-	wireguard_port    port          NOT NULL,
-	wireguard_privkey wireguard_key NOT NULL,
-	wireguard_pubkey  wireguard_key NOT NULL,
-	ssh_port          port          NOT NULL,
-	host_machine      hostname,
-	country           country       NOT NULL,
-	release           release       NOT NULL,
-	boot              boot          NOT NULL,
+	hostname                       hostname      NOT NULL PRIMARY KEY,
+	public_ip                      inet          NOT NULL,
+	wireguard_ip                   inet          NOT NULL,
+	wireguard_port                 port          NOT NULL,
+	wireguard_privkey              wireguard_key NOT NULL,
+	wireguard_pubkey               wireguard_key NOT NULL,
+	ssh_port                       port          NOT NULL,
+	host_machine                   hostname,
+	ssh_port_on_host_machine       port,
+	wireguard_port_on_host_machine port,
+	country                        country       NOT NULL,
+	release                        release       NOT NULL,
+	boot                           boot          NOT NULL,
 
 	-- Probed information
 	ram_mb            int4_gt0,
@@ -52,9 +54,12 @@ CREATE TABLE machines (
 	added_time        timestamp with time zone NOT NULL DEFAULT now(),
 
 	UNIQUE (public_ip, ssh_port),
+	UNIQUE (public_ip, wireguard_port),
 	UNIQUE (wireguard_ip),
 	UNIQUE (wireguard_privkey),
 	UNIQUE (wireguard_pubkey),
+	UNIQUE (host_machine, ssh_port_on_host_machine),
+	UNIQUE (host_machine, wireguard_port_on_host_machine),
 	FOREIGN KEY (host_machine) references machines(hostname)
 );
 
