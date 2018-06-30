@@ -50,28 +50,30 @@ defmodule MachineManager.Core do
 
 		queryable
 		|> select([m, t, u], %{
-				hostname:          m.hostname,
-				public_ip:         m.public_ip,
-				wireguard_ip:      m.wireguard_ip,
-				wireguard_port:    m.wireguard_port,
-				wireguard_pubkey:  m.wireguard_pubkey,
-				wireguard_privkey: m.wireguard_privkey,
-				ssh_port:          m.ssh_port,
-				host_machine:      m.host_machine,
-				country:           m.country,
-				release:           m.release,
-				boot:              m.boot,
-				tags:              coalesce(t.tags,             fragment("'{}'::varchar[]")),
-				pending_upgrades:  coalesce(u.pending_upgrades, fragment("'{}'::json[]")),
-				last_probe_time:   type(m.last_probe_time, :utc_datetime),
-				boot_time:         type(m.boot_time,       :utc_datetime),
-				cpu_model_name:    m.cpu_model_name,
-				cpu_architecture:  m.cpu_architecture,
-				ram_mb:            m.ram_mb,
-				core_count:        m.core_count,
-				thread_count:      m.thread_count,
-				time_offset:       m.time_offset,
-				kernel:            m.kernel,
+				hostname:                       m.hostname,
+				public_ip:                      m.public_ip,
+				wireguard_ip:                   m.wireguard_ip,
+				wireguard_port:                 m.wireguard_port,
+				wireguard_pubkey:               m.wireguard_pubkey,
+				wireguard_privkey:              m.wireguard_privkey,
+				ssh_port:                       m.ssh_port,
+				host_machine:                   m.host_machine,
+				wireguard_port_on_host_machine: m.wireguard_port_on_host_machine,
+				ssh_port_on_host_machine:       m.ssh_port_on_host_machine,
+				country:                        m.country,
+				release:                        m.release,
+				boot:                           m.boot,
+				tags:                           coalesce(t.tags,             fragment("'{}'::varchar[]")),
+				pending_upgrades:               coalesce(u.pending_upgrades, fragment("'{}'::json[]")),
+				last_probe_time:                type(m.last_probe_time, :utc_datetime),
+				boot_time:                      type(m.boot_time,       :utc_datetime),
+				cpu_model_name:                 m.cpu_model_name,
+				cpu_architecture:               m.cpu_architecture,
+				ram_mb:                         m.ram_mb,
+				core_count:                     m.core_count,
+				thread_count:                   m.thread_count,
+				time_offset:                    m.time_offset,
+				kernel:                         m.kernel,
 			})
 		|> join(:left, [m], t in subquery(tags_aggregate),             on: t.hostname == m.hostname)
 		|> join(:left, [m], u in subquery(pending_upgrades_aggregate), on: u.hostname == m.hostname)
@@ -930,8 +932,36 @@ defmodule MachineManager.Core do
 		end)
 	end
 
+	@first_port 904 + 1
+	@last_port  1023
+	@skip_ports [989, 990, 991, 992, 993, 995]
+
+	# TODO: use https://hexdocs.pm/ecto/Ecto.Query.API.html#field/2 to remove duplication
+	defp get_unused_host_ssh_port(host_machine) when is_binary(host_machine) do
+		existing_ports =
+			from("machines")
+			|> where([m], m.host_machine == ^host_machine)
+			|> select([m], m.ssh_port_on_host_machine)
+			|> Repo.all
+			|> MapSet.new
+		port_candidates = Stream.iterate(@first_port, &increment_host_port/1)
+		Enum.find(port_candidates, fn port -> not MapSet.member?(existing_ports, port) end)
+	end
+
+	defp get_unused_host_wireguard_port(host_machine) when is_binary(host_machine) do
+		existing_ports =
+			from("machines")
+			|> where([m], m.host_machine == ^host_machine)
+			|> select([m], m.wireguard_port_on_host_machine)
+			|> Repo.all
+			|> MapSet.new
+		port_candidates = Stream.iterate(@first_port, &increment_host_port/1)
+		Enum.find(port_candidates, fn port -> not MapSet.member?(existing_ports, port) end)
+	end
+
 	def get_unused_wireguard_ip() do
-		existing_ips = from("machines")
+		existing_ips =
+			from("machines")
 			|> select([m], m.wireguard_ip)
 			|> Repo.all
 			|> Enum.map(&to_ip_tuple/1)
@@ -1039,8 +1069,16 @@ defmodule MachineManager.Core do
 
 	@spec set_host_machine_many(Ecto.Queryable.t, String.t) :: nil
 	def set_host_machine_many(queryable, host_machine) do
-		queryable
-		|> Repo.update_all(set: [host_machine: host_machine])
+		for row <- list(queryable) do
+			if row.host_machine != host_machine do
+				machine(row.hostname)
+				|> Repo.update_all(set: [
+					host_machine:                   host_machine,
+					wireguard_port_on_host_machine: if host_machine != nil do get_unused_host_wireguard_port(host_machine) end,
+					ssh_port_on_host_machine:       if host_machine != nil do get_unused_host_ssh_port(host_machine) end,
+				])
+			end
+		end
 		nil
 	end
 
@@ -1100,6 +1138,18 @@ defmodule MachineManager.Core do
 
 	defp anchor_regexp(hostname_regexp) do
 		"^#{hostname_regexp}$"
+	end
+
+	def increment_host_port(port) when port >= @first_port and port < @last_port do
+		candidate = port + 1
+		if candidate in @skip_ports do
+			increment_host_port(candidate)
+		else
+			candidate
+		end
+	end
+	def increment_host_port(port) do
+		raise("Port cannot be incremented further: #{port}")
 	end
 
 	@typep ip_tuple :: {integer, integer, integer, integer}

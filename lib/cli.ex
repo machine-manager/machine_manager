@@ -552,7 +552,7 @@ defmodule MachineManager.CLI do
 			"wireguard_ip"     => {"WIREGUARD IP",     fn row, _ -> row.wireguard_ip |> Core.to_ip_string end},
 			"wireguard_port"   => {"WG",               fn row, _ -> row.wireguard_port end},
 			"ssh_port"         => {"SSH",              fn row, _ -> row.ssh_port end},
-			"host_machine"     => {"HOST MACHINE",     fn row, _ -> if row.host_machine != nil, do: row.host_machine, else: "-" end},
+			"host_machine"     => {"HOST MACHINE",     &format_host_machine/2},
 			"country"          => {"CC",               fn row, _ -> row.country |> colorize end},
 			"release"          => {"RELEASE",          fn row, _ -> row.release |> colorize end},
 			"boot"             => {"BOOT",             fn row, _ -> row.boot    |> colorize end},
@@ -595,6 +595,14 @@ defmodule MachineManager.CLI do
 			row.pending_upgrades
 			|> Enum.map(fn upgrade -> "#{upgrade["package"]}#{with_fgcolor("=", {150, 150, 150})}#{bolded(upgrade["new_version"])}" end)
 			|> Enum.join(" ")
+		end
+	end
+
+	defp format_host_machine(row, _tag_frequency) do
+		case row.host_machine do
+			nil -> "-"
+			_   ->
+				"#{row.host_machine} (wg=#{row.wireguard_port_on_host_machine}, ssh=#{row.ssh_port_on_host_machine})"
 		end
 	end
 

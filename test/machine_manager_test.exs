@@ -21,6 +21,15 @@ defmodule MachineManager.CoreTest do
 		{_, _, _, _} = Core.get_unused_wireguard_ip()
 	end
 
+	test "increment_host_port" do
+		assert_raise(RuntimeError, fn -> Core.increment_host_port(904) end)
+		assert_raise(RuntimeError, fn -> Core.increment_host_port(1023) end)
+		assert Core.increment_host_port(905) == 906
+		assert Core.increment_host_port(987) == 988
+		assert Core.increment_host_port(988) == 994
+		assert Core.increment_host_port(994) == 996
+	end
+
 	test "ip_private?" do
 		assert Core.ip_private?({0, 0, 0, 0})         == false
 		assert Core.ip_private?({1, 2, 3, 4})         == false
@@ -112,36 +121,36 @@ defmodule MachineManager.WireGuardTest do
 
 	test "make_wireguard_config" do
 		private_key = String.duplicate("X", 44)
-		address     = "1.2.3.4"
+		addresses   = ["1.2.3.4"]
 		listen_port = 51820
 		peers       = []
-		conf        = WireGuard.make_wireguard_config(private_key, address, listen_port, peers)
+		conf        = WireGuard.make_wireguard_config(private_key, addresses, listen_port, peers)
 		assert conf ==
 			"""
 			[Interface]
 			PrivateKey = #{private_key}
 			ListenPort = #{listen_port}
-			Address    = #{address}
+			Address    = #{Enum.join(addresses, ", ")}
 
 			"""
 	end
 
 	test "make_wireguard_config with peers" do
 		private_key = String.duplicate("X", 44)
-		address     = "1.2.3.4"
+		addresses   = ["1.2.3.4", "1.2.4.0/24"]
 		listen_port = 51820
 		public_key  = String.duplicate("Y", 44)
 		peers       = [
 			%{public_key: public_key, endpoint: "5.6.7.8", allowed_ips: ["10.10.0.1"],              comment: "Comment"},
 			%{public_key: public_key, endpoint: nil,       allowed_ips: ["10.10.0.2", "10.10.0.3"], comment: "Comment"},
 		]
-		conf        = WireGuard.make_wireguard_config(private_key, address, listen_port, peers)
+		conf        = WireGuard.make_wireguard_config(private_key, addresses, listen_port, peers)
 		assert conf ==
 			"""
 			[Interface]
 			PrivateKey = #{private_key}
 			ListenPort = #{listen_port}
-			Address    = #{address}
+			Address    = #{Enum.join(addresses, ", ")}
 
 			# Comment
 			[Peer]
@@ -209,6 +218,6 @@ defmodule MachineManager.PortableErlangTest do
 
 	test "make_portable_erlang" do
 		temp = FileUtil.temp_dir("machine_manager_portable_erlang_test")
-		PortableErlang.make_portable_erlang(temp)
+		PortableErlang.make_portable_erlang(temp, "amd64")
 	end
 end
