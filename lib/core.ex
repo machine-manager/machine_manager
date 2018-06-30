@@ -918,7 +918,6 @@ defmodule MachineManager.Core do
 			Repo.insert_all("machines", [[
 				hostname:          hostname,
 				public_ip:         to_ip_postgrex(public_ip),
-				host_machine:      host_machine,
 				ssh_port:          ssh_port,
 				wireguard_port:    wireguard_port,
 				wireguard_ip:      to_ip_postgrex(get_unused_wireguard_ip()),
@@ -929,6 +928,7 @@ defmodule MachineManager.Core do
 				boot:              boot,
 			]])
 			tag(hostname, tags)
+			set_host_machine(hostname, host_machine)
 		end)
 	end
 
@@ -1055,15 +1055,19 @@ defmodule MachineManager.Core do
 	def set_host_machine_many(queryable, host_machine) do
 		for row <- list(queryable) do
 			if row.host_machine != host_machine do
-				machine(row.hostname)
-				|> Repo.update_all(set: [
-					host_machine:                   host_machine,
-					wireguard_port_on_host_machine: if host_machine != nil do get_unused_host_port(host_machine, :wireguard) end,
-					ssh_port_on_host_machine:       if host_machine != nil do get_unused_host_port(host_machine, :ssh) end,
-				])
+				set_host_machine(row.hostname, host_machine)
 			end
 		end
 		nil
+	end
+
+	defp set_host_machine(hostname, host_machine) do
+		machine(hostname)
+		|> Repo.update_all(set: [
+			host_machine:                   host_machine,
+			wireguard_port_on_host_machine: if host_machine != nil do get_unused_host_port(host_machine, :wireguard) end,
+			ssh_port_on_host_machine:       if host_machine != nil do get_unused_host_port(host_machine, :ssh) end,
+		])
 	end
 
 	@first_port 904 + 1
