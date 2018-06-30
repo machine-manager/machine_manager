@@ -932,25 +932,6 @@ defmodule MachineManager.Core do
 		end)
 	end
 
-	@first_port 904 + 1
-	@last_port  1023
-	@skip_ports [989, 990, 991, 992, 993, 995]
-
-	defp get_unused_host_port(host_machine, type) do
-		column = case type do
-			:ssh       -> :ssh_port_on_host_machine
-			:wireguard -> :wireguard_port_on_host_machine
-		end
-		existing_ports =
-			from("machines")
-			|> where([m], m.host_machine == ^host_machine)
-			|> select([m], field(m, ^column))
-			|> Repo.all
-			|> MapSet.new
-		port_candidates = Stream.iterate(@first_port, &increment_host_port/1)
-		Enum.find(port_candidates, fn port -> not MapSet.member?(existing_ports, port) end)
-	end
-
 	def get_unused_wireguard_ip() do
 		existing_ips =
 			from("machines")
@@ -1074,6 +1055,37 @@ defmodule MachineManager.Core do
 		nil
 	end
 
+	@first_port 904 + 1
+	@last_port  1023
+	@skip_ports [989, 990, 991, 992, 993, 995]
+
+	defp get_unused_host_port(host_machine, type) do
+		column = case type do
+			:ssh       -> :ssh_port_on_host_machine
+			:wireguard -> :wireguard_port_on_host_machine
+		end
+		existing_ports =
+			from("machines")
+			|> where([m], m.host_machine == ^host_machine)
+			|> select([m], field(m, ^column))
+			|> Repo.all
+			|> MapSet.new
+		port_candidates = Stream.iterate(@first_port, &increment_host_port/1)
+		Enum.find(port_candidates, fn port -> not MapSet.member?(existing_ports, port) end)
+	end
+
+	def increment_host_port(port) when port >= @first_port and port < @last_port do
+		candidate = port + 1
+		if candidate in @skip_ports do
+			increment_host_port(candidate)
+		else
+			candidate
+		end
+	end
+	def increment_host_port(port) do
+		raise("Port cannot be incremented further: #{port}")
+	end
+
 	@spec rekey_wireguard_many(Ecto.Queryable.t) :: nil
 	def rekey_wireguard_many(queryable) do
 		{:ok, _} = Repo.transaction(fn ->
@@ -1130,18 +1142,6 @@ defmodule MachineManager.Core do
 
 	defp anchor_regexp(hostname_regexp) do
 		"^#{hostname_regexp}$"
-	end
-
-	def increment_host_port(port) when port >= @first_port and port < @last_port do
-		candidate = port + 1
-		if candidate in @skip_ports do
-			increment_host_port(candidate)
-		else
-			candidate
-		end
-	end
-	def increment_host_port(port) do
-		raise("Port cannot be incremented further: #{port}")
 	end
 
 	@typep ip_tuple :: {integer, integer, integer, integer}
