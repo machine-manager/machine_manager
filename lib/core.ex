@@ -57,6 +57,7 @@ defmodule MachineManager.Core do
 				wireguard_pubkey:  m.wireguard_pubkey,
 				wireguard_privkey: m.wireguard_privkey,
 				ssh_port:          m.ssh_port,
+				host_machine:      m.host_machine,
 				country:           m.country,
 				release:           m.release,
 				boot:              m.boot,
@@ -907,14 +908,15 @@ defmodule MachineManager.Core do
 	@doc """
 	Adds a machine from the database.
 	"""
-	@spec add(String.t, String.t, integer, integer, String.t, String.t, String.t, [String.t]) :: nil
-	def add(hostname, public_ip, ssh_port, wireguard_port, country, release, boot, tags) do
+	@spec add(String.t, String.t, String.t, integer, integer, String.t, String.t, String.t, [String.t]) :: nil
+	def add(hostname, public_ip, host_machine, ssh_port, wireguard_port, country, release, boot, tags) do
 		wireguard_privkey = WireGuard.make_wireguard_privkey()
 		wireguard_pubkey  = WireGuard.get_wireguard_pubkey(wireguard_privkey)
 		{:ok, _} = Repo.transaction(fn ->
 			Repo.insert_all("machines", [[
 				hostname:          hostname,
 				public_ip:         to_ip_postgrex(public_ip),
+				host_machine:      host_machine,
 				ssh_port:          ssh_port,
 				wireguard_port:    wireguard_port,
 				wireguard_ip:      to_ip_postgrex(get_unused_wireguard_ip()),
@@ -1032,6 +1034,13 @@ defmodule MachineManager.Core do
 	def set_wireguard_port_many(queryable, wireguard_port) do
 		queryable
 		|> Repo.update_all(set: [wireguard_port: wireguard_port])
+		nil
+	end
+
+	@spec set_host_machine_many(Ecto.Queryable.t, String.t) :: nil
+	def set_host_machine_many(queryable, host_machine) do
+		queryable
+		|> Repo.update_all(set: [host_machine: host_machine])
 		nil
 	end
 

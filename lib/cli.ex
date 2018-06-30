@@ -177,6 +177,7 @@ defmodule MachineManager.CLI do
 					],
 					options: [
 						public_ip:      [short: "-i", long: "--public-ip",      required: true,                  help: "Public IP address"],
+						host_machine:   [short: "-h", long: "--host-machine",   required: false,                 help: "Host machine for this machine"],
 						ssh_port:       [short: "-p", long: "--ssh-port",       parser: :integer, default: 904,  help: "SSH port"],
 						wireguard_port: [             long: "--wireguard-port", parser: :integer, default: 904,  help: "WireGuard port"],
 						country:        [short: "-c", long: "--country",        required: true,                  help: "Country code"],
@@ -244,6 +245,14 @@ defmodule MachineManager.CLI do
 						wireguard_port:  [required: true, parser: :integer],
 					],
 				],
+				set_host_machine: [
+					name:  "set-host-machine",
+					about: "Set a host machine for machines",
+					args: [
+						hostname_regexp: [required: true, help: hostname_regexp_help],
+						host_machine:    [required: true, help: ~s(Host machine that this machine is running on; use "" or "-" if none)],
+					],
+				],
 				rekey_wireguard: [
 					name:  "rekey-wireguard",
 					about: "Regenerate WireGuard keys for machines",
@@ -281,7 +290,7 @@ defmodule MachineManager.CLI do
 			:reboot             -> reboot_many(args.hostname_regexp)
 			:shutdown           -> shutdown_many(args.hostname_regexp)
 			:wait               -> wait_many(args.hostname_regexp)
-			:add                -> Core.add(args.hostname, options.public_ip, options.ssh_port, options.wireguard_port, options.country, options.release, options.boot, options.tag)
+			:add                -> Core.add(args.hostname, options.public_ip, options.host_machine, options.ssh_port, options.wireguard_port, options.country, options.release, options.boot, options.tag)
 			:rm                 -> Core.rm_many(Core.machines_matching_regexp(args.hostname_regexp))
 			:tag                -> Core.tag_many(Core.machines_matching_regexp(args.hostname_regexp),   all_arguments(args.tag, unknown))
 			:untag              -> Core.untag_many(Core.machines_matching_regexp(args.hostname_regexp), all_arguments(args.tag, unknown))
@@ -289,6 +298,7 @@ defmodule MachineManager.CLI do
 			:set_public_ip      -> Core.set_public_ip(args.hostname, args.public_ip)
 			:set_ssh_port       -> Core.set_ssh_port_many(Core.machines_matching_regexp(args.hostname_regexp), args.ssh_port)
 			:set_wireguard_port -> Core.set_wireguard_port_many(Core.machines_matching_regexp(args.hostname_regexp), args.wireguard_port)
+			:set_host_machine   -> set_host_machine_many(args.hostname_regexp, args.host_machine)
 			:rekey_wireguard    -> Core.rekey_wireguard_many(Core.machines_matching_regexp(args.hostname_regexp))
 		end
 	end
@@ -486,6 +496,15 @@ defmodule MachineManager.CLI do
 		end
 	end
 
+	defp set_host_machine_many(hostname_regexp, host_machine) do
+		host_machine = case host_machine do
+			""  -> nil
+			"-" -> nil
+			s   -> s
+		end
+		Core.set_host_machine_many(Core.machines_matching_regexp(hostname_regexp), host_machine)
+	end
+
 	def list(hostname_regexp, columns, print_header) do
 		hostname_regexp = case hostname_regexp do
 			nil -> ".*"
@@ -520,9 +539,9 @@ defmodule MachineManager.CLI do
 	defp default_columns() do
 		[
 			"hostname", "public_ip", "wireguard_ip", "wireguard_port", "ssh_port",
-			"country", "release", "boot", "tags", "ram_mb", "cpu_model_name",
-			"core_count", "thread_count", "last_probe_time", "boot_time",
-			"time_offset", "kernel", "pending_upgrades",
+			"host_machine", "country", "release", "boot", "tags", "ram_mb",
+			"cpu_model_name", "core_count", "thread_count", "last_probe_time",
+			"boot_time", "time_offset", "kernel", "pending_upgrades",
 		]
 	end
 
@@ -533,6 +552,7 @@ defmodule MachineManager.CLI do
 			"wireguard_ip"     => {"WIREGUARD IP",     fn row, _ -> row.wireguard_ip |> Core.to_ip_string end},
 			"wireguard_port"   => {"WG",               fn row, _ -> row.wireguard_port end},
 			"ssh_port"         => {"SSH",              fn row, _ -> row.ssh_port end},
+			"host_machine"     => {"HOST MACHINE",     fn row, _ -> if row.host_machine != nil, do: row.host_machine, else: "-" end},
 			"country"          => {"CC",               fn row, _ -> row.country |> colorize end},
 			"release"          => {"RELEASE",          fn row, _ -> row.release |> colorize end},
 			"boot"             => {"BOOT",             fn row, _ -> row.boot    |> colorize end},
