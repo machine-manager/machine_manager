@@ -936,23 +936,15 @@ defmodule MachineManager.Core do
 	@last_port  1023
 	@skip_ports [989, 990, 991, 992, 993, 995]
 
-	# TODO: use https://hexdocs.pm/ecto/Ecto.Query.API.html#field/2 to remove duplication
-	defp get_unused_host_ssh_port(host_machine) when is_binary(host_machine) do
+	defp get_unused_host_port(host_machine, type) do
+		column = case type do
+			:ssh       -> :ssh_port_on_host_machine
+			:wireguard -> :wireguard_port_on_host_machine
+		end
 		existing_ports =
 			from("machines")
 			|> where([m], m.host_machine == ^host_machine)
-			|> select([m], m.ssh_port_on_host_machine)
-			|> Repo.all
-			|> MapSet.new
-		port_candidates = Stream.iterate(@first_port, &increment_host_port/1)
-		Enum.find(port_candidates, fn port -> not MapSet.member?(existing_ports, port) end)
-	end
-
-	defp get_unused_host_wireguard_port(host_machine) when is_binary(host_machine) do
-		existing_ports =
-			from("machines")
-			|> where([m], m.host_machine == ^host_machine)
-			|> select([m], m.wireguard_port_on_host_machine)
+			|> select([m], field(m, ^column))
 			|> Repo.all
 			|> MapSet.new
 		port_candidates = Stream.iterate(@first_port, &increment_host_port/1)
@@ -1074,8 +1066,8 @@ defmodule MachineManager.Core do
 				machine(row.hostname)
 				|> Repo.update_all(set: [
 					host_machine:                   host_machine,
-					wireguard_port_on_host_machine: if host_machine != nil do get_unused_host_wireguard_port(host_machine) end,
-					ssh_port_on_host_machine:       if host_machine != nil do get_unused_host_ssh_port(host_machine) end,
+					wireguard_port_on_host_machine: if host_machine != nil do get_unused_host_port(host_machine, :wireguard) end,
+					ssh_port_on_host_machine:       if host_machine != nil do get_unused_host_port(host_machine, :ssh) end,
 				])
 			end
 		end
