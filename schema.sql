@@ -25,19 +25,19 @@ CREATE DOMAIN wireguard_key    AS bytea        CHECK(length(VALUE) = 44);
 
 CREATE TABLE machines (
 	-- Access information
-	hostname                       hostname      NOT NULL PRIMARY KEY,
-	public_ip                      inet          NOT NULL,
-	wireguard_ip                   inet          NOT NULL,
-	wireguard_port                 port          NOT NULL,
-	wireguard_privkey              wireguard_key NOT NULL,
-	wireguard_pubkey               wireguard_key NOT NULL,
-	ssh_port                       port          NOT NULL,
-	host_machine                   hostname,
-	ssh_port_on_host_machine       port          CHECK(host_machine IS NULL OR ssh_port_on_host_machine IS NOT NULL),
-	wireguard_port_on_host_machine port          CHECK(host_machine IS NULL OR wireguard_port_on_host_machine IS NOT NULL),
-	country                        country       NOT NULL,
-	release                        release       NOT NULL,
-	boot                           boot          NOT NULL,
+	hostname                        hostname      NOT NULL PRIMARY KEY,
+	public_ip                       inet          NOT NULL,
+	wireguard_ip                    inet          NOT NULL,
+	wireguard_port                  port          NOT NULL,
+	wireguard_privkey               wireguard_key NOT NULL,
+	wireguard_pubkey                wireguard_key NOT NULL,
+	ssh_port                        port          NOT NULL,
+	host_machine                    hostname,
+	ssh_port_on_host_machine        port          CHECK(host_machine IS NULL OR ssh_port_on_host_machine IS NOT NULL),
+	wireguard_port_on_host_machine  port          CHECK(host_machine IS NULL OR wireguard_port_on_host_machine IS NOT NULL),
+	country                         country       NOT NULL,
+	release                         release       NOT NULL,
+	boot                            boot          NOT NULL,
 
 	-- Probed information
 	ram_mb            int4_gt0,
@@ -72,9 +72,9 @@ CREATE TABLE machine_tags (
 );
 
 CREATE TABLE machine_pending_upgrades (
-	hostname    hostname NOT NULL REFERENCES machines,
-	package     package  NOT NULL,
-	old_version varchar  NOT NULL,
-	new_version varchar  NOT NULL,
+	hostname     hostname NOT NULL REFERENCES machines,
+	package      package  NOT NULL,
+	old_version  varchar  NOT NULL,
+	new_version  varchar  NOT NULL,
 	PRIMARY KEY(hostname, package)
 );
