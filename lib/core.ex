@@ -496,7 +496,7 @@ defmodule MachineManager.Core do
 			hosts_json = write_temp_file(temp_dir, "hosts.json", hosts_file)
 			files      = [portable_erlang, script, wg0_conf, hosts_json]
 			case transfer_paths(files, row, ".cache/machine_manager/",
-		                   	before_rsync: "mkdir -p .cache/machine_manager", compress: true, retry_on_port: retry_on_port) do
+				                 before_rsync: "mkdir -p .cache/machine_manager", compress: true, retry_on_port: retry_on_port) do
 				{"", 0}          -> nil
 				{out, exit_code} -> raise_upload_error(ConfigureError, row.hostname, out, exit_code, inspect(files))
 			end
