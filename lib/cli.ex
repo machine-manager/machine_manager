@@ -31,6 +31,31 @@ defmodule MachineManager.CLI do
 			allow_unknown_args: false,
 			parse_double_dash:  true,
 			subcommands: [
+				net: [
+					name:  "net",
+					about: "Network management commands",
+					subcommands: [
+						ls: [
+							name:  "ls",
+							about: "List networks",
+						],
+						add: [
+							name:  "add",
+							about: "Add network",
+							args: [
+								netname: [required: true, help: "Network name"],
+								parent:  [required: true, help: ~s(Parent network; use "" or "-" if none)],
+							],
+						],
+						rm: [
+							name:  "rm",
+							about: "Remove network",
+							args: [
+								netname: [required: true, help: "Network name"],
+							],
+						],
+					],
+				],
 				ls: [
 					name:    "ls",
 					about:   "List machines",
@@ -266,7 +291,11 @@ defmodule MachineManager.CLI do
 				],
 			]
 		)
-		{[subcommand], %{args: args, options: options, flags: flags, unknown: unknown}} = Optimus.parse!(spec, argv)
+		{subcommands, %{args: args, options: options, flags: flags, unknown: unknown}} =
+			case Optimus.parse!(spec, argv) do
+				{subcommands, rest} -> {subcommands, rest}
+				%{}                 -> raise("Subcommand required; see: mm --help")
+			end
 
 		# https://github.com/erlang/otp/pull/480 was rejected, so instead we have the
 		# wrapper script `mm` set MACHINE_MANAGER_ANSI_ENABLED=1 if stdout and stderr
@@ -278,33 +307,60 @@ defmodule MachineManager.CLI do
 		end
 		Application.put_env(:elixir, :ansi_enabled, ansi_enabled)
 
-		case subcommand do
-			:ls                 -> list(args.hostname_regexp, options.columns, (if flags.no_header, do: false, else: true))
-			:script             -> Core.write_script_for_machine(args.hostname, args.output_file, allow_warnings: flags.allow_warnings)
-			:configure          -> configure_many(args.hostname_regexp, options.backup_ssh_port, flags.show_progress, flags.allow_warnings)
-			:setup              -> setup_many(args.hostname_regexp, options.backup_ssh_port)
-			:ssh_config         -> ssh_config()
-			:connectivity       -> Core.connectivity(args.type)
-			:wireguard_config   -> wireguard_config(args.hostname)
-			:hosts_json_file    -> hosts_json_file(args.hostname)
-			:portable_erlang    -> portable_erlang(args.hostname, args.directory)
-			:probe              -> probe_many(args.hostname_regexp, options.backup_ssh_port)
-			:exec               -> exec_many(args.hostname_regexp, flags.shell, all_arguments(args.command, unknown))
-			:upgrade            -> upgrade_many(args.hostname_regexp, options.backup_ssh_port)
-			:reboot             -> reboot_many(args.hostname_regexp)
-			:shutdown           -> shutdown_many(args.hostname_regexp)
-			:wait               -> wait_many(args.hostname_regexp)
-			:add                -> Core.add(args.hostname, options.public_ip, options.host_machine, options.ssh_port, options.wireguard_port, options.country, options.release, options.boot, options.tag)
-			:rm                 -> Core.rm_many(Core.machines_matching_regexp(args.hostname_regexp))
-			:tag                -> Core.tag_many(Core.machines_matching_regexp(args.hostname_regexp),   all_arguments(args.tag, unknown))
-			:untag              -> Core.untag_many(Core.machines_matching_regexp(args.hostname_regexp), all_arguments(args.tag, unknown))
-			:get_tags           -> get_tags(args.hostname)
-			:set_public_ip      -> Core.set_public_ip(args.hostname, args.public_ip)
-			:set_ssh_port       -> Core.set_ssh_port_many(Core.machines_matching_regexp(args.hostname_regexp), args.ssh_port)
-			:set_wireguard_port -> Core.set_wireguard_port_many(Core.machines_matching_regexp(args.hostname_regexp), args.wireguard_port)
-			:set_host_machine   -> set_host_machine_many(args.hostname_regexp, args.host_machine)
-			:rekey_wireguard    -> Core.rekey_wireguard_many(Core.machines_matching_regexp(args.hostname_regexp))
+		case subcommands do
+			[:net | rest] -> net(rest, args, options, flags, unknown)
+			[subcommand]  -> case subcommand do
+				:ls                 -> list(args.hostname_regexp, options.columns, (if flags.no_header, do: false, else: true))
+				:script             -> Core.write_script_for_machine(args.hostname, args.output_file, allow_warnings: flags.allow_warnings)
+				:configure          -> configure_many(args.hostname_regexp, options.backup_ssh_port, flags.show_progress, flags.allow_warnings)
+				:setup              -> setup_many(args.hostname_regexp, options.backup_ssh_port)
+				:ssh_config         -> ssh_config()
+				:connectivity       -> Core.connectivity(args.type)
+				:wireguard_config   -> wireguard_config(args.hostname)
+				:hosts_json_file    -> hosts_json_file(args.hostname)
+				:portable_erlang    -> portable_erlang(args.hostname, args.directory)
+				:probe              -> probe_many(args.hostname_regexp, options.backup_ssh_port)
+				:exec               -> exec_many(args.hostname_regexp, flags.shell, all_arguments(args.command, unknown))
+				:upgrade            -> upgrade_many(args.hostname_regexp, options.backup_ssh_port)
+				:reboot             -> reboot_many(args.hostname_regexp)
+				:shutdown           -> shutdown_many(args.hostname_regexp)
+				:wait               -> wait_many(args.hostname_regexp)
+				:add                -> Core.add(args.hostname, options.public_ip, options.host_machine, options.ssh_port, options.wireguard_port, options.country, options.release, options.boot, options.tag)
+				:rm                 -> Core.rm_many(Core.machines_matching_regexp(args.hostname_regexp))
+				:tag                -> Core.tag_many(Core.machines_matching_regexp(args.hostname_regexp),   all_arguments(args.tag, unknown))
+				:untag              -> Core.untag_many(Core.machines_matching_regexp(args.hostname_regexp), all_arguments(args.tag, unknown))
+				:get_tags           -> get_tags(args.hostname)
+				:set_public_ip      -> Core.set_public_ip(args.hostname, args.public_ip)
+				:set_ssh_port       -> Core.set_ssh_port_many(Core.machines_matching_regexp(args.hostname_regexp), args.ssh_port)
+				:set_wireguard_port -> Core.set_wireguard_port_many(Core.machines_matching_regexp(args.hostname_regexp), args.wireguard_port)
+				:set_host_machine   -> set_host_machine_many(args.hostname_regexp, args.host_machine)
+				:rekey_wireguard    -> Core.rekey_wireguard_many(Core.machines_matching_regexp(args.hostname_regexp))
+			end
 		end
+	end
+
+	defp net(subcommands, args, _options, _flags, _unknown) do
+		subcommand = case subcommands do
+			[subcommand] -> subcommand
+			_            -> raise("Subcommand required; see: mm help net")
+		end
+		case subcommand do
+			:ls  -> net_ls()
+			:add -> net_add(args.netname, args.parent)
+			:rm  -> net_rm(args.netname)
+		end
+	end
+
+	defp net_ls() do
+
+	end
+
+	defp net_add(_netname, _parent) do
+
+	end
+
+	defp net_rm(_netname) do
+
 	end
 
 	defp color_option() do

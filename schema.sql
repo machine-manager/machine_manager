@@ -10,6 +10,7 @@
 SET ROLE machine_manager;
 
 CREATE DOMAIN hostname         AS varchar(32)  CHECK(VALUE ~ '\A[-_a-z0-9]+\Z');
+CREATE DOMAIN netname          AS varchar(32)  CHECK(VALUE ~ '\A[-_a-z0-9]+\Z');
 CREATE DOMAIN port             AS integer      CHECK(VALUE > 0 AND VALUE <= 65536);
 CREATE DOMAIN country          AS character(2) CHECK(VALUE ~ '\A[a-z]{2}\Z');
 CREATE DOMAIN release          AS varchar(10)  CHECK(VALUE ~ '\A[a-z]{2,10}\Z');
@@ -26,7 +27,6 @@ CREATE DOMAIN wireguard_key    AS bytea        CHECK(length(VALUE) = 44);
 CREATE TABLE machines (
 	-- Access information
 	hostname                        hostname      NOT NULL PRIMARY KEY,
-	public_ip                       inet          NOT NULL,
 	wireguard_ip                    inet          NOT NULL,
 	wireguard_port                  port          NOT NULL,
 	wireguard_privkey               wireguard_key NOT NULL,
@@ -53,14 +53,12 @@ CREATE TABLE machines (
 	-- Metadata
 	added_time        timestamp with time zone NOT NULL DEFAULT now(),
 
-	UNIQUE (public_ip, ssh_port),
-	UNIQUE (public_ip, wireguard_port),
 	UNIQUE (wireguard_ip),
 	UNIQUE (wireguard_privkey),
 	UNIQUE (wireguard_pubkey),
 	UNIQUE (host_machine, ssh_port_on_host_machine),
 	UNIQUE (host_machine, wireguard_port_on_host_machine),
-	FOREIGN KEY (host_machine) references machines(hostname)
+	FOREIGN KEY (host_machine) REFERENCES machines(hostname)
 );
 
 CREATE INDEX host_machine_idx ON machines (host_machine);
@@ -77,4 +75,17 @@ CREATE TABLE machine_pending_upgrades (
 	old_version  varchar  NOT NULL,
 	new_version  varchar  NOT NULL,
 	PRIMARY KEY(hostname, package)
+);
+
+CREATE TABLE machine_networks (
+	hostname  hostname NOT NULL REFERENCES machines,
+	network   netname  NOT NULL REFERENCES networks(name),
+	ip        inet     NOT NULL,
+	PRIMARY KEY(hostname, network),
+	UNIQUE (network, ip)
+);
+
+CREATE TABLE networks (
+	name    netname NOT NULL PRIMARY KEY,
+	parent  netname REFERENCES networks(name)
 );
