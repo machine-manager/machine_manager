@@ -166,7 +166,10 @@ defmodule MachineManager.CLI do
 					about: "Execute command on machines",
 					args: [
 						hostname_regexp: [required: true, help: hostname_regexp_help],
-						command:         [required: true, help: "Command to execute on each machine (executed without shell interpretation; additional arguments are passed to command)", value_name: "COMMAND..."],
+						command:         [required: true, help: "Command to execute on each machine (by default, executed without shell interpretation; additional arguments are passed to command)", value_name: "COMMAND..."],
+					],
+					flags: [
+						shell: [short: "-s", long: "--shell", help: "Run command with shell interpretation (must give just one COMMAND)"],
 					],
 					allow_unknown_args: true,
 				],
@@ -286,7 +289,7 @@ defmodule MachineManager.CLI do
 			:hosts_json_file    -> hosts_json_file(args.hostname)
 			:portable_erlang    -> portable_erlang(args.hostname, args.directory)
 			:probe              -> probe_many(args.hostname_regexp, options.backup_ssh_port)
-			:exec               -> exec_many(args.hostname_regexp, all_arguments(args.command, unknown))
+			:exec               -> exec_many(args.hostname_regexp, flags.shell, all_arguments(args.command, unknown))
 			:upgrade            -> upgrade_many(args.hostname_regexp, options.backup_ssh_port)
 			:reboot             -> reboot_many(args.hostname_regexp)
 			:shutdown           -> shutdown_many(args.hostname_regexp)
@@ -443,10 +446,19 @@ defmodule MachineManager.CLI do
 		nonzero_exit_if_errors(error_counter)
 	end
 
-	defp exec_many(hostname_regexp, command) do
+	defp exec_many(hostname_regexp, shell, command) do
 		error_counter = Counter.new()
+		command = case shell do
+			true ->
+				case command do
+					[s] -> s
+					_   -> raise("If shell interpretation is enabled, provide exactly one command; got #{inspect command}")
+				end
+			_ -> command
+		end
 		Core.exec_many(
 			Core.machines_matching_regexp(hostname_regexp),
+			shell,
 			command,
 			fn hostname, task_result -> handle_exec_result(hostname, task_result, error_counter) end,
 			&handle_waiting/1

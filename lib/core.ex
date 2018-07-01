@@ -216,6 +216,17 @@ defmodule MachineManager.Core do
 		|> MapSet.new
 	end
 
+	defp temp_portable_erlangs(architectures) do
+		for arch <- architectures do
+			temp_dir        = FileUtil.temp_dir("machine_manager_portable_erlang")
+			portable_erlang = Path.join(temp_dir, "erlang")
+			File.mkdir!(portable_erlang)
+			PortableErlang.make_portable_erlang(portable_erlang, arch)
+			{arch, portable_erlang}
+		end
+		|> Map.new
+	end
+
 	# We use this to avoid compiling a script N times for N machines with the same roles.
 	defp write_scripts_for_machines(rows, allow_warnings \\ false) do
 		unique_role_combinations =
@@ -410,7 +421,7 @@ defmodule MachineManager.Core do
 			{"", 0}          -> nil
 			{out, exit_code} -> raise_upload_error(ProbeError, row.hostname, out, exit_code, inspect(files))
 		end
-		{output, exit_code} = run_on_machine(row, [".cache/machine_manager/erlang/bin/escript", ".cache/machine_manager/machine_probe"], retry_on_port: retry_on_port)
+		{output, exit_code} = run_on_machine(row, ".cache/machine_manager/erlang/bin/escript .cache/machine_manager/machine_probe", shell: true, retry_on_port: retry_on_port)
 		case exit_code do
 			0 ->
 				json = get_json_from_probe_output(output)
@@ -654,23 +665,22 @@ defmodule MachineManager.Core do
 	defp ssh_connect_timeout(), do: 10
 
 	defp install_rsync_on_machine(row, opts) do
-		run_on_machine(row, [
-			"sh", "-c",
+		run_on_machine(row,
 			"""
 			(apt-get update -q || apt-get update -q || echo "apt-get update failed twice but continuing anyway") &&
 			env DEBIAN_FRONTEND=noninteractive apt-get --quiet --assume-yes --no-install-recommends install rsync
-			"""],
-			opts)
+			""",
+			[shell: true] ++ opts)
 	end
 
-	def exec_many(queryable, command, handle_exec_result, handle_waiting) do
+	def exec_many(queryable, shell, command, handle_exec_result, handle_waiting) do
 		rows = list(queryable)
 		# When calling run_on_machine, don't allow retry because the command may
 		# return exit code 255 (the same as ssh's connection failure exit code)
 		# and yet not be safe to run again.
 		task_map =
 			rows
-			|> Enum.map(fn row -> {row.hostname, Task.async(fn -> run_on_machine(row, command) end)} end)
+			|> Enum.map(fn row -> {row.hostname, Task.async(fn -> run_on_machine(row, command, shell: shell) end)} end)
 			|> Map.new
 		Parallel.block_on_tasks(task_map, handle_exec_result, handle_waiting, 2000)
 	end
@@ -715,21 +725,22 @@ defmodule MachineManager.Core do
 				# TODO: if disk is very low, first run
 				# apt-get clean
 				# apt-get autoremove --quiet --assume-yes
-				command = ["sh", "-c", """
-				apt-get update > /dev/null 2>&1 &&
-				env \
-					DEBIAN_FRONTEND=noninteractive \
-					APT_LISTCHANGES_FRONTEND=none \
-					APT_LISTBUGS_FRONTEND=none \
-					apt-get install \
-						-y --no-install-recommends --only-upgrade \
-						-o Dpkg::Options::=--force-confdef \
-						-o Dpkg::Options::=--force-confold \
-						-- \
-						#{upgrade_args |> Enum.map(&inspect/1) |> Enum.join(" ")} &&
-				apt-get autoremove --quiet --assume-yes
-				"""]
-				{output, exit_code} = run_on_machine(row, command)
+				command =
+					"""
+					apt-get update > /dev/null 2>&1 &&
+					env \
+						DEBIAN_FRONTEND=noninteractive \
+						APT_LISTCHANGES_FRONTEND=none \
+						APT_LISTBUGS_FRONTEND=none \
+						apt-get install \
+							-y --no-install-recommends --only-upgrade \
+							-o Dpkg::Options::=--force-confdef \
+							-o Dpkg::Options::=--force-confold \
+							-- \
+							#{upgrade_args |> Enum.map(&inspect/1) |> Enum.join(" ")} &&
+					apt-get autoremove --quiet --assume-yes
+					"""
+				{output, exit_code} = run_on_machine(row, command, shell: true)
 				if exit_code != 0 do
 					raise(UpgradeError,
 						"""
@@ -748,19 +759,19 @@ defmodule MachineManager.Core do
 	end
 
 	defp reboot(row) do
-		{_, 0} = run_on_machine(row, reboot_command())
+		{_, 0} = run_on_machine(row, reboot_command(), shell: true)
 	end
 
 	def reboot_many(queryable, handle_exec_result, handle_waiting) do
-		exec_many(queryable, reboot_command(), handle_exec_result, handle_waiting)
+		exec_many(queryable, true, reboot_command(), handle_exec_result, handle_waiting)
 	end
 
 	def shutdown_many(queryable, handle_exec_result, handle_waiting) do
-		exec_many(queryable, shutdown_command(), handle_exec_result, handle_waiting)
+		exec_many(queryable, true, shutdown_command(), handle_exec_result, handle_waiting)
 	end
 
-	defp reboot_command(),   do: ["sh", "-c", "nohup sh -c 'sleep #{delay_before_shutdown()}; systemctl reboot'   > /dev/null 2>&1 < /dev/null &"]
-	defp shutdown_command(), do: ["sh", "-c", "nohup sh -c 'sleep #{delay_before_shutdown()}; systemctl poweroff' > /dev/null 2>&1 < /dev/null &"]
+	defp reboot_command(),   do: "nohup sh -c 'sleep #{delay_before_shutdown()}; systemctl reboot'   > /dev/null 2>&1 < /dev/null &"
+	defp shutdown_command(), do: "nohup sh -c 'sleep #{delay_before_shutdown()}; systemctl poweroff' > /dev/null 2>&1 < /dev/null &"
 
 	@max_reboot_wait_time 1200
 
@@ -796,7 +807,7 @@ defmodule MachineManager.Core do
 	defp delay_before_shutdown(), do: 2
 
 	defp wait_for_machine(row, attempt) do
-		case run_on_machine(row, ["true"]) do
+		case run_on_machine(row, "true", shell: true) do
 			{_, 0} -> {"", 0}
 			{_, _} ->
 				# Maybe try again
@@ -807,58 +818,60 @@ defmodule MachineManager.Core do
 		end
 	end
 
-	defp run_on_machine(row, command, options \\ []) when is_list(command) do
+	defp run_on_machine(row, command, options) do
 		retry_on_port = options[:retry_on_port]
-		capture = case options[:capture] do
+		shell         = options[:shell] || false
+		capture       = case options[:capture] do
 			nil   -> true
 			true  -> true
 			false -> false
 		end
-		case ssh("root", to_ip_string(row.public_ip), row.ssh_port, command, capture) do
+		case ssh("root", to_ip_string(row.public_ip), row.ssh_port, shell, command, capture) do
 			{"", 255} when retry_on_port != nil ->
-				ssh("root", to_ip_string(row.public_ip), retry_on_port, command, capture)
+				ssh("root", to_ip_string(row.public_ip), retry_on_port, shell, command, capture)
 			{out, code} ->
 				{out, code}
 		end
 	end
 
-	defp temp_portable_erlangs(architectures) do
-		for arch <- architectures do
-			temp_dir        = FileUtil.temp_dir("machine_manager_portable_erlang")
-			portable_erlang = Path.join(temp_dir, "erlang")
-			File.mkdir!(portable_erlang)
-			PortableErlang.make_portable_erlang(portable_erlang, arch)
-			{arch, portable_erlang}
-		end
-		|> Map.new
-	end
-
 	@doc """
-	Runs `command` (without shell interpretation) on machine at `ip` and
-	`ssh_port` with user `user`, returns `{output, exit_code}`.  If `capture`
-	is `true`, `output` includes both stdout and stderr; if `false`, both
-	stdout and stderr are echoed to the terminal and `output` is `""`.
+	Runs `command` on machine at `ip` and `ssh_port` with user `user`, returns
+	`{output, exit_code}`.  If `shell` is false, `command` must be a list of
+	command and arguments to be run without shell interpretation; if true,
+	`command` must be a string containing a command to be run with
+	shell interpretation.  If `capture` is `true`, `output` includes both
+	stdout and stderr; if `false`, both stdout and stderr are echoed to the
+	terminal and `output` is `""`.
 
 	Note that if user has OpenSSH < 7.3 and ssh is configured to use
 	ControlMaster, this function will hang and not return after ssh is done.
 	See https://bugzilla.mindrot.org/show_bug.cgi?id=1988
 	"""
-	@spec ssh(String.t, String.t, integer, [String.t], boolean) :: {String.t, integer}
-	def ssh(user, ip, ssh_port, command, capture) when is_list(command) do
-		# Pass command over stdin to avoid having to quote arguments for shells
-		# https://unix.stackexchange.com/a/205569/109817
-		stdin    = Enum.join(command, "\x00")
-		ssh_args = ["-o", "ConnectTimeout=#{ssh_connect_timeout()}", "-q", "-p", "#{ssh_port}", "#{user}@#{ip}", "xargs -0 env --"]
-		# Use head -c to close stdin because Erlang is unable to
-		sh_args  = ["-c", "head -c #{byte_size(stdin)} | ssh #{ssh_args |> Enum.map(&insecure_quote/1) |> Enum.join(" ")}"]
+	@spec ssh(String.t, String.t, integer, boolean, String.t | [String.t], boolean) :: {String.t, integer}
+	def ssh(user, ip, ssh_port, shell, command, capture) do
+		base_ssh_args = ["-o", "ConnectTimeout=#{ssh_connect_timeout()}", "-q", "-p", "#{ssh_port}", "#{user}@#{ip}"]
+		{stdin, executable, args} = case shell do
+			false when is_list(command) ->
+				# ssh has no means to avoid the remote shell, but we can try to "escape" its
+				# effects by passing the command over stdin and running it with xargs -0 env --
+				# https://unix.stackexchange.com/a/205569/109817
+				stdin    = Enum.join(command, "\x00")
+				ssh_args = base_ssh_args ++ ["xargs -0 env --"]
+				# Use head -c to close stdin because Erlang is unable to
+				sh_args  = ["-c", "head -c #{byte_size(stdin)} | ssh #{ssh_args |> Enum.map(&insecure_quote/1) |> Enum.join(" ")}"]
+				{stdin, "sh", sh_args}
+			true when is_binary(command) ->
+				ssh_args = base_ssh_args ++ [command]
+				{"", "ssh", ssh_args}
+		end
 		case capture do
 			true ->
 				%Porcelain.Result{status: exit_code, out: out} =
-					Porcelain.exec("sh", sh_args, in: stdin)
+					Porcelain.exec(executable, args, in: stdin)
 				{out, exit_code}
 			false ->
 				%Porcelain.Result{status: exit_code} =
-					Porcelain.exec("sh", sh_args, in: stdin,
+					Porcelain.exec(executable, args, in: stdin,
 						out: {:file, Process.group_leader},
 						# "when using `Porcelain.Driver.Basic`, the only supported values
 						# are `nil` (stderr will be printed to the terminal) and `:out`."
