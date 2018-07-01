@@ -507,7 +507,7 @@ defmodule MachineManager.Core do
 		arguments = [".cache/machine_manager/erlang/bin/escript", ".cache/machine_manager/script"] ++ all_tags(row)
 		case show_progress do
 			true ->
-				{"", exit_code} = run_on_machine(row, arguments, capture: false, retry_on_port: retry_on_port)
+				{"", exit_code} = run_on_machine(row, arguments, retry_on_port: retry_on_port, capture: false)
 				case exit_code do
 					0 -> :configured
 					_ -> raise(ConfigureError,
