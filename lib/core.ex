@@ -510,8 +510,7 @@ defmodule MachineManager.Core do
 				{"", exit_code} = run_on_machine(row, arguments, retry_on_port: retry_on_port, capture: false)
 				case exit_code do
 					0 -> :configured
-					_ -> raise(ConfigureError,
-						"Configuring machine #{inspect row.hostname} failed with exit code #{exit_code}")
+					_ -> raise(ConfigureError, "Configuring machine #{inspect row.hostname} failed with exit code #{exit_code}")
 				end
 			false ->
 				{out, exit_code} = run_on_machine(row, arguments, retry_on_port: retry_on_port)
