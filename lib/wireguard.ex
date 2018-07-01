@@ -17,11 +17,9 @@ defmodule MachineManager.WireGuard do
 	"""
 	@spec get_wireguard_pubkey(String.t) :: String.t
 	def get_wireguard_pubkey(privkey) when byte_size(privkey) == 44 do
-		# `wg pubkey` waits for EOF, but Erlang can't close stdin, so use some
-		# bash that reads a single line and pipes it into `wg pubkey`.
-		# https://github.com/alco/porcelain/issues/37
+		# Use head -n to close stdin because Erlang is unable to
 		%Porcelain.Result{status: 0, out: pubkey} =
-			Porcelain.exec("bash", ["-c", "head -n 1 | wg pubkey"], in: privkey <> "\n")
+			Porcelain.exec("sh", ["-c", "head -n 1 | wg pubkey"], in: privkey <> "\n")
 		pubkey = String.trim_trailing(pubkey, "\n")
 		if byte_size(pubkey) != 44 do
 			raise(RuntimeError, "Public key from `wg pubkey` was of the wrong size")

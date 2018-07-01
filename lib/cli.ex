@@ -166,8 +166,9 @@ defmodule MachineManager.CLI do
 					about: "Execute command on machines",
 					args: [
 						hostname_regexp: [required: true, help: hostname_regexp_help],
-						command:         [required: true, help: "Command to execute on each machine"],
+						command:         [required: true, help: "Command to execute on each machine (executed without shell interpretation; additional arguments are passed to command)", value_name: "COMMAND..."],
 					],
+					allow_unknown_args: true,
 				],
 				add: [
 					name:  "add",
@@ -285,7 +286,7 @@ defmodule MachineManager.CLI do
 			:hosts_json_file    -> hosts_json_file(args.hostname)
 			:portable_erlang    -> portable_erlang(args.hostname, args.directory)
 			:probe              -> probe_many(args.hostname_regexp, options.backup_ssh_port)
-			:exec               -> exec_many(args.hostname_regexp, args.command)
+			:exec               -> exec_many(args.hostname_regexp, all_arguments(args.command, unknown))
 			:upgrade            -> upgrade_many(args.hostname_regexp, options.backup_ssh_port)
 			:reboot             -> reboot_many(args.hostname_regexp)
 			:shutdown           -> shutdown_many(args.hostname_regexp)

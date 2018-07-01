@@ -410,7 +410,7 @@ defmodule MachineManager.Core do
 			{"", 0}          -> nil
 			{out, exit_code} -> raise_upload_error(ProbeError, row.hostname, out, exit_code, inspect(files))
 		end
-		{output, exit_code} = run_on_machine(row, ".cache/machine_manager/erlang/bin/escript .cache/machine_manager/machine_probe", retry_on_port: retry_on_port)
+		{output, exit_code} = run_on_machine(row, [".cache/machine_manager/erlang/bin/escript", ".cache/machine_manager/machine_probe"], retry_on_port: retry_on_port)
 		case exit_code do
 			0 ->
 				json = get_json_from_probe_output(output)
@@ -494,23 +494,16 @@ defmodule MachineManager.Core do
 		end
 
 		arguments = [".cache/machine_manager/erlang/bin/escript", ".cache/machine_manager/script"] ++ all_tags(row)
-		for arg <- arguments do
-			if String.contains?(arg, " ") do
-				raise(ConfigureError,
-					"Argument list #{inspect arguments} contains an argument with a space: #{inspect arg}")
-			end
-		end
-
 		case show_progress do
 			true ->
-				{"", exit_code} = run_on_machine(row, Enum.join(arguments, " "), capture: false, retry_on_port: retry_on_port)
+				{"", exit_code} = run_on_machine(row, arguments, capture: false, retry_on_port: retry_on_port)
 				case exit_code do
 					0 -> :configured
 					_ -> raise(ConfigureError,
 						"Configuring machine #{inspect row.hostname} failed with exit code #{exit_code}")
 				end
 			false ->
-				{out, exit_code} = run_on_machine(row, Enum.join(arguments, " "), retry_on_port: retry_on_port)
+				{out, exit_code} = run_on_machine(row, arguments, retry_on_port: retry_on_port)
 				case exit_code do
 					0 -> :configured
 					_ -> raise_configure_error(row.hostname, out, exit_code)
@@ -661,11 +654,12 @@ defmodule MachineManager.Core do
 	defp ssh_connect_timeout(), do: 10
 
 	defp install_rsync_on_machine(row, opts) do
-		run_on_machine(row,
+		run_on_machine(row, [
+			"sh", "-c",
 			"""
 			(apt-get update -q || apt-get update -q || echo "apt-get update failed twice but continuing anyway") &&
 			env DEBIAN_FRONTEND=noninteractive apt-get --quiet --assume-yes --no-install-recommends install rsync
-			""",
+			"""],
 			opts)
 	end
 
@@ -721,7 +715,7 @@ defmodule MachineManager.Core do
 				# TODO: if disk is very low, first run
 				# apt-get clean
 				# apt-get autoremove --quiet --assume-yes
-				command = """
+				command = ["sh", "-c", """
 				apt-get update > /dev/null 2>&1 &&
 				env \
 					DEBIAN_FRONTEND=noninteractive \
@@ -734,7 +728,7 @@ defmodule MachineManager.Core do
 						-- \
 						#{upgrade_args |> Enum.map(&inspect/1) |> Enum.join(" ")} &&
 				apt-get autoremove --quiet --assume-yes
-				"""
+				"""]
 				{output, exit_code} = run_on_machine(row, command)
 				if exit_code != 0 do
 					raise(UpgradeError,
@@ -765,8 +759,8 @@ defmodule MachineManager.Core do
 		exec_many(queryable, shutdown_command(), handle_exec_result, handle_waiting)
 	end
 
-	defp reboot_command(),   do: "nohup sh -c 'sleep #{delay_before_shutdown()}; systemctl reboot'   > /dev/null 2>&1 < /dev/null &"
-	defp shutdown_command(), do: "nohup sh -c 'sleep #{delay_before_shutdown()}; systemctl poweroff' > /dev/null 2>&1 < /dev/null &"
+	defp reboot_command(),   do: ["sh", "-c", "nohup sh -c 'sleep #{delay_before_shutdown()}; systemctl reboot'   > /dev/null 2>&1 < /dev/null &"]
+	defp shutdown_command(), do: ["sh", "-c", "nohup sh -c 'sleep #{delay_before_shutdown()}; systemctl poweroff' > /dev/null 2>&1 < /dev/null &"]
 
 	@max_reboot_wait_time 1200
 
@@ -802,7 +796,7 @@ defmodule MachineManager.Core do
 	defp delay_before_shutdown(), do: 2
 
 	defp wait_for_machine(row, attempt) do
-		case run_on_machine(row, "true") do
+		case run_on_machine(row, ["true"]) do
 			{_, 0} -> {"", 0}
 			{_, _} ->
 				# Maybe try again
@@ -813,7 +807,7 @@ defmodule MachineManager.Core do
 		end
 	end
 
-	defp run_on_machine(row, command, options \\ []) do
+	defp run_on_machine(row, command, options \\ []) when is_list(command) do
 		retry_on_port = options[:retry_on_port]
 		capture = case options[:capture] do
 			nil   -> true
@@ -840,24 +834,31 @@ defmodule MachineManager.Core do
 	end
 
 	@doc """
-	Runs `command` on machine at `ip` and `ssh_port` with user `user`, returns
-	`{output, exit_code}`.  If `capture` is `true`, `output` includes both
-	stdout and stderr; if `false`, both stdout and stderr are echoed to the
-	terminal and `output` is `""`.
+	Runs `command` (without shell interpretation) on machine at `ip` and
+	`ssh_port` with user `user`, returns `{output, exit_code}`.  If `capture`
+	is `true`, `output` includes both stdout and stderr; if `false`, both
+	stdout and stderr are echoed to the terminal and `output` is `""`.
 
 	Note that if user has OpenSSH < 7.3 and ssh is configured to use
 	ControlMaster, this function will hang and not return after ssh is done.
 	See https://bugzilla.mindrot.org/show_bug.cgi?id=1988
 	"""
-	@spec ssh(String.t, String.t, integer, String.t, boolean) :: {String.t, integer}
-	def ssh(user, ip, ssh_port, command, capture) do
-		args = ["-o", "ConnectTimeout=#{ssh_connect_timeout()}", "-q", "-p", "#{ssh_port}", "#{user}@#{ip}", command]
+	@spec ssh(String.t, String.t, integer, [String.t], boolean) :: {String.t, integer}
+	def ssh(user, ip, ssh_port, command, capture) when is_list(command) do
+		# Pass command over stdin to avoid having to quote arguments for shells
+		# https://unix.stackexchange.com/a/205569/109817
+		stdin    = Enum.join(command, "\x00")
+		ssh_args = ["-o", "ConnectTimeout=#{ssh_connect_timeout()}", "-q", "-p", "#{ssh_port}", "#{user}@#{ip}", "xargs -0 env --"]
+		# Use head -c to close stdin because Erlang is unable to
+		sh_args  = ["-c", "head -c #{byte_size(stdin)} | ssh #{ssh_args |> Enum.map(&insecure_quote/1) |> Enum.join(" ")}"]
 		case capture do
 			true ->
-				System.cmd("ssh", args, stderr_to_stdout: true, env: env_for_ssh())
+				%Porcelain.Result{status: exit_code, out: out} =
+					Porcelain.exec("sh", sh_args, in: stdin)
+				{out, exit_code}
 			false ->
-				%Porcelain.Result{status: exit_code} = \
-					Porcelain.exec("ssh", args,
+				%Porcelain.Result{status: exit_code} =
+					Porcelain.exec("sh", sh_args, in: stdin,
 						out: {:file, Process.group_leader},
 						# "when using `Porcelain.Driver.Basic`, the only supported values
 						# are `nil` (stderr will be printed to the terminal) and `:out`."
@@ -866,6 +867,12 @@ defmodule MachineManager.Core do
 					)
 				{"", exit_code}
 		end
+	end
+
+	defp insecure_quote(s) do
+		s
+		|> String.replace("\\", "\\\\")
+		|> String.replace(" ", "\\ ")
 	end
 
 	defp all_tags(row) do
