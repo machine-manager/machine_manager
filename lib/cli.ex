@@ -23,6 +23,7 @@ defmodule MachineManager.CLI do
 
 	def main(argv) do
 		hostname_regexp_help   = "Regular expression used to match hostnames. Automatically wrapped with ^ and $."
+		hostname_help          = "Machine hostname"
 		boot_mode_help         = "Boot mode (outside, mbr, uefi, or scaleway_kexec); use outside for containers"
 		option_backup_ssh_port = [long: "--backup-ssh-port", help: "Retry on this SSH port if the configured SSH ports fails.", default: 22]
 		spec = Optimus.new!(
@@ -92,30 +93,30 @@ defmodule MachineManager.CLI do
 					name:  "wireguard_config",
 					about: "Output a WireGuard configuration file for a machine to stdout",
 					args: [
-						hostname: [required: true],
+						hostname: [required: true, help: hostname_help],
 					],
 				],
 				hosts_json_file: [
 					name:  "hosts_json_file",
 					about: "Output the .wg and .pi hosts for a machine as JSON to stdout",
 					args: [
-						hostname: [required: true],
+						hostname: [required: true, help: hostname_help],
 					],
 				],
 				portable_erlang: [
 					name:  "portable_erlang",
 					about: "Write a portable Erlang installation for a machine to the given directory (must not exist)",
 					args: [
-						hostname:  [required: true],
-						directory: [required: true],
+						hostname:  [required: true, help: hostname_help],
+						directory: [required: true, help: "Output directory"],
 					],
 				],
 				script: [
 					name:  "script",
 					about: "Write a configuration script suitable for a particular machine.  Note that tags must be passed to the script as arguments when it is run on the target machine.",
 					args: [
-						hostname:    [required: true],
-						output_file: [required: true],
+						hostname:    [required: true, help: hostname_help],
+						output_file: [required: true, help: "Output file"],
 					],
 					flags: [
 						allow_warnings: [long: "--allow-warnings", help: "Write the script even if there are warnings during the build."],
@@ -202,7 +203,7 @@ defmodule MachineManager.CLI do
 					name:  "add",
 					about: "Add a machine",
 					args: [
-						hostname: [required: true],
+						hostname: [required: true, help: hostname_help],
 					],
 					options: [
 						public_ip:      [short: "-i", long: "--public-ip",      required: true,                  help: "Public IP address"],
@@ -247,15 +248,16 @@ defmodule MachineManager.CLI do
 						color: color_option(),
 					],
 					args: [
-						hostname: [required: true],
+						hostname: [required: true, help: hostname_help],
 					],
 				],
-				set_public_ip: [
-					name:  "set-public-ip",
-					about: "Set new public IP for a machine",
+				set_ip: [
+					name:  "set-ip",
+					about: "Set an IP address for a machine",
 					args: [
-						hostname:  [required: true],
-						public_ip: [required: true],
+						hostname: [required: true, help: hostname_help],
+						network:  [required: true, help: "Network name"],
+						address:  [required: true, help: "IPv4 or IPv6 address"],
 					],
 				],
 				set_ssh_port: [
@@ -330,13 +332,29 @@ defmodule MachineManager.CLI do
 				:tag                -> Core.tag_many(Core.machines_matching_regexp(args.hostname_regexp),   all_arguments(args.tag, unknown))
 				:untag              -> Core.untag_many(Core.machines_matching_regexp(args.hostname_regexp), all_arguments(args.tag, unknown))
 				:get_tags           -> get_tags(args.hostname)
-				:set_public_ip      -> Core.set_public_ip(args.hostname, args.public_ip)
+				:set_ip             -> set_ip(args.hostname, args.network, args.address)
 				:set_ssh_port       -> Core.set_ssh_port_many(Core.machines_matching_regexp(args.hostname_regexp), args.ssh_port)
 				:set_wireguard_port -> Core.set_wireguard_port_many(Core.machines_matching_regexp(args.hostname_regexp), args.wireguard_port)
 				:set_host_machine   -> set_host_machine_many(args.hostname_regexp, args.host_machine)
 				:rekey_wireguard    -> Core.rekey_wireguard_many(Core.machines_matching_regexp(args.hostname_regexp))
 			end
 		end
+	end
+
+	defp color_option() do
+		[
+			long:     "--color",
+			help:     ~s(Default "auto"; use "always" to output ANSI color codes even to non-terminals; "never" to never output ANSI color codes even to terminals),
+			parser:   fn(s) ->
+				case s do
+					"auto"   -> {:ok, :auto}
+					"always" -> {:ok, :always}
+					"never"  -> {:ok, :never}
+					nil      -> {:ok, :auto}
+					other    -> {:error, "Unexpected value for --color: #{inspect other}"}
+				end
+			end,
+		]
 	end
 
 	defp net(subcommands, args, _options, _flags, _unknown) do
@@ -360,12 +378,7 @@ defmodule MachineManager.CLI do
 	end
 
 	defp net_add(name, parent) do
-		parent = case parent do
-			""  -> nil
-			"-" -> nil
-			s   -> s
-		end
-		Core.net_add(name, parent)
+		Core.net_add(name, empty_to_nil(parent))
 	end
 
 	defp print_tree(tree, key, depth) do
@@ -374,22 +387,6 @@ defmodule MachineManager.CLI do
 			IO.puts("#{indent}#{name}")
 			print_tree(tree, name, depth + 1)
 		end
-	end
-
-	defp color_option() do
-		[
-			long:     "--color",
-			help:     ~s(Default "auto"; use "always" to output ANSI color codes even to non-terminals; "never" to never output ANSI color codes even to terminals),
-			parser:   fn(s) ->
-				case s do
-					"auto"   -> {:ok, :auto}
-					"always" -> {:ok, :always}
-					"never"  -> {:ok, :never}
-					nil      -> {:ok, :auto}
-					other    -> {:error, "Unexpected value for --color: #{inspect other}"}
-				end
-			end,
-		]
 	end
 
 	# https://github.com/savonarola/optimus/issues/3
@@ -579,13 +576,20 @@ defmodule MachineManager.CLI do
 	end
 
 	defp set_host_machine_many(hostname_regexp, host_machine) do
-		host_machine = case host_machine do
-			""  -> nil
-			"-" -> nil
-			s   -> s
-		end
-		Core.set_host_machine_many(Core.machines_matching_regexp(hostname_regexp), host_machine)
+		Core.set_host_machine_many(Core.machines_matching_regexp(hostname_regexp), empty_to_nil(host_machine))
 	end
+
+	defp set_ip(hostname, network, address) do
+		address = empty_to_nil(address)
+		case address do
+			nil -> Core.unset_ip(hostname, network, address)
+			_   -> Core.set_ip(hostname, network, address)
+		end
+	end
+
+	defp empty_to_nil(""),  do: nil
+	defp empty_to_nil("-"), do: nil
+	defp empty_to_nil(s),   do: s
 
 	defp list(hostname_regexp, columns, print_header) do
 		hostname_regexp = case hostname_regexp do

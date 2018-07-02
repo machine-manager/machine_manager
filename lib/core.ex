@@ -1067,11 +1067,21 @@ defmodule MachineManager.Core do
 		end)
 	end
 
-	@spec set_public_ip(String.t, String.t) :: nil
-	def set_public_ip(hostname, public_ip) do
-		from("machines")
-		|> where([m], m.hostname == ^hostname)
-		|> Repo.update_all(set: [public_ip: to_ip_postgrex(public_ip)])
+	@spec set_ip(String.t, String.t, String.t) :: nil
+	def set_ip(hostname, network, address) do
+		Repo.insert_all("machine_addresses", [[
+			hostname: hostname,
+			network:  network,
+			address:  to_ip_postgrex(address),
+		]], on_conflict: :nothing)
+	end
+
+	@spec unset_ip(String.t, String.t, String.t) :: nil
+	def unset_ip(hostname, network, address) do
+		address = to_ip_postgrex(address)
+		from("machine_addresses")
+		|> where([a], a.hostname == ^hostname and a.network == ^network and a.address == ^address)
+		|> Repo.delete_all
 		nil
 	end
 
