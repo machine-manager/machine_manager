@@ -27,7 +27,7 @@ defmodule MachineManager.CLI do
 		boot_mode_help         = "Boot mode (outside, mbr, uefi, or scaleway_kexec); use outside for containers"
 		option_backup_ssh_port = [long: "--backup-ssh-port", help: "Retry on this SSH port if the configured SSH ports fails.", default: 22]
 		spec = Optimus.new!(
-			name:               "machine_manager",
+			name:               "mm",
 			description:        "machine_manager",
 			allow_unknown_args: false,
 			parse_double_dash:  true,
@@ -302,6 +302,17 @@ defmodule MachineManager.CLI do
 				],
 			]
 		)
+
+		# Rewrite argv to optimus' expectations
+		argv = case argv do
+			[]                 -> ["--help"]
+			["help"]           -> ["--help"]
+			["net", "help"]    -> ["help", "net"]
+			["net", "help", c] -> ["help", "net", c]
+			["net", "--help"]  -> ["help", "net"]
+			other              -> other
+		end
+
 		{subcommands, %{args: args, options: options, flags: flags, unknown: unknown}} =
 			case Optimus.parse!(spec, argv) do
 				{subcommands, rest} -> {subcommands, rest}
