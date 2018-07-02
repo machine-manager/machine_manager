@@ -346,7 +346,7 @@ defmodule MachineManager.CLI do
 		end
 		case subcommand do
 			:ls  -> net_ls()
-			:add -> Core.net_add(args.netname, args.parent)
+			:add -> net_add(args.netname, args.parent)
 			:rm  -> Core.net_rm(args.netname)
 		end
 	end
@@ -357,6 +357,15 @@ defmodule MachineManager.CLI do
 			Map.update(acc, parent, [name], fn existing -> [name | existing] end)
 		end)
 		print_tree(tree, nil, 0)
+	end
+
+	defp net_add(name, parent) do
+		parent = case parent do
+			""  -> nil
+			"-" -> nil
+			s   -> s
+		end
+		Core.net_add(name, parent)
 	end
 
 	defp print_tree(tree, key, depth) do
