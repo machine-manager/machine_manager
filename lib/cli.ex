@@ -260,6 +260,15 @@ defmodule MachineManager.CLI do
 						address:  [required: true, help: "IPv4 address"],
 					],
 				],
+				unset_ip: [
+					name:  "unset-ip",
+					about: "Remove an IP address for a machine",
+					args: [
+						hostname: [required: true, help: hostname_help],
+						network:  [required: true, help: "Network name"],
+						address:  [required: true, help: "IPv4 address"],
+					],
+				],
 				set_ssh_port: [
 					name:  "set-ssh-port",
 					about: "Set a new SSH port for machines",
@@ -332,7 +341,8 @@ defmodule MachineManager.CLI do
 				:tag                -> Core.tag_many(Core.machines_matching_regexp(args.hostname_regexp),   all_arguments(args.tag, unknown))
 				:untag              -> Core.untag_many(Core.machines_matching_regexp(args.hostname_regexp), all_arguments(args.tag, unknown))
 				:get_tags           -> get_tags(args.hostname)
-				:set_ip             -> set_ip(args.hostname, args.network, args.address)
+				:set_ip             -> Core.set_ip(args.hostname, args.network, args.address)
+				:unset_ip           -> Core.unset_ip(args.hostname, args.network, args.address)
 				:set_ssh_port       -> Core.set_ssh_port_many(Core.machines_matching_regexp(args.hostname_regexp), args.ssh_port)
 				:set_wireguard_port -> Core.set_wireguard_port_many(Core.machines_matching_regexp(args.hostname_regexp), args.wireguard_port)
 				:set_host_machine   -> set_host_machine_many(args.hostname_regexp, args.host_machine)
@@ -577,14 +587,6 @@ defmodule MachineManager.CLI do
 
 	defp set_host_machine_many(hostname_regexp, host_machine) do
 		Core.set_host_machine_many(Core.machines_matching_regexp(hostname_regexp), empty_to_nil(host_machine))
-	end
-
-	defp set_ip(hostname, network, address) do
-		address = empty_to_nil(address)
-		case address do
-			nil -> Core.unset_ip(hostname, network, address)
-			_   -> Core.set_ip(hostname, network, address)
-		end
 	end
 
 	defp empty_to_nil(""),  do: nil
