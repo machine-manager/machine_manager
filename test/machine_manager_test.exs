@@ -44,6 +44,37 @@ defmodule MachineManager.CoreTest do
 		assert Core.ip_private?({127, 255, 255, 255}) == true
 	end
 
+	@invalid_ipv4_addresses [
+		{"a", "b", "c", "d"},
+		{-1, 2, 3, 4},
+		{1, -2, 3, 4},
+		{1, 2, -3, 4},
+		{1, 2, 3, -4},
+		{1, 2, 3, "4e1"},
+		{256, 2, 3, 4},
+		{1, 256, 3, 4},
+		{1, 2, 256, 4},
+		{1, 2, 3, 256},
+	]
+
+	test "to_ip_tuple" do
+		assert Core.to_ip_tuple("1.2.3.4")                                          == {1, 2, 3, 4}
+		assert Core.to_ip_tuple(%Postgrex.INET{address: {0, 1, 2, 3}, netmask: 32}) == {0, 1, 2, 3}
+		for {a, b, c, d} <- @invalid_ipv4_addresses do
+			assert_raise(ArgumentError, fn -> Core.to_ip_tuple("#{a}.#{b}.#{c}.#{d}") end)
+			assert_raise(ArgumentError, fn -> Core.to_ip_tuple(%Postgrex.INET{address: {a, b, c, d}}) end)
+		end
+	end
+
+	test "to_ip_postgrex" do
+		assert Core.to_ip_postgrex("1.2.3.4")    == %Postgrex.INET{address: {1, 2, 3, 4}, netmask: 32}
+		assert Core.to_ip_postgrex({0, 1, 2, 3}) == %Postgrex.INET{address: {0, 1, 2, 3}, netmask: 32}
+		for {a, b, c, d} <- @invalid_ipv4_addresses do
+			assert_raise(ArgumentError, fn -> Core.to_ip_postgrex("#{a}.#{b}.#{c}.#{d}") end)
+			assert_raise(ArgumentError, fn -> Core.to_ip_postgrex({a, b, c, d}) end)
+		end
+	end
+
 	test "make_hosts_json_file" do
 		self_row         = %{hostname: "me", public_ip: "1.1.1.1", wireguard_ip: "10.10.0.1"}
 		graphs           = %{wireguard: %{}, public: %{}}

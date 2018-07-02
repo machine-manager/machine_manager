@@ -1207,8 +1207,9 @@ defmodule MachineManager.Core do
 		"^#{hostname_regexp}$"
 	end
 
-	defp to_ip_postgrex(ip) when is_tuple(ip),  do: %Postgrex.INET{address: ip,              netmask: 32}
-	defp to_ip_postgrex(ip) when is_binary(ip), do: %Postgrex.INET{address: to_ip_tuple(ip), netmask: 32}
+	def to_ip_postgrex(ip) do
+		%Postgrex.INET{address: to_ip_tuple(ip), netmask: 32}
+	end
 
 	@spec to_ip_tuple(String.t) :: ip_tuple
 	def to_ip_tuple(s) when is_binary(s) do
@@ -1216,11 +1217,27 @@ defmodule MachineManager.Core do
 		|> String.split(".")
 		|> Enum.map(&String.to_integer/1)
 		|> List.to_tuple
+		|> validated_ip_tuple
 	end
-	def to_ip_tuple(%Postgrex.INET{address: address}),       do: address
+	def to_ip_tuple(%Postgrex.INET{address: address}), do: validated_ip_tuple(address)
+	def to_ip_tuple({_, _, _, _} = tuple),             do: validated_ip_tuple(tuple)
 
 	def to_ip_string(s) when is_binary(s),                   do: s
 	def to_ip_string(%Postgrex.INET{address: {a, b, c, d}}), do: "#{a}.#{b}.#{c}.#{d}"
+
+	defp validated_ip_tuple({a, b, c, d} = tuple) when \
+		is_integer(a) and \
+		is_integer(b) and \
+		is_integer(c) and \
+		is_integer(d) and \
+		a >= 0 and a < 256 and \
+		b >= 0 and b < 256 and \
+		c >= 0 and c < 256 and \
+		d >= 0 and d < 256 do
+
+		tuple
+	end
+	defp validated_ip_tuple(tuple), do: raise(ArgumentError, "Invalid IP tuple: #{inspect tuple}")
 
 	defp ip_connectable?(source, dest) do
 		# Some machines may have a "public" IP that is actually on a LAN;
