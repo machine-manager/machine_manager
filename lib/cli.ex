@@ -316,7 +316,7 @@ defmodule MachineManager.CLI do
 		{subcommands, %{args: args, options: options, flags: flags, unknown: unknown}} =
 			case Optimus.parse!(spec, argv) do
 				{subcommands, rest} -> {subcommands, rest}
-				%{}                 -> raise("Subcommand required; see: mm --help")
+				%{}                 -> raise("Subcommand required; see: mm help")
 			end
 
 		# https://github.com/erlang/otp/pull/480 was rejected, so instead we have the
