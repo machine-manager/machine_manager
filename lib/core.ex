@@ -48,10 +48,25 @@ defmodule MachineManager.Core do
 				})
 			|> group_by([u], u.hostname)
 
+		addresses_aggregate =
+			from("machine_addresses")
+			|> select([a], %{
+					hostname:  a.hostname,
+					addresses: fragment(
+						"""
+						array_agg(
+							json_build_object(
+								'network', ?,
+								'address', ?
+							)
+						)
+						""", a.network, a.address)
+				})
+			|> group_by([a], a.hostname)
+
 		queryable
-		|> select([m, t, u], %{
+		|> select([m, t, u, a], %{
 				hostname:                       m.hostname,
-				public_ip:                      m.public_ip,
 				wireguard_ip:                   m.wireguard_ip,
 				wireguard_port:                 m.wireguard_port,
 				wireguard_pubkey:               m.wireguard_pubkey,
@@ -65,6 +80,7 @@ defmodule MachineManager.Core do
 				boot:                           m.boot,
 				tags:                           coalesce(t.tags,             fragment("'{}'::varchar[]")),
 				pending_upgrades:               coalesce(u.pending_upgrades, fragment("'{}'::json[]")),
+				addresses:                      coalesce(a.addresses,        fragment("'{}'::json[]")),
 				last_probe_time:                type(m.last_probe_time, :utc_datetime),
 				boot_time:                      type(m.boot_time,       :utc_datetime),
 				cpu_model_name:                 m.cpu_model_name,
@@ -77,8 +93,20 @@ defmodule MachineManager.Core do
 			})
 		|> join(:left, [m], t in subquery(tags_aggregate),             on: t.hostname == m.hostname)
 		|> join(:left, [m], u in subquery(pending_upgrades_aggregate), on: u.hostname == m.hostname)
+		|> join(:left, [m], a in subquery(addresses_aggregate),        on: a.hostname == m.hostname)
 		|> order_by(asc: :hostname)
 		|> Repo.all
+		|> fix_addresses
+	end
+
+	defp fix_addresses(rows) do
+		for row <- rows do
+			%{row | addresses: Enum.map(row.addresses, &fix_address/1)}
+		end
+	end
+
+	defp fix_address(%{"network" => network, "address" => address}) do
+		%{network: network, address: to_ip_postgrex(address)}
 	end
 
 	def net_list() do

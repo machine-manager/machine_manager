@@ -21,14 +21,19 @@ make_backup() {
 	create_backup_subset="\
 	DROP TABLE IF EXISTS machines__backup;
 	CREATE TABLE         machines__backup AS SELECT
-	                         hostname, public_ip, wireguard_ip, wireguard_privkey,
-	                         wireguard_pubkey, wireguard_port, ssh_port, added_time,
-	                         country, release, boot, host_machine, ssh_port_on_host_machine,
-	                         wireguard_port_on_host_machine
+	                         hostname, wireguard_ip, wireguard_privkey, wireguard_pubkey,
+	                         wireguard_port, ssh_port, added_time, country, release, boot,
+	                         host_machine, ssh_port_on_host_machine, wireguard_port_on_host_machine
 	                     FROM machines;
 
 	DROP TABLE IF EXISTS machine_tags__backup;
-	CREATE TABLE         machine_tags__backup AS SELECT hostname, tag FROM machine_tags;
+	CREATE TABLE         machine_tags__backup AS SELECT * FROM machine_tags;
+
+	DROP TABLE IF EXISTS networks__backup;
+	CREATE TABLE         networks__backup AS SELECT * FROM networks;
+
+	DROP TABLE IF EXISTS machine_addresses__backup;
+	CREATE TABLE         machine_addresses__backup AS SELECT * FROM machine_addresses;
 	"
 	echo "$create_backup_subset" | ssh "$ssh_user_host" "psql -v ON_ERROR_STOP=1 -d $db_name"
 
@@ -38,11 +43,15 @@ make_backup() {
 			--data-only \
 			--table machines__backup \
 			--table machine_tags__backup \
+			--table networks__backup \
+			--table machine_addresses__backup \
 			machine_manager
 		" > "$backup_file"
 	# Fix the backup to restore into the correct tables
-	sed -i -r 's,^COPY machines__backup ,COPY machines ,'         "$backup_file"
-	sed -i -r 's,^COPY machine_tags__backup ,COPY machine_tags ,' "$backup_file"
+	sed -i -r 's,^COPY machines__backup ,COPY machines ,'                   "$backup_file"
+	sed -i -r 's,^COPY machine_tags__backup ,COPY machine_tags ,'           "$backup_file"
+	sed -i -r 's,^COPY networks__backup ,COPY networks ,'                   "$backup_file"
+	sed -i -r 's,^COPY machine_addresses__backup ,COPY machine_addresses ,' "$backup_file"
 }
 
 if [[ "${1:-}" != "--use-existing-backup" ]]; then

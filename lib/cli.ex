@@ -637,7 +637,7 @@ defmodule MachineManager.CLI do
 
 	defp default_columns() do
 		[
-			"hostname", "public_ip", "wireguard_ip", "wireguard_port", "ssh_port",
+			"hostname", "addresses", "wireguard_ip", "wireguard_port", "ssh_port",
 			"host_machine", "country", "release", "boot", "tags", "ram_mb",
 			"cpu_model_name", "core_count", "thread_count", "last_probe_time",
 			"boot_time", "time_offset", "kernel", "pending_upgrades",
@@ -647,7 +647,7 @@ defmodule MachineManager.CLI do
 	defp get_column_spec() do
 		%{
 			"hostname"         => {"HOSTNAME",         fn row, _ -> row.hostname end},
-			"public_ip"        => {"PUBLIC IP",        fn row, _ -> row.public_ip    |> maybe_scramble_ip |> Core.to_ip_string end},
+			"addresses"        => {"ADDRESSES",        &format_addresses/2},
 			"wireguard_ip"     => {"WIREGUARD IP",     fn row, _ -> row.wireguard_ip |> Core.to_ip_string end},
 			"wireguard_port"   => {"WG",               fn row, _ -> row.wireguard_port end},
 			"ssh_port"         => {"SSH",              fn row, _ -> row.ssh_port end},
@@ -667,6 +667,15 @@ defmodule MachineManager.CLI do
 			"kernel"           => {"KERNEL",           &format_kernel/2},
 			"pending_upgrades" => {"PENDING UPGRADES", &format_pending_upgrades/2},
 		}
+	end
+
+	defp format_addresses(row, _tag_frequency) do
+		row.addresses
+		|> Enum.map(
+			fn %{network: network, address: address} ->
+				"#{bolded(network)}#{with_fgcolor("=", {150, 150, 150})}#{Core.to_ip_string(maybe_scramble_ip(address))}"
+			end)
+		|> Enum.join(" ")
 	end
 
 	defp format_time_offset(row, _tag_frequency) do
