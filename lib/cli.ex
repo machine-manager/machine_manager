@@ -257,7 +257,7 @@ defmodule MachineManager.CLI do
 					args: [
 						hostname: [required: true, help: hostname_help],
 						network:  [required: true, help: "Network name"],
-						address:  [required: true, help: "IPv4 or IPv6 address"],
+						address:  [required: true, help: "IPv4 address"],
 					],
 				],
 				set_ssh_port: [
