@@ -356,7 +356,6 @@ defmodule MachineManager.CLI do
 			%{name: name, parent: parent} = network
 			Map.update(acc, parent, [name], fn existing -> [name | existing] end)
 		end)
-
 		print_tree(tree, nil, 0)
 	end
 
@@ -368,8 +367,8 @@ defmodule MachineManager.CLI do
 		end
 	end
 
-	defp net_add(_netname, _parent) do
-
+	defp net_add(netname, parent) do
+		Core.net_add(netname, parent)
 	end
 
 	defp net_rm(_netname) do

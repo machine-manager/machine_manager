@@ -87,6 +87,13 @@ defmodule MachineManager.Core do
 		|> Repo.all
 	end
 
+	def net_add(name, parent) do
+		Repo.insert_all("networks", [[
+			name:   name,
+			parent: parent,
+		]])
+	end
+
 	def ssh_config() do
 		rows =
 			from("machines")
