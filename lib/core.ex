@@ -81,6 +81,12 @@ defmodule MachineManager.Core do
 		|> Repo.all
 	end
 
+	def net_list() do
+		from("networks")
+		|> select([n], %{name: n.name, parent: n.parent})
+		|> Repo.all
+	end
+
 	def ssh_config() do
 		rows =
 			from("machines")

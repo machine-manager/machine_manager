@@ -352,7 +352,20 @@ defmodule MachineManager.CLI do
 	end
 
 	defp net_ls() do
+		tree = Enum.reduce(Core.net_list(), %{nil: []}, fn network, acc ->
+			%{name: name, parent: parent} = network
+			Map.update(acc, parent, [name], fn existing -> [name | existing] end)
+		end)
 
+		print_tree(tree, nil, 0)
+	end
+
+	defp print_tree(tree, key, depth) do
+		indent = String.duplicate("   ", depth)
+		for name <- tree[key] || [] do
+			IO.puts("#{indent}#{name}")
+			print_tree(tree, name, depth + 1)
+		end
 	end
 
 	defp net_add(_netname, _parent) do
