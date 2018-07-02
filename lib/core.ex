@@ -94,6 +94,12 @@ defmodule MachineManager.Core do
 		]])
 	end
 
+	def net_rm(name) do
+		from("networks")
+		|> where([n], n.name == ^name)
+		|> Repo.delete_all
+	end
+
 	def ssh_config() do
 		rows =
 			from("machines")

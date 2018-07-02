@@ -346,8 +346,8 @@ defmodule MachineManager.CLI do
 		end
 		case subcommand do
 			:ls  -> net_ls()
-			:add -> net_add(args.netname, args.parent)
-			:rm  -> net_rm(args.netname)
+			:add -> Core.net_add(args.netname, args.parent)
+			:rm  -> Core.net_rm(args.netname)
 		end
 	end
 
@@ -365,14 +365,6 @@ defmodule MachineManager.CLI do
 			IO.puts("#{indent}#{name}")
 			print_tree(tree, name, depth + 1)
 		end
-	end
-
-	defp net_add(netname, parent) do
-		Core.net_add(netname, parent)
-	end
-
-	defp net_rm(_netname) do
-
 	end
 
 	defp color_option() do
