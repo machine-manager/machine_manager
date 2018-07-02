@@ -77,12 +77,12 @@ CREATE TABLE machine_pending_upgrades (
 	PRIMARY KEY(hostname, package)
 );
 
-CREATE TABLE machine_networks (
+CREATE TABLE machine_addresses (
 	hostname  hostname NOT NULL REFERENCES machines,
 	network   netname  NOT NULL REFERENCES networks(name),
-	ip        inet     NOT NULL,
-	PRIMARY KEY(hostname, network),
-	UNIQUE (network, ip)
+	address   inet     NOT NULL,
+	PRIMARY KEY(hostname, network, address),
+	UNIQUE (network, address)
 );
 
 CREATE TABLE networks (
