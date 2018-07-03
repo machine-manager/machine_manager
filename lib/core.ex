@@ -842,15 +842,17 @@ defmodule MachineManager.Core do
 			|> Enum.map(fn row -> {
 					row.hostname,
 					Task.async(fn ->
-						# Wait for an existing reboot/shutdown command to start
-						Process.sleep(1000 * (delay_before_shutdown() + 1))
-
+						wait_for_existing_shutdown_to_start()
 						attempts = @max_reboot_wait_time / ssh_connect_timeout()
 						wait_for_machine(row, attempts)
 					end)
 				} end)
 			|> Map.new
 		Parallel.block_on_tasks(task_map, handle_exec_result, handle_waiting, 2000)
+	end
+
+	defp wait_for_existing_shutdown_to_start() do
+		Process.sleep(1000 * (delay_before_shutdown() + 1))
 	end
 
 	defp delay_before_shutdown(), do: 2
