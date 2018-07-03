@@ -94,10 +94,10 @@ defmodule MachineManager.Core do
 		|> join(:left, [m], a in subquery(addresses_aggregate),        on: a.hostname == m.hostname)
 		|> order_by(asc: :hostname)
 		|> Repo.all
-		|> fix_addresses
+		|> fix_rows
 	end
 
-	defp fix_addresses(rows) do
+	defp fix_rows(rows) do
 		for row <- rows do
 			%{row | addresses: Enum.map(row.addresses, &fix_address/1)}
 		end
