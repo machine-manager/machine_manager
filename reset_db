@@ -34,10 +34,13 @@ make_backup() {
 
 	DROP TABLE IF EXISTS machine_addresses__backup;
 	CREATE TABLE         machine_addresses__backup AS SELECT * FROM machine_addresses;
+
+	DROP TABLE IF EXISTS forwards__backup;
+	CREATE TABLE         forwards__backup AS SELECT * FROM forwards;
 	"
 	echo "$create_backup_subset" | ssh "$ssh_user_host" "psql -v ON_ERROR_STOP=1 -d $db_name"
 
-	tables=(machines machine_tags networks machine_addresses)
+	tables=(machines machine_tags networks machine_addresses forwards)
 	pg_dump_table_args=$(for table in ${tables[@]}; do echo -n " --table" "${table}__backup"; done)
 	echo $pg_dump_table_args
 

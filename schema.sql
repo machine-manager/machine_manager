@@ -9,20 +9,20 @@
 
 SET ROLE machine_manager;
 
-CREATE DOMAIN hostname         AS varchar(32)  CHECK(VALUE ~ '\A[-_a-z0-9]+\Z');
-CREATE DOMAIN netname          AS varchar(32)  CHECK(VALUE ~ '\A[-_a-z0-9]+\Z');
-CREATE DOMAIN port             AS integer      CHECK(VALUE > 0 AND VALUE <= 65536);
-CREATE DOMAIN country          AS character(2) CHECK(VALUE ~ '\A[a-z]{2}\Z');
-CREATE DOMAIN release          AS varchar(10)  CHECK(VALUE ~ '\A[a-z]{2,10}\Z');
-CREATE DOMAIN boot             AS varchar(14)  CHECK(VALUE ~ '\A[a-z]{3,14}\Z');
-CREATE DOMAIN int4_gt0         AS integer      CHECK(VALUE > 0);
-CREATE DOMAIN int2_gt0         AS integer      CHECK(VALUE > 0);
-CREATE DOMAIN tag              AS varchar      CHECK(VALUE ~ '\A[^\x00-\x20]+\Z');
-CREATE DOMAIN package          AS varchar      CHECK(VALUE ~ '\A[^\x00-\x20]+\Z');
-CREATE DOMAIN kernel           AS varchar(80)  CHECK(VALUE ~ '\A[^\x00-\x1F]+\Z');
-CREATE DOMAIN cpu_model_name   AS varchar(64)  CHECK(VALUE ~ '\A[^\x00-\x1F]+\Z');
-CREATE DOMAIN cpu_architecture AS varchar(8)   CHECK(VALUE ~ '\A[^\x00-\x20]+\Z');
-CREATE DOMAIN wireguard_key    AS bytea        CHECK(length(VALUE) = 44);
+CREATE DOMAIN hostname         AS varchar(32)  CHECK (VALUE ~ '\A[-_a-z0-9]+\Z');
+CREATE DOMAIN netname          AS varchar(32)  CHECK (VALUE ~ '\A[-_a-z0-9]+\Z');
+CREATE DOMAIN port             AS integer      CHECK (VALUE > 0 AND VALUE <= 65536);
+CREATE DOMAIN country          AS character(2) CHECK (VALUE ~ '\A[a-z]{2}\Z');
+CREATE DOMAIN release          AS varchar(10)  CHECK (VALUE ~ '\A[a-z]{2,10}\Z');
+CREATE DOMAIN boot             AS varchar(14)  CHECK (VALUE ~ '\A[a-z]{3,14}\Z');
+CREATE DOMAIN int4_gt0         AS integer      CHECK (VALUE > 0);
+CREATE DOMAIN int2_gt0         AS integer      CHECK (VALUE > 0);
+CREATE DOMAIN tag              AS varchar      CHECK (VALUE ~ '\A[^\x00-\x20]+\Z');
+CREATE DOMAIN package          AS varchar      CHECK (VALUE ~ '\A[^\x00-\x20]+\Z');
+CREATE DOMAIN kernel           AS varchar(80)  CHECK (VALUE ~ '\A[^\x00-\x1F]+\Z');
+CREATE DOMAIN cpu_model_name   AS varchar(64)  CHECK (VALUE ~ '\A[^\x00-\x1F]+\Z');
+CREATE DOMAIN cpu_architecture AS varchar(8)   CHECK (VALUE ~ '\A[^\x00-\x20]+\Z');
+CREATE DOMAIN wireguard_key    AS bytea        CHECK (length(VALUE) = 44);
 
 CREATE TABLE machines (
 	-- Access information
@@ -33,8 +33,8 @@ CREATE TABLE machines (
 	wireguard_pubkey                wireguard_key NOT NULL,
 	ssh_port                        port          NOT NULL,
 	host_machine                    hostname,
-	ssh_port_on_host_machine        port          CHECK(host_machine IS NULL OR ssh_port_on_host_machine IS NOT NULL),
-	wireguard_port_on_host_machine  port          CHECK(host_machine IS NULL OR wireguard_port_on_host_machine IS NOT NULL),
+	ssh_port_on_host_machine        port          CHECK (host_machine IS NULL OR ssh_port_on_host_machine IS NOT NULL),
+	wireguard_port_on_host_machine  port          CHECK (host_machine IS NULL OR wireguard_port_on_host_machine IS NOT NULL),
 	country                         country       NOT NULL,
 	release                         release       NOT NULL,
 	boot                            boot          NOT NULL,
@@ -66,7 +66,7 @@ CREATE INDEX host_machine_idx ON machines (host_machine);
 CREATE TABLE machine_tags (
 	hostname  hostname NOT NULL REFERENCES machines,
 	tag       tag      NOT NULL,
-	PRIMARY KEY(hostname, tag)
+	PRIMARY KEY (hostname, tag)
 );
 
 CREATE TABLE machine_pending_upgrades (
@@ -74,7 +74,7 @@ CREATE TABLE machine_pending_upgrades (
 	package      package  NOT NULL,
 	old_version  varchar  NOT NULL,
 	new_version  varchar  NOT NULL,
-	PRIMARY KEY(hostname, package)
+	PRIMARY KEY (hostname, package)
 );
 
 CREATE TABLE networks (
@@ -86,6 +86,14 @@ CREATE TABLE machine_addresses (
 	hostname  hostname NOT NULL REFERENCES machines,
 	network   netname  NOT NULL REFERENCES networks(name),
 	address   inet     NOT NULL,
-	PRIMARY KEY(hostname, network, address),
+	PRIMARY KEY (hostname, network, address),
 	UNIQUE (network, address)
+);
+
+CREATE TABLE forwards (
+	hostname    hostname     NOT NULL REFERENCES machines,
+	type        bytea        NOT NULL CHECK (type = 'ssh' OR type = 'wireguard'),
+	port        port         NOT NULL,
+	destination hostname     NOT NULL REFERENCES machines(hostname) CHECK (destination != hostname),
+	PRIMARY KEY (hostname, type, port)
 );
