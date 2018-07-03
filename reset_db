@@ -37,21 +37,16 @@ make_backup() {
 	"
 	echo "$create_backup_subset" | ssh "$ssh_user_host" "psql -v ON_ERROR_STOP=1 -d $db_name"
 
+	tables=(machines machine_tags networks machine_addresses)
+	pg_dump_table_args=$(for table in ${tables[@]}; do echo -n " --table" "${table}__backup"; done)
+	echo $pg_dump_table_args
+
 	# Create the backup file
-	ssh "$ssh_user_host" "\
-		pg_dump \
-			--data-only \
-			--table machines__backup \
-			--table machine_tags__backup \
-			--table networks__backup \
-			--table machine_addresses__backup \
-			machine_manager
-		" > "$backup_file"
+	ssh "$ssh_user_host" "pg_dump --data-only $pg_dump_table_args machine_manager" > "$backup_file"
 	# Fix the backup to restore into the correct tables
-	sed -i -r 's,^COPY machines__backup ,COPY machines ,'                   "$backup_file"
-	sed -i -r 's,^COPY machine_tags__backup ,COPY machine_tags ,'           "$backup_file"
-	sed -i -r 's,^COPY networks__backup ,COPY networks ,'                   "$backup_file"
-	sed -i -r 's,^COPY machine_addresses__backup ,COPY machine_addresses ,' "$backup_file"
+	for table in ${tables[@]}; do
+		sed -i -r "s,^COPY ${table}__backup ,COPY $table ," "$backup_file"
+	done
 }
 
 if [[ "${1:-}" != "--use-existing-backup" ]]; then
