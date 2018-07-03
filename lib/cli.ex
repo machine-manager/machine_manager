@@ -297,10 +297,12 @@ defmodule MachineManager.CLI do
 		# Rewrite argv to optimus' expectations
 		argv = case argv do
 			[]                 -> ["--help"]
+			["-h"]             -> ["--help"]
 			["help"]           -> ["--help"]
 			["net", "help"]    -> ["help", "net"]
 			["net", "help", c] -> ["help", "net", c]
 			["net", "--help"]  -> ["help", "net"]
+			["net", "-h"]      -> ["help", "net"]
 			other              -> other
 		end
 
