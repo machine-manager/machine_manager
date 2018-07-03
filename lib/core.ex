@@ -1041,6 +1041,7 @@ defmodule MachineManager.Core do
 			from("machine_tags")             |> where([t], t.hostname in ^hostnames) |> Repo.delete_all
 			from("machine_pending_upgrades") |> where([u], u.hostname in ^hostnames) |> Repo.delete_all
 			from("machine_addresses")        |> where([a], a.hostname in ^hostnames) |> Repo.delete_all
+			from("machine_forwards")         |> where([f], f.hostname in ^hostnames) |> Repo.delete_all
 			from("machines")                 |> where([m], m.hostname in ^hostnames) |> Repo.delete_all
 		end)
 	end
