@@ -919,7 +919,7 @@ defmodule MachineManager.Core do
 		case capture do
 			true ->
 				%Porcelain.Result{status: exit_code, out: out} =
-					Porcelain.exec(executable, args, in: stdin)
+					Porcelain.exec(executable, args, in: stdin, err: :out)
 				{out, exit_code}
 			false ->
 				%Porcelain.Result{status: exit_code} =
