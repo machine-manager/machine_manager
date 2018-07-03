@@ -21,6 +21,7 @@ defmodule MachineManager.Core do
 	alias Gears.{StringUtil, FileUtil}
 	import Ecto.Query
 	import Converge.Util, only: [architecture_for_tags: 1]
+	use Memoize
 
 	def list(queryable) do
 		tags_aggregate =
@@ -129,22 +130,24 @@ defmodule MachineManager.Core do
 	end
 
 	def ssh_config() do
-		rows =
-			from("machines")
-			|> order_by(asc: :hostname)
-			|> select([:hostname, :public_ip, :ssh_port])
-			|> Repo.all
+		rows    = from("machines") |> list
+		parents = network_parents()
 		for row <- rows do
-			sql_row_to_ssh_config_entry(row)
+			address = mm_reachable_address(row, parents)
+			case address do
+				nil -> nil
+				_   -> ssh_config_entry(row.hostname, address, row.ssh_port)
+			end
 		end
+		|> Enum.reject(&is_nil/1)
 		|> Enum.join("\n")
 	end
 
-	defp sql_row_to_ssh_config_entry(row) do
+	defp ssh_config_entry(hostname, address, ssh_port) do
 		"""
-		Host #{row.hostname}
-		  Hostname #{to_ip_string(row.public_ip)}
-		  Port #{row.ssh_port}
+		Host #{hostname}
+		  HostName #{to_ip_string(address)}
+		  Port #{ssh_port}
 		"""
 	end
 
@@ -592,9 +595,11 @@ defmodule MachineManager.Core do
 		(graphs.wireguard[self_row.hostname] || [])
 		|> Enum.map(fn hostname ->
 				peer_row = all_machines_map[hostname]
-				endpoint = case ip_connectable?(self_row.public_ip, peer_row.public_ip) do
-					true  -> "#{to_ip_string(peer_row.public_ip)}:#{peer_row.wireguard_port}"
-					false -> nil
+				parents  = network_parents()
+				endpoint = case reachable_addresses(parents, self_row, peer_row) do
+					[address | _] -> "#{to_ip_string(address)}:#{peer_row.wireguard_port}"
+					# We can't connect to them, but maybe they can connect to us
+					[] -> nil
 				end
 				allowed_ips = case hostname do
 					^wireguard_snat_host -> ["0.0.0.0/0"]
@@ -610,6 +615,7 @@ defmodule MachineManager.Core do
 	end
 
 	def make_hosts_json_file(self_row, graphs, subdomains, all_machines_map) do
+		parents = network_parents()
 		wireguard_hosts =
 			Stream.concat([self_row.hostname], graphs.wireguard[self_row.hostname] || [])
 			|> Enum.flat_map(fn hostname ->
@@ -621,13 +627,13 @@ defmodule MachineManager.Core do
 		public_hosts =
 			Stream.concat([self_row.hostname], graphs.public[self_row.hostname] || [])
 			|> Enum.flat_map(fn hostname ->
-					peer_ip = all_machines_map[hostname].public_ip
-					case ip_connectable?(self_row.public_ip, peer_ip) do
-						true  ->
+					peer_row = all_machines_map[hostname]
+					case reachable_addresses(parents, self_row, peer_row) do
+						[address | _] ->
 							for hostname <- hostnames("#{hostname}.pi", subdomains.public[hostname]) do
-								[to_ip_string(peer_ip), hostname]
+								[to_ip_string(address), hostname]
 							end
-						false -> []
+						[] -> []
 					end
 				end)
 		Jason.encode!(wireguard_hosts ++ [[]] ++ public_hosts)
@@ -685,7 +691,7 @@ defmodule MachineManager.Core do
 			(if opts[:compress],     do: ["--compress"], else: []) ++
 			["--protect-args", "--recursive", "--delete", "--executability", "--links"] ++
 			source_paths ++
-			["root@#{to_ip_string(row.public_ip)}:#{dest}"]
+			["root@#{to_ip_string(mm_reachable_address!(row))}:#{dest}"]
 		case System.cmd("rsync", rsync_ssh_args(port) ++ rsync_args, env: env_for_ssh(), stderr_to_stdout: true) do
 			{out, 0} ->
 				{out, 0}
@@ -872,9 +878,9 @@ defmodule MachineManager.Core do
 			true  -> true
 			false -> false
 		end
-		case ssh("root", to_ip_string(row.public_ip), row.ssh_port, shell, command, capture) do
+		case ssh("root", to_ip_string(mm_reachable_address!(row)), row.ssh_port, shell, command, capture) do
 			{"", 255} when retry_on_port != nil ->
-				ssh("root", to_ip_string(row.public_ip), retry_on_port, shell, command, capture)
+				ssh("root", to_ip_string(mm_reachable_address!(row)), retry_on_port, shell, command, capture)
 			{out, code} ->
 				{out, code}
 		end
@@ -1072,11 +1078,6 @@ defmodule MachineManager.Core do
 		nil
 	end
 
-	@spec cartesian_product(Enum.t, Enum.t) :: [{term, term}]
-	defp cartesian_product(a, b) do
-		for x <- a, y <- b, do: {x, y}
-	end
-
 	@doc """
 	Remove tags in enumerable `remove_tags` from machines matching `queryable`.
 	"""
@@ -1270,26 +1271,73 @@ defmodule MachineManager.Core do
 	end
 	defp validated_ip_tuple(tuple), do: raise(ArgumentError, "Invalid IP tuple: #{inspect tuple}")
 
-	defp ip_connectable?(source, dest) do
-		# Some machines may have a "public" IP that is actually on a LAN;
-		# these addresses should not end up on machines that aren't on the LAN.
-		case {ip_private?(source), ip_private?(dest)} do
-			{false, true} -> false
-			_             -> true
+	# Get an IP address we can use to reach machine `row` from machine_manager
+	defp mm_reachable_address!(row, parents \\ network_parents()) do
+		case mm_reachable_address(row, parents) do
+			nil ->
+				networks = Enum.map(row.addresses, fn a -> a.network end)
+				raise("Cannot reach #{row.hostname} from machine_manager; machine is on networks #{inspect networks}")
+			address ->
+				address
 		end
 	end
 
-	def ip_private?(s) when is_binary(s),              do: ip_private?(to_ip_tuple(s))
-	def ip_private?(%Postgrex.INET{address: address}), do: ip_private?(address)
-
-	@spec ip_private?(ip_tuple) :: boolean
-	def ip_private?({a, b, _c, _d}) do
-		case {a, b} do
-			{192, 168}                       -> true
-			{10, _}                          -> true
-			{172, n} when n >= 16 and n < 32 -> true
-			{127, _}                         -> true
-			_                                -> false
+	defp mm_reachable_address(row, parents) do
+		case reachable_addresses(parents, mm_row(), row) do
+			[address | _] -> address
+			_             -> nil
 		end
+	end
+
+	defmemop mm_row() do
+		[row] = list(machine(mm_hostname()))
+		row
+	end
+
+	# Return the hostname of the machine running machine_manager
+	defp mm_hostname() do
+		{:ok, c} = :inet.gethostname()
+		to_string(c)
+	end
+
+	# Get a list of addresses that machine `source_row` can use to reach machine `dest_row`.
+	# If none, returns [].  parents should be the result of network_parents().
+	defp reachable_addresses(parents, source_row, dest_row) do
+		source_ip_map = network_to_ip_map(source_row.addresses)
+		dest_ip_map   = network_to_ip_map(dest_row.addresses)
+		net_to_net    = cartesian_product(Map.keys(source_ip_map), Map.keys(dest_ip_map))
+		Enum.flat_map(net_to_net, fn {source_network, dest_network} ->
+			if network_can_reach_network?(parents, source_network, dest_network) do
+				dest_ip_map[dest_network]
+			else
+				[]
+			end
+		end)
+	end
+
+	defp network_to_ip_map(addresses) do
+		Enum.reduce(addresses, %{}, fn(v, acc) ->
+			Map.update(acc, v.network, [v.address], fn existing -> [v.address | existing] end)
+		end)
+	end
+
+	# parents should be the result of network_parents()
+	defp network_can_reach_network?(_parents, source_network, dest_network) when source_network == dest_network, do: true
+	defp network_can_reach_network?(parents, source_network, dest_network), do: dest_network in (parents[source_network] || [])
+
+	# Return a map of network -> [all of network's parents]
+	defp network_parents() do
+		Enum.reduce(net_list(), %{}, fn network, acc ->
+			%{name: name, parent: parent} = network
+			case parent do
+				nil -> acc
+				_   -> Map.update(acc, name, [parent], fn existing -> [parent | existing] end)
+			end
+		end)
+	end
+
+	@spec cartesian_product(Enum.t, Enum.t) :: [{term, term}]
+	defp cartesian_product(a, b) do
+		for x <- a, y <- b, do: {x, y}
 	end
 end

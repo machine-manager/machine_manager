@@ -31,6 +31,7 @@ defmodule MachineManager.Mixfile do
 			{:optimus,   ">= 0.1.0"},
 			{:jason,     ">= 1.0.0"},
 			{:decimal,   ">= 1.3.1"},
+			{:memoize,   ">= 1.2.6"},
 		]
 	end
 end
