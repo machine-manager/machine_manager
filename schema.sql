@@ -61,7 +61,7 @@ CREATE TABLE machine_addresses (
 	UNIQUE (network, address)
 );
 
-CREATE TABLE forwards (
+CREATE TABLE machine_forwards (
 	hostname    hostname NOT NULL REFERENCES machines,
 	type        bytea    NOT NULL CHECK (type = 'ssh' OR type = 'wireguard'),
 	port        port     NOT NULL,
