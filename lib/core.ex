@@ -1253,6 +1253,9 @@ defmodule MachineManager.Core do
 	def to_ip_string(s) when is_binary(s),                   do: s
 	def to_ip_string(%Postgrex.INET{address: {a, b, c, d}}), do: "#{a}.#{b}.#{c}.#{d}"
 
+	# Validate IP addresses to avoid constructing Postgrex.INET structs with
+	# invalid octets and then having postgrex encode those overflowing values
+	# (e.g. .333 as .77).
 	defp validated_ip_tuple({a, b, c, d} = tuple) when \
 		is_integer(a) and \
 		is_integer(b) and \
