@@ -206,7 +206,7 @@ defmodule MachineManager.CLI do
 						hostname: [required: true, help: hostname_help],
 					],
 					options: [
-						public_ip:      [short: "-i", long: "--public-ip",      required: true,                  help: "Public IP address"],
+						addresses:      [short: "-a", long: "--address",        required: true, multiple: true,  help: "Network and IPv4 address specified as NETWORK=ADDRESS", parser: &parse_address/1],
 						host_machine:   [short: "-h", long: "--host-machine",   required: false,                 help: "Host machine for this machine"],
 						ssh_port:       [short: "-p", long: "--ssh-port",       parser: :integer, default: 904,  help: "SSH port"],
 						wireguard_port: [             long: "--wireguard-port", parser: :integer, default: 904,  help: "WireGuard port"],
@@ -347,7 +347,7 @@ defmodule MachineManager.CLI do
 				:reboot             -> reboot_many(args.hostname_regexp)
 				:shutdown           -> shutdown_many(args.hostname_regexp)
 				:wait               -> wait_many(args.hostname_regexp)
-				:add                -> Core.add(args.hostname, options.public_ip, options.host_machine, options.ssh_port, options.wireguard_port, options.country, options.release, options.boot, options.tag)
+				:add                -> Core.add(args.hostname, options.addresses, options.host_machine, options.ssh_port, options.wireguard_port, options.country, options.release, options.boot, options.tag)
 				:rm                 -> Core.rm_many(Core.machines_matching_regexp(args.hostname_regexp))
 				:tag                -> Core.tag_many(Core.machines_matching_regexp(args.hostname_regexp),   all_arguments(args.tag, unknown))
 				:untag              -> Core.untag_many(Core.machines_matching_regexp(args.hostname_regexp), all_arguments(args.tag, unknown))
@@ -359,6 +359,21 @@ defmodule MachineManager.CLI do
 				:set_host_machine   -> set_host_machine_many(args.hostname_regexp, args.host_machine)
 				:rekey_wireguard    -> Core.rekey_wireguard_many(Core.machines_matching_regexp(args.hostname_regexp))
 			end
+		end
+	end
+
+	defp parse_address(s) do
+		case String.split(s, "=") do
+			[network, address] -> {:ok, {network, address}}
+			_                  -> {:error, "Could not parse a NETWORK=ADDRESS from #{inspect s}"}
+		end
+	end
+
+	# https://github.com/savonarola/optimus/issues/3
+	defp all_arguments(maybe_first, rest) do
+		case maybe_first do
+			nil -> []
+			_   -> [maybe_first | rest]
 		end
 	end
 
@@ -407,14 +422,6 @@ defmodule MachineManager.CLI do
 		for name <- tree[key] || [] do
 			IO.puts("#{indent}#{name}")
 			print_tree(tree, name, depth + 1)
-		end
-	end
-
-	# https://github.com/savonarola/optimus/issues/3
-	defp all_arguments(maybe_first, rest) do
-		case maybe_first do
-			nil -> []
-			_   -> [maybe_first | rest]
 		end
 	end
 

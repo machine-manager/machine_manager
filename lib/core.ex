@@ -982,14 +982,13 @@ defmodule MachineManager.Core do
 	@doc """
 	Adds a machine from the database.
 	"""
-	@spec add(String.t, String.t, String.t, integer, integer, String.t, String.t, String.t, [String.t]) :: nil
-	def add(hostname, public_ip, host_machine, ssh_port, wireguard_port, country, release, boot, tags) do
+	@spec add(String.t, [{String.t, String.t}], String.t, integer, integer, String.t, String.t, String.t, [String.t]) :: nil
+	def add(hostname, network_addresses, host_machine, ssh_port, wireguard_port, country, release, boot, tags) do
 		wireguard_privkey = WireGuard.make_wireguard_privkey()
 		wireguard_pubkey  = WireGuard.get_wireguard_pubkey(wireguard_privkey)
 		{:ok, _} = Repo.transaction(fn ->
 			Repo.insert_all("machines", [[
 				hostname:          hostname,
-				public_ip:         to_ip_postgrex(public_ip),
 				ssh_port:          ssh_port,
 				wireguard_port:    wireguard_port,
 				wireguard_ip:      to_ip_postgrex(get_unused_wireguard_ip()),
@@ -1001,6 +1000,9 @@ defmodule MachineManager.Core do
 			]])
 			tag(hostname, tags)
 			set_host_machine(hostname, host_machine)
+			for {network, address} <- network_addresses do
+				set_ip(hostname, network, address)
+			end
 		end)
 	end
 
@@ -1040,6 +1042,7 @@ defmodule MachineManager.Core do
 				|> Repo.all
 			from("machine_tags")             |> where([t], t.hostname in ^hostnames) |> Repo.delete_all
 			from("machine_pending_upgrades") |> where([u], u.hostname in ^hostnames) |> Repo.delete_all
+			from("machine_addresses")        |> where([a], a.hostname in ^hostnames) |> Repo.delete_all
 			from("machines")                 |> where([m], m.hostname in ^hostnames) |> Repo.delete_all
 		end)
 	end
@@ -1098,11 +1101,13 @@ defmodule MachineManager.Core do
 
 	@spec set_ip(String.t, String.t, String.t) :: nil
 	def set_ip(hostname, network, address) do
+		# Don't ignore conflicts on this insert: we want to see unique constraint
+		# violations instead of silently ignoring them
 		Repo.insert_all("machine_addresses", [[
 			hostname: hostname,
 			network:  network,
 			address:  to_ip_postgrex(address),
-		]], on_conflict: :nothing)
+		]])
 	end
 
 	@spec unset_ip(String.t, String.t, String.t) :: nil
