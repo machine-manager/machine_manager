@@ -42,7 +42,6 @@ make_backup() {
 
 	tables=(machines machine_tags networks machine_addresses forwards)
 	pg_dump_table_args=$(for table in ${tables[@]}; do echo -n " --table" "${table}__backup"; done)
-	echo $pg_dump_table_args
 
 	# Create the backup file
 	ssh "$ssh_user_host" "pg_dump --data-only $pg_dump_table_args machine_manager" > "$backup_file"
