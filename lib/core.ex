@@ -73,9 +73,6 @@ defmodule MachineManager.Core do
 				wireguard_pubkey:               m.wireguard_pubkey,
 				wireguard_privkey:              m.wireguard_privkey,
 				ssh_port:                       m.ssh_port,
-				host_machine:                   m.host_machine,
-				wireguard_port_on_host_machine: m.wireguard_port_on_host_machine,
-				ssh_port_on_host_machine:       m.ssh_port_on_host_machine,
 				country:                        m.country,
 				release:                        m.release,
 				boot:                           m.boot,
@@ -982,8 +979,8 @@ defmodule MachineManager.Core do
 	@doc """
 	Adds a machine from the database.
 	"""
-	@spec add(String.t, [{String.t, String.t}], String.t, integer, integer, String.t, String.t, String.t, [String.t]) :: nil
-	def add(hostname, network_addresses, host_machine, ssh_port, wireguard_port, country, release, boot, tags) do
+	@spec add(String.t, [{String.t, String.t}], integer, integer, String.t, String.t, String.t, [String.t]) :: nil
+	def add(hostname, network_addresses, ssh_port, wireguard_port, country, release, boot, tags) do
 		wireguard_privkey = WireGuard.make_wireguard_privkey()
 		wireguard_pubkey  = WireGuard.get_wireguard_pubkey(wireguard_privkey)
 		{:ok, _} = Repo.transaction(fn ->
@@ -999,7 +996,6 @@ defmodule MachineManager.Core do
 				boot:              boot,
 			]])
 			tag(hostname, tags)
-			set_host_machine(hostname, host_machine)
 			for {network, address} <- network_addresses do
 				set_ip(hostname, network, address)
 			end
@@ -1131,25 +1127,6 @@ defmodule MachineManager.Core do
 		queryable
 		|> Repo.update_all(set: [wireguard_port: wireguard_port])
 		nil
-	end
-
-	@spec set_host_machine_many(Ecto.Queryable.t, String.t) :: nil
-	def set_host_machine_many(queryable, host_machine) do
-		for row <- list(queryable) do
-			if row.host_machine != host_machine do
-				set_host_machine(row.hostname, host_machine)
-			end
-		end
-		nil
-	end
-
-	defp set_host_machine(hostname, host_machine) do
-		machine(hostname)
-		|> Repo.update_all(set: [
-			host_machine:                   host_machine,
-			wireguard_port_on_host_machine: if host_machine != nil do get_unused_host_port(host_machine, :wireguard) end,
-			ssh_port_on_host_machine:       if host_machine != nil do get_unused_host_port(host_machine, :ssh) end,
-		])
 	end
 
 	@first_port 904 + 1
