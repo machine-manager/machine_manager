@@ -3,7 +3,6 @@ SET ROLE machine_manager;
 CREATE DOMAIN hostname         AS varchar(32)  CHECK (VALUE ~ '\A[-_a-z0-9]+\Z');
 CREATE DOMAIN netname          AS varchar(32)  CHECK (VALUE ~ '\A[-_a-z0-9]+\Z');
 CREATE DOMAIN machine_type     AS varchar(10)  CHECK (VALUE = 'debian' OR VALUE = 'edgerouter');
-CREATE DOMAIN proto            AS char(3)      CHECK (VALUE = 'tcp' OR VALUE = 'udp');
 CREATE DOMAIN port             AS integer      CHECK (VALUE > 0 AND VALUE <= 65536);
 CREATE DOMAIN wireguard_key    AS bytea        CHECK (length(VALUE) = 44);
 
@@ -65,16 +64,27 @@ CREATE TABLE machine_addresses (
 );
 
 CREATE TABLE machine_forwards (
-	hostname    hostname NOT NULL REFERENCES machines,
-	destination hostname NOT NULL REFERENCES machines(hostname) CHECK (destination != hostname),
-	type        bytea    NOT NULL CHECK (type = 'ssh' OR type = 'wireguard'),
-	PRIMARY KEY (hostname, destination, type)
+	hostname          hostname NOT NULL REFERENCES machines,
+	port              port     NOT NULL,
+	type              bytea    NOT NULL CHECK (type = 'ssh' OR type = 'wireguard'),
+	next_destination  hostname NOT NULL REFERENCES machines(hostname) CHECK (next_destination != hostname),
+	final_destination hostname NOT NULL REFERENCES machines(hostname) CHECK (final_destination != hostname),
+	PRIMARY KEY (hostname, port, type),
+	UNIQUE (hostname, type, final_destination)
 );
 
-CREATE TABLE forward_listeners (
-	hostname    hostname NOT NULL REFERENCES machines,
-	destination hostname NOT NULL REFERENCES machines(hostname) CHECK (destination != hostname),
-	type        bytea    NOT NULL CHECK (type = 'ssh' OR type = 'wireguard'),
-	port        port     NOT NULL,
-	PRIMARY KEY (hostname, destination, type)
-);
+/*
+ubnt  905  wireguard  ra     ra
+ubnt  906  wireguard  plato  plato
+ubnt  907  wireguard  ra     elk
+ra    908  wireguard  elk    elk
+
+ubnt->ra->elk
+
+How do we know dest port of (ubnt 907 wireguard ra elk)?
+Look for (ra DEST wireguard _ elk)
+
+How do we know dest port of (ra 908 wireguard elk elk)?
+Look up wireguard_port in machines table for elk
+
+*/
