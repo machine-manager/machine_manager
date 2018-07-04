@@ -24,7 +24,7 @@ defmodule MachineManager.CLI do
 	def main(argv) do
 		hostname_regexp_help   = "Regular expression used to match hostnames. Automatically wrapped with ^ and $."
 		hostname_help          = "Machine hostname"
-		boot_mode_help         = "Boot mode (outside, mbr, uefi, or scaleway_kexec); use outside for containers"
+		boot_mode_help         = ~s[Boot mode ("outside", "mbr", "uefi", "scaleway_kexec", "vendor"); use "outside" for containers, "vendor" for edgerouter machines]
 		option_backup_ssh_port = [long: "--backup-ssh-port", help: "Retry on this SSH port if the configured SSH ports fails.", default: 22]
 		spec = Optimus.new!(
 			name:               "mm",
@@ -206,13 +206,14 @@ defmodule MachineManager.CLI do
 						hostname: [required: true, help: hostname_help],
 					],
 					options: [
-						addresses:      [short: "-a", long: "--address",        required: true, multiple: true,  help: "Network and IPv4 address specified as NETWORK=ADDRESS", parser: &parse_address/1],
-						ssh_port:       [short: "-p", long: "--ssh-port",       parser: :integer, default: 904,  help: "SSH port"],
-						wireguard_port: [             long: "--wireguard-port", parser: :integer, default: 904,  help: "WireGuard port"],
-						country:        [short: "-c", long: "--country",        required: true,                  help: "Country code"],
-						release:        [short: "-r", long: "--release",        required: true,                  help: "Debian release (e.g. sid)"],
-						boot:           [short: "-b", long: "--boot",           required: true,                  help: boot_mode_help],
-						tag:            [short: "-t", long: "--tag",            required: false, multiple: true, help: "Tag"],
+						type:           [short: "-y", long: "--type",           required: false, default: "debian", help: ~s[Type ("debian" or "edgerouter")]],
+						release:        [short: "-r", long: "--release",        required: true,                     help: ~s[Debian release (e.g. "sid") or "unmanaged"]],
+						addresses:      [short: "-a", long: "--address",        required: true, multiple: true,     help: "Network and IPv4 address specified as NETWORK=ADDRESS", parser: &parse_address/1],
+						ssh_port:       [short: "-p", long: "--ssh-port",       parser: :integer, default: 904,     help: "SSH port"],
+						wireguard_port: [             long: "--wireguard-port", parser: :integer, default: 904,     help: "WireGuard port"],
+						country:        [short: "-c", long: "--country",        required: true,                     help: "Country code"],
+						boot:           [short: "-b", long: "--boot",           required: true,                     help: boot_mode_help],
+						tag:            [short: "-t", long: "--tag",            required: false, multiple: true,    help: "Tag"],
 					],
 				],
 				rm: [
@@ -340,7 +341,7 @@ defmodule MachineManager.CLI do
 				:reboot             -> reboot_many(args.hostname_regexp)
 				:shutdown           -> shutdown_many(args.hostname_regexp)
 				:wait               -> wait_many(args.hostname_regexp)
-				:add                -> Core.add(args.hostname, options.addresses, options.ssh_port, options.wireguard_port, options.country, options.release, options.boot, options.tag)
+				:add                -> Core.add(args.hostname, options.type, options.addresses, options.ssh_port, options.wireguard_port, options.country, options.release, options.boot, options.tag)
 				:rm                 -> Core.rm_many(Core.machines_matching_regexp(args.hostname_regexp))
 				:tag                -> Core.tag_many(Core.machines_matching_regexp(args.hostname_regexp),   all_arguments(args.tag, unknown))
 				:untag              -> Core.untag_many(Core.machines_matching_regexp(args.hostname_regexp), all_arguments(args.tag, unknown))
@@ -632,19 +633,20 @@ defmodule MachineManager.CLI do
 
 	defp default_columns() do
 		[
-			"hostname", "addresses", "wireguard_ip", "wireguard_port", "ssh_port",
-			"country", "release", "boot", "tags", "ram_mb", "cpu_model_name",
-			"core_count", "thread_count", "last_probe_time", "boot_time",
-			"time_offset", "kernel", "pending_upgrades",
+			"hostname", "type", "addresses", "wireguard_ip", "wireguard_port",
+			"ssh_port", "country", "release", "boot", "tags", "ram_mb",
+			"cpu_model_name", "core_count", "thread_count", "last_probe_time",
+			"boot_time", "time_offset", "kernel", "pending_upgrades",
 		]
 	end
 
 	defp get_column_spec() do
 		%{
 			"hostname"         => {"HOSTNAME",         fn row, _ -> row.hostname end},
+			"type"             => {"TYPE",             fn row, _ -> row.type |> colorize end},
 			"addresses"        => {"ADDRESSES",        &format_addresses/2},
-			"wireguard_ip"     => {"WIREGUARD IP",     fn row, _ -> row.wireguard_ip |> Core.to_ip_string end},
-			"wireguard_port"   => {"WG",               fn row, _ -> row.wireguard_port end},
+			"wireguard_ip"     => {"WIREGUARD IP",     fn row, _ -> if row.wireguard_ip   != nil, do: row.wireguard_ip |> Core.to_ip_string, else: "-" end},
+			"wireguard_port"   => {"WG",               fn row, _ -> if row.wireguard_port != nil, do: row.wireguard_port, else: "-" end},
 			"ssh_port"         => {"SSH",              fn row, _ -> row.ssh_port end},
 			"country"          => {"CC",               fn row, _ -> row.country |> colorize end},
 			"release"          => {"RELEASE",          fn row, _ -> row.release |> colorize end},

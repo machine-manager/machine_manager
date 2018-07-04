@@ -68,6 +68,7 @@ defmodule MachineManager.Core do
 		queryable
 		|> select([m, t, u, a], %{
 				hostname:          m.hostname,
+				type:              m.type,
 				wireguard_ip:      m.wireguard_ip,
 				wireguard_port:    m.wireguard_port,
 				wireguard_pubkey:  m.wireguard_pubkey,
@@ -981,16 +982,24 @@ defmodule MachineManager.Core do
 	@doc """
 	Adds a machine from the database.
 	"""
-	@spec add(String.t, [{String.t, String.t}], integer, integer, String.t, String.t, String.t, [String.t]) :: nil
-	def add(hostname, network_addresses, ssh_port, wireguard_port, country, release, boot, tags) do
-		wireguard_privkey = WireGuard.make_wireguard_privkey()
-		wireguard_pubkey  = WireGuard.get_wireguard_pubkey(wireguard_privkey)
+	@spec add(String.t, String.t, [{String.t, String.t}], integer, integer, String.t, String.t, String.t, [String.t]) :: nil
+	def add(hostname, type, network_addresses, ssh_port, wireguard_port, country, release, boot, tags) do
+		{wireguard_port, wireguard_ip, wireguard_privkey, wireguard_pubkey} = case type do
+			"debian" ->
+				wireguard_ip      = to_ip_postgrex(get_unused_wireguard_ip())
+				wireguard_privkey = WireGuard.make_wireguard_privkey()
+				wireguard_pubkey  = WireGuard.get_wireguard_pubkey(wireguard_privkey)
+				{wireguard_port, wireguard_ip, wireguard_privkey, wireguard_pubkey}
+			"edgerouter" ->
+				{nil, nil, nil, nil}
+		end
 		{:ok, _} = Repo.transaction(fn ->
 			Repo.insert_all("machines", [[
 				hostname:          hostname,
+				type:              type,
 				ssh_port:          ssh_port,
 				wireguard_port:    wireguard_port,
-				wireguard_ip:      to_ip_postgrex(get_unused_wireguard_ip()),
+				wireguard_ip:      wireguard_ip,
 				wireguard_privkey: wireguard_privkey,
 				wireguard_pubkey:  wireguard_pubkey,
 				country:           country,

@@ -2,16 +2,19 @@ SET ROLE machine_manager;
 
 CREATE DOMAIN hostname         AS varchar(32)  CHECK (VALUE ~ '\A[-_a-z0-9]+\Z');
 CREATE DOMAIN netname          AS varchar(32)  CHECK (VALUE ~ '\A[-_a-z0-9]+\Z');
+CREATE DOMAIN machine_type     AS varchar(10)  CHECK (VALUE = 'debian' OR VALUE = 'edgerouter');
+CREATE DOMAIN proto            AS char(3)      CHECK (VALUE = 'tcp' OR VALUE = 'udp');
 CREATE DOMAIN port             AS integer      CHECK (VALUE > 0 AND VALUE <= 65536);
 CREATE DOMAIN wireguard_key    AS bytea        CHECK (length(VALUE) = 44);
 
 CREATE TABLE machines (
 	-- Preserved information
 	hostname          hostname                  NOT NULL PRIMARY KEY,
-	wireguard_ip      inet                      NOT NULL,
-	wireguard_port    port                      NOT NULL,
-	wireguard_privkey wireguard_key             NOT NULL,
-	wireguard_pubkey  wireguard_key             NOT NULL,
+	type              machine_type              NOT NULL,
+	wireguard_ip      inet,
+	wireguard_port    port                      CHECK ((wireguard_ip IS NOT NULL AND wireguard_port    IS NOT NULL) OR (wireguard_ip IS NULL AND wireguard_port    IS NULL)),
+	wireguard_privkey wireguard_key             CHECK ((wireguard_ip IS NOT NULL AND wireguard_privkey IS NOT NULL) OR (wireguard_ip IS NULL AND wireguard_privkey IS NULL)),
+	wireguard_pubkey  wireguard_key             CHECK ((wireguard_ip IS NOT NULL AND wireguard_pubkey  IS NOT NULL) OR (wireguard_ip IS NULL AND wireguard_pubkey  IS NULL)),
 	ssh_port          port                      NOT NULL,
 	country           character(2)              NOT NULL CHECK (country ~ '\A[a-z]{2}\Z'),
 	release           varchar(10)               NOT NULL CHECK (release ~ '\A[a-z]{2,10}\Z'),
@@ -63,8 +66,15 @@ CREATE TABLE machine_addresses (
 
 CREATE TABLE machine_forwards (
 	hostname    hostname NOT NULL REFERENCES machines,
+	destination hostname NOT NULL REFERENCES machines(hostname) CHECK (destination != hostname),
+	type        bytea    NOT NULL CHECK (type = 'ssh' OR type = 'wireguard'),
+	PRIMARY KEY (hostname, destination, type)
+);
+
+CREATE TABLE forward_listeners (
+	hostname    hostname NOT NULL REFERENCES machines,
+	destination hostname NOT NULL REFERENCES machines(hostname) CHECK (destination != hostname),
 	type        bytea    NOT NULL CHECK (type = 'ssh' OR type = 'wireguard'),
 	port        port     NOT NULL,
-	destination hostname NOT NULL REFERENCES machines(hostname) CHECK (destination != hostname),
-	PRIMARY KEY (hostname, type, port)
+	PRIMARY KEY (hostname, destination, type)
 );
