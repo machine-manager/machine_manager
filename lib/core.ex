@@ -74,6 +74,7 @@ defmodule MachineManager.Core do
 				wireguard_pubkey:  m.wireguard_pubkey,
 				wireguard_privkey: m.wireguard_privkey,
 				ssh_port:          m.ssh_port,
+				ssh_user:          m.ssh_user,
 				country:           m.country,
 				release:           m.release,
 				boot:              m.boot,
@@ -198,6 +199,9 @@ defmodule MachineManager.Core do
 	end
 
 	def probe_many(queryable, retry_on_port, handle_probe_result, handle_waiting) do
+		queryable =
+			queryable
+			|> where([m], m.type == "debian")
 		rows = list(queryable)
 		act_many(:probe, rows, retry_on_port, handle_probe_result, handle_waiting)
 	end
@@ -689,7 +693,7 @@ defmodule MachineManager.Core do
 			(if opts[:compress],     do: ["--compress"], else: []) ++
 			["--protect-args", "--recursive", "--delete", "--executability", "--links"] ++
 			source_paths ++
-			["root@#{to_ip_string(mm_reachable_address!(row))}:#{dest}"]
+			["#{row.ssh_user}@#{to_ip_string(mm_reachable_address!(row))}:#{dest}"]
 		case System.cmd("rsync", rsync_ssh_args(port) ++ rsync_args, env: env_for_ssh(), stderr_to_stdout: true) do
 			{out, 0} ->
 				{out, 0}
@@ -749,19 +753,20 @@ defmodule MachineManager.Core do
 				time_offset:      (if data.time_offset, do: Decimal.new(data.time_offset)),
 				last_probe_time:  DateTime.utc_now(),
 			])
-
-			# Clear out existing pending upgrades
-			from("machine_pending_upgrades")
-			|> where([u], u.hostname == ^hostname)
-			|> Repo.delete_all
-
+			clear_pending_upgrades(hostname)
 			Repo.insert_all("machine_pending_upgrades",
-				data.pending_upgrades |> Enum.map(fn %{name: name, old_version: old_version, new_version: new_version} ->
+				(data.pending_upgrades || []) |> Enum.map(fn %{name: name, old_version: old_version, new_version: new_version} ->
 					[hostname: hostname, package: name, old_version: old_version, new_version: new_version]
 				end),
 				on_conflict: :nothing
 			)
 		end)
+	end
+
+	defp clear_pending_upgrades(hostname) do
+		from("machine_pending_upgrades")
+		|> where([u], u.hostname == ^hostname)
+		|> Repo.delete_all
 	end
 
 	# Can raise UpgradeError or ConfigureError
@@ -878,9 +883,9 @@ defmodule MachineManager.Core do
 			true  -> true
 			false -> false
 		end
-		case ssh("root", to_ip_string(mm_reachable_address!(row)), row.ssh_port, shell, command, capture) do
+		case ssh(row.ssh_user, to_ip_string(mm_reachable_address!(row)), row.ssh_port, shell, command, capture) do
 			{"", 255} when retry_on_port != nil ->
-				ssh("root", to_ip_string(mm_reachable_address!(row)), retry_on_port, shell, command, capture)
+				ssh(row.ssh_user, to_ip_string(mm_reachable_address!(row)), retry_on_port, shell, command, capture)
 			{out, code} ->
 				{out, code}
 		end
@@ -982,8 +987,8 @@ defmodule MachineManager.Core do
 	@doc """
 	Adds a machine from the database.
 	"""
-	@spec add(String.t, String.t, [{String.t, String.t}], integer, integer, String.t, String.t, String.t, [String.t]) :: nil
-	def add(hostname, type, network_addresses, ssh_port, wireguard_port, country, release, boot, tags) do
+	@spec add(String.t, String.t, [{String.t, String.t}], integer, String.t, integer, String.t, String.t, String.t, [String.t]) :: nil
+	def add(hostname, type, network_addresses, ssh_port, ssh_user, wireguard_port, country, release, boot, tags) do
 		{wireguard_port, wireguard_ip, wireguard_privkey, wireguard_pubkey} = case type do
 			"debian" ->
 				wireguard_ip      = to_ip_postgrex(get_unused_wireguard_ip())
@@ -998,6 +1003,7 @@ defmodule MachineManager.Core do
 				hostname:          hostname,
 				type:              type,
 				ssh_port:          ssh_port,
+				ssh_user:          ssh_user,
 				wireguard_port:    wireguard_port,
 				wireguard_ip:      wireguard_ip,
 				wireguard_privkey: wireguard_privkey,
@@ -1131,6 +1137,13 @@ defmodule MachineManager.Core do
 	def set_ssh_port_many(queryable, ssh_port) do
 		queryable
 		|> Repo.update_all(set: [ssh_port: ssh_port])
+		nil
+	end
+
+	@spec set_ssh_user_many(Ecto.Queryable.t, String.t) :: nil
+	def set_ssh_user_many(queryable, ssh_user) do
+		queryable
+		|> Repo.update_all(set: [ssh_user: ssh_user])
 		nil
 	end
 
