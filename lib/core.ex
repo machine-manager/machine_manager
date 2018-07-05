@@ -372,7 +372,7 @@ defmodule MachineManager.Core do
 				connections_descriptor = apply(mod, :connections, [tags, from("machines")])
 				wireguard_hostnames = case connections_descriptor[:wireguard] do
 					nil       -> []
-					queryable -> queryable |> select([m], m.hostname) |> Repo.all
+					queryable -> queryable |> select([m], m.hostname) |> where([m], not is_nil(m.wireguard_ip)) |> Repo.all
 				end |> MapSet.new |> MapSet.delete(hostname)
 				# MapSet.delete(hostname) because a machine should not be connected to itself.
 				public_hostnames = case connections_descriptor[:public] do
