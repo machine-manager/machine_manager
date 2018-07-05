@@ -374,7 +374,7 @@ defmodule MachineManager.Core do
 					nil       -> []
 					queryable -> queryable |> select([m], m.hostname) |> Repo.all
 				end |> MapSet.new |> MapSet.delete(hostname)
-				# We use MapSet.delete(hostname) because a machine should not be connected to itself.
+				# MapSet.delete(hostname) because a machine should not be connected to itself.
 				public_hostnames = case connections_descriptor[:public] do
 					nil       -> []
 					queryable -> queryable |> select([m], m.hostname) |> Repo.all
