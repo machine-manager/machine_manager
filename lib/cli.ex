@@ -25,6 +25,9 @@ defmodule MachineManager.CLI do
 		hostname_regexp_help   = "Regular expression used to match hostnames. Automatically wrapped with ^ and $."
 		hostname_help          = "Machine hostname"
 		boot_mode_help         = ~s[Boot mode ("outside", "mbr", "uefi", "scaleway_kexec", "vendor"); use "outside" for containers, "vendor" for edgerouter machines]
+		ssh_expose_help        = "Outermost network to expose SSH port to, using port forwards"
+		wireguard_expose_help  = "Outermost network to expose WireGuard port to, using port forwards"
+		if_none_fragment_help  = ~s(; use "" or "-" if none)
 		option_backup_ssh_port = [long: "--backup-ssh-port", help: "Retry on this SSH port if the configured SSH ports fails.", default: 22]
 		spec = Optimus.new!(
 			name:               "mm",
@@ -45,7 +48,7 @@ defmodule MachineManager.CLI do
 							about: "Add network",
 							args: [
 								netname: [required: true, help: "Network name"],
-								parent:  [required: true, help: ~s(Parent network; use "" or "-" if none)],
+								parent:  [required: true, help: "Parent network" <> if_none_fragment_help],
 							],
 						],
 						rm: [
@@ -211,9 +214,9 @@ defmodule MachineManager.CLI do
 						addresses:        [short: "-a", long: "--address",          required: true, multiple: true,     help: "Network and IPv4 address specified as NETWORK=ADDRESS", parser: &parse_address/1],
 						ssh_user:         [short: "-u", long: "--ssh-user",         required: false, default: "root",   help: "SSH user"],
 						ssh_port:         [short: "-s", long: "--ssh-port",         parser: :integer, default: 904,     help: "SSH port"],
-						ssh_expose:       [short: "-S", long: "--ssh-expose",       required: false,                    help: "Outermost network to expose SSH port to, using port forwards"],
+						ssh_expose:       [short: "-S", long: "--ssh-expose",       required: false,                    help: ssh_expose_help],
 						wireguard_port:   [short: "-w", long: "--wireguard-port",   parser: :integer, default: 904,     help: "WireGuard port"],
-						wireguard_expose: [short: "-W", long: "--wireguard-expose", required: false,                    help: "Outermost network to expose WireGuard port to, using port forwards"],
+						wireguard_expose: [short: "-W", long: "--wireguard-expose", required: false,                    help: wireguard_expose_help],
 						country:          [short: "-c", long: "--country",          required: true,                     help: "Country code"],
 						boot:             [short: "-b", long: "--boot",             required: true,                     help: boot_mode_help],
 						tags:             [short: "-t", long: "--tag",              required: false, multiple: true,    help: "Tag"],
@@ -280,6 +283,14 @@ defmodule MachineManager.CLI do
 						ssh_port:        [required: true, parser: :integer],
 					],
 				],
+				set_ssh_expose: [
+					name:  "set-ssh-expose",
+					about: "Set a new SSH exposure",
+					args: [
+						hostname_regexp: [required: true, help: hostname_regexp_help],
+						network:         [required: true, help: ssh_expose_help <> if_none_fragment_help],
+					],
+				],
 				set_ssh_user: [
 					name:  "set-ssh-user",
 					about: "Set a new SSH user for machines",
@@ -294,6 +305,14 @@ defmodule MachineManager.CLI do
 					args: [
 						hostname_regexp: [required: true, help: hostname_regexp_help],
 						wireguard_port:  [required: true, parser: :integer],
+					],
+				],
+				set_wireguard_expose: [
+					name:  "set-wireguard-expose",
+					about: "Set a new WireGuard exposure",
+					args: [
+						hostname_regexp: [required: true, help: hostname_regexp_help],
+						network:         [required: true, help: wireguard_expose_help <> if_none_fragment_help],
 					],
 				],
 				rekey_wireguard: [
@@ -337,32 +356,34 @@ defmodule MachineManager.CLI do
 		case subcommands do
 			[:net | rest] -> net(rest, args, options, flags, unknown)
 			[subcommand]  -> case subcommand do
-				:ls                 -> list(args.hostname_regexp, options.columns, (if flags.no_header, do: false, else: true))
-				:script             -> Core.write_script_for_machine(args.hostname, args.output_file, allow_warnings: flags.allow_warnings)
-				:configure          -> configure_many(args.hostname_regexp, options.backup_ssh_port, flags.show_progress, flags.allow_warnings)
-				:setup              -> setup_many(args.hostname_regexp, options.backup_ssh_port)
-				:ssh_config         -> ssh_config()
-				:connectivity       -> Core.connectivity(args.type)
-				:wireguard_config   -> wireguard_config(args.hostname)
-				:hosts_json_file    -> hosts_json_file(args.hostname)
-				:portable_erlang    -> portable_erlang(args.hostname, args.directory)
-				:probe              -> probe_many(args.hostname_regexp, options.backup_ssh_port)
-				:exec               -> exec_many(args.hostname_regexp, flags.shell, all_arguments(args.command, unknown))
-				:upgrade            -> upgrade_many(args.hostname_regexp, options.backup_ssh_port)
-				:reboot             -> reboot_many(args.hostname_regexp)
-				:shutdown           -> shutdown_many(args.hostname_regexp)
-				:wait               -> wait_many(args.hostname_regexp)
-				:add                -> Core.add(args.hostname, options)
-				:rm                 -> Core.rm_many(Core.machines_matching_regexp(args.hostname_regexp))
-				:tag                -> Core.tag_many(Core.machines_matching_regexp(args.hostname_regexp),   all_arguments(args.tag, unknown))
-				:untag              -> Core.untag_many(Core.machines_matching_regexp(args.hostname_regexp), all_arguments(args.tag, unknown))
-				:get_tags           -> get_tags(args.hostname)
-				:set_ip             -> Core.set_ip(args.hostname, args.network, args.address)
-				:unset_ip           -> Core.unset_ip(args.hostname, args.network, args.address)
-				:set_ssh_port       -> Core.set_ssh_port_many(Core.machines_matching_regexp(args.hostname_regexp), args.ssh_port)
-				:set_ssh_user       -> Core.set_ssh_user_many(Core.machines_matching_regexp(args.hostname_regexp), args.ssh_user)
-				:set_wireguard_port -> Core.set_wireguard_port_many(Core.machines_matching_regexp(args.hostname_regexp), args.wireguard_port)
-				:rekey_wireguard    -> Core.rekey_wireguard_many(Core.machines_matching_regexp(args.hostname_regexp))
+				:ls                   -> list(args.hostname_regexp, options.columns, (if flags.no_header, do: false, else: true))
+				:script               -> Core.write_script_for_machine(args.hostname, args.output_file, allow_warnings: flags.allow_warnings)
+				:configure            -> configure_many(args.hostname_regexp, options.backup_ssh_port, flags.show_progress, flags.allow_warnings)
+				:setup                -> setup_many(args.hostname_regexp, options.backup_ssh_port)
+				:ssh_config           -> ssh_config()
+				:connectivity         -> Core.connectivity(args.type)
+				:wireguard_config     -> wireguard_config(args.hostname)
+				:hosts_json_file      -> hosts_json_file(args.hostname)
+				:portable_erlang      -> portable_erlang(args.hostname, args.directory)
+				:probe                -> probe_many(args.hostname_regexp, options.backup_ssh_port)
+				:exec                 -> exec_many(args.hostname_regexp, flags.shell, all_arguments(args.command, unknown))
+				:upgrade              -> upgrade_many(args.hostname_regexp, options.backup_ssh_port)
+				:reboot               -> reboot_many(args.hostname_regexp)
+				:shutdown             -> shutdown_many(args.hostname_regexp)
+				:wait                 -> wait_many(args.hostname_regexp)
+				:add                  -> Core.add(args.hostname, options)
+				:rm                   -> Core.rm_many(Core.machines_matching_regexp(args.hostname_regexp))
+				:tag                  -> Core.tag_many(Core.machines_matching_regexp(args.hostname_regexp),   all_arguments(args.tag, unknown))
+				:untag                -> Core.untag_many(Core.machines_matching_regexp(args.hostname_regexp), all_arguments(args.tag, unknown))
+				:get_tags             -> get_tags(args.hostname)
+				:set_ip               -> Core.set_ip(args.hostname, args.network, args.address)
+				:unset_ip             -> Core.unset_ip(args.hostname, args.network, args.address)
+				:set_ssh_port         -> Core.set_ssh_port_many(Core.machines_matching_regexp(args.hostname_regexp), args.ssh_port)
+				:set_ssh_user         -> Core.set_ssh_user_many(Core.machines_matching_regexp(args.hostname_regexp), args.ssh_user)
+				:set_ssh_expose       -> Core.set_ssh_expose_many(Core.machines_matching_regexp(args.hostname_regexp), empty_to_nil(args.network))
+				:set_wireguard_port   -> Core.set_wireguard_port_many(Core.machines_matching_regexp(args.hostname_regexp), args.wireguard_port)
+				:set_wireguard_expose -> Core.set_wireguard_expose_many(Core.machines_matching_regexp(args.hostname_regexp), empty_to_nil(args.network))
+				:rekey_wireguard      -> Core.rekey_wireguard_many(Core.machines_matching_regexp(args.hostname_regexp))
 			end
 		end
 	end

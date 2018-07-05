@@ -1151,10 +1151,24 @@ defmodule MachineManager.Core do
 		nil
 	end
 
+	@spec set_ssh_expose_many(Ecto.Queryable.t, String.t) :: nil
+	def set_ssh_expose_many(queryable, ssh_expose) do
+		queryable
+		|> Repo.update_all(set: [ssh_expose: ssh_expose])
+		nil
+	end
+
 	@spec set_wireguard_port_many(Ecto.Queryable.t, integer) :: nil
 	def set_wireguard_port_many(queryable, wireguard_port) do
 		queryable
 		|> Repo.update_all(set: [wireguard_port: wireguard_port])
+		nil
+	end
+
+	@spec set_wireguard_expose_many(Ecto.Queryable.t, String.t) :: nil
+	def set_wireguard_expose_many(queryable, wireguard_expose) do
+		queryable
+		|> Repo.update_all(set: [wireguard_expose: wireguard_expose])
 		nil
 	end
 
