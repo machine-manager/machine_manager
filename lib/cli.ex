@@ -206,15 +206,17 @@ defmodule MachineManager.CLI do
 						hostname: [required: true, help: hostname_help],
 					],
 					options: [
-						type:           [short: "-y", long: "--type",           required: false, default: "debian", help: ~s[Type ("debian" or "edgerouter")]],
-						release:        [short: "-r", long: "--release",        required: true,                     help: ~s[Debian release (e.g. "sid") or "unmanaged"]],
-						addresses:      [short: "-a", long: "--address",        required: true, multiple: true,     help: "Network and IPv4 address specified as NETWORK=ADDRESS", parser: &parse_address/1],
-						ssh_port:       [short: "-p", long: "--ssh-port",       parser: :integer, default: 904,     help: "SSH port"],
-						ssh_user:       [short: "-u", long: "--ssh-user",       required: false, default: "root",   help: "SSH user"],
-						wireguard_port: [             long: "--wireguard-port", parser: :integer, default: 904,     help: "WireGuard port"],
-						country:        [short: "-c", long: "--country",        required: true,                     help: "Country code"],
-						boot:           [short: "-b", long: "--boot",           required: true,                     help: boot_mode_help],
-						tag:            [short: "-t", long: "--tag",            required: false, multiple: true,    help: "Tag"],
+						type:             [short: "-y", long: "--type",             required: false, default: "debian", help: ~s[Type ("debian" or "edgerouter")]],
+						release:          [short: "-r", long: "--release",          required: true,                     help: ~s[Debian release (e.g. "sid") or "unmanaged"]],
+						addresses:        [short: "-a", long: "--address",          required: true, multiple: true,     help: "Network and IPv4 address specified as NETWORK=ADDRESS", parser: &parse_address/1],
+						ssh_user:         [short: "-u", long: "--ssh-user",         required: false, default: "root",   help: "SSH user"],
+						ssh_port:         [short: "-s", long: "--ssh-port",         parser: :integer, default: 904,     help: "SSH port"],
+						ssh_expose:       [short: "-S", long: "--ssh-expose",       required: false,                    help: "Outermost network to expose SSH port to, using port forwards"],
+						wireguard_port:   [short: "-w", long: "--wireguard-port",   parser: :integer, default: 904,     help: "WireGuard port"],
+						wireguard_expose: [short: "-W", long: "--wireguard-expose", required: false,                    help: "Outermost network to expose WireGuard port to, using port forwards"],
+						country:          [short: "-c", long: "--country",          required: true,                     help: "Country code"],
+						boot:             [short: "-b", long: "--boot",             required: true,                     help: boot_mode_help],
+						tags:             [short: "-t", long: "--tag",              required: false, multiple: true,    help: "Tag"],
 					],
 				],
 				rm: [
@@ -350,7 +352,7 @@ defmodule MachineManager.CLI do
 				:reboot             -> reboot_many(args.hostname_regexp)
 				:shutdown           -> shutdown_many(args.hostname_regexp)
 				:wait               -> wait_many(args.hostname_regexp)
-				:add                -> Core.add(args.hostname, options.type, options.addresses, options.ssh_port, options.ssh_user, options.wireguard_port, options.country, options.release, options.boot, options.tag)
+				:add                -> Core.add(args.hostname, options)
 				:rm                 -> Core.rm_many(Core.machines_matching_regexp(args.hostname_regexp))
 				:tag                -> Core.tag_many(Core.machines_matching_regexp(args.hostname_regexp),   all_arguments(args.tag, unknown))
 				:untag              -> Core.untag_many(Core.machines_matching_regexp(args.hostname_regexp), all_arguments(args.tag, unknown))
@@ -644,7 +646,8 @@ defmodule MachineManager.CLI do
 	defp default_columns() do
 		[
 			"hostname", "type", "addresses", "wireguard_ip", "wireguard_port",
-			"ssh_port", "ssh_user", "country", "release", "boot", "tags", "ram_mb",
+			"ssh_port", "wireguard_expose", "ssh_expose",
+			"ssh_user", "country", "release", "boot", "tags", "ram_mb",
 			"cpu_model_name", "core_count", "thread_count", "last_probe_time",
 			"boot_time", "time_offset", "kernel", "pending_upgrades",
 		]
@@ -655,9 +658,11 @@ defmodule MachineManager.CLI do
 			"hostname"         => {"HOSTNAME",         fn row, _ -> row.hostname end},
 			"type"             => {"TYPE",             fn row, _ -> row.type |> colorize end},
 			"addresses"        => {"ADDRESSES",        &format_addresses/2},
-			"wireguard_ip"     => {"WIREGUARD IP",     fn row, _ -> if row.wireguard_ip   != nil, do: row.wireguard_ip |> Core.to_ip_string, else: "-" end},
-			"wireguard_port"   => {"WG",               fn row, _ -> if row.wireguard_port != nil, do: row.wireguard_port, else: "-" end},
+			"wireguard_ip"     => {"WG IP",            fn row, _ -> if row.wireguard_ip     != nil, do: row.wireguard_ip |> Core.to_ip_string, else: "-" end},
+			"wireguard_port"   => {"WG",               fn row, _ -> if row.wireguard_port   != nil, do: row.wireguard_port,   else: "-" end},
 			"ssh_port"         => {"SSH",              fn row, _ -> row.ssh_port end},
+			"wireguard_expose" => {"WG EX",            fn row, _ -> if row.wireguard_expose != nil, do: row.wireguard_expose, else: "-" end},
+			"ssh_expose"       => {"SSH EX",           fn row, _ -> if row.ssh_expose       != nil, do: row.ssh_expose,       else: "-" end},
 			"ssh_user"         => {"USER",             fn row, _ -> row.ssh_user end},
 			"country"          => {"CC",               fn row, _ -> row.country |> colorize end},
 			"release"          => {"RELEASE",          fn row, _ -> row.release |> colorize end},

@@ -22,7 +22,8 @@ make_backup() {
 	DROP TABLE IF EXISTS machines__backup;
 	CREATE TABLE         machines__backup AS SELECT
 	                         hostname, type, wireguard_ip, wireguard_port, wireguard_privkey,
-	                         wireguard_pubkey, ssh_port, ssh_user, country, release, boot, added_time
+	                         wireguard_pubkey, wireguard_expose, ssh_port, ssh_user,
+	                         ssh_expose, country, release, boot, added_time
 	                     FROM machines;
 
 	DROP TABLE IF EXISTS machine_tags__backup;

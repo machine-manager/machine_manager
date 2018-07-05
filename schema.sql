@@ -8,20 +8,27 @@ CREATE DOMAIN wireguard_key    AS bytea        CHECK (length(VALUE) = 44);
  -- Match default /etc/adduser.conf NAME_REGEX
 CREATE DOMAIN username         AS varchar(32)  CHECK (VALUE ~ '\A[a-z][-a-z0-9_]{1,31}\Z');
 
+CREATE TABLE networks (
+	name   netname NOT NULL PRIMARY KEY,
+	parent netname REFERENCES networks(name) CHECK (parent != name)
+);
+
 CREATE TABLE machines (
 	-- Preserved information
-	hostname          hostname                  NOT NULL PRIMARY KEY,
-	type              machine_type              NOT NULL,
+	hostname          hostname                 NOT NULL PRIMARY KEY,
+	type              machine_type             NOT NULL,
 	wireguard_ip      inet,
-	wireguard_port    port                      CHECK ((wireguard_ip IS NOT NULL AND wireguard_port    IS NOT NULL) OR (wireguard_ip IS NULL AND wireguard_port    IS NULL)),
-	wireguard_privkey wireguard_key             CHECK ((wireguard_ip IS NOT NULL AND wireguard_privkey IS NOT NULL) OR (wireguard_ip IS NULL AND wireguard_privkey IS NULL)),
-	wireguard_pubkey  wireguard_key             CHECK ((wireguard_ip IS NOT NULL AND wireguard_pubkey  IS NOT NULL) OR (wireguard_ip IS NULL AND wireguard_pubkey  IS NULL)),
-	ssh_port          port                      NOT NULL,
-	ssh_user          username                  NOT NULL,
-	country           character(2)              NOT NULL CHECK (country ~ '\A[a-z]{2}\Z'),
-	release           varchar(10)               NOT NULL CHECK (release ~ '\A[a-z]{2,10}\Z'),
-	boot              varchar(14)               NOT NULL CHECK (boot ~ '\A[a-z]{3,14}\Z'),
-	added_time        timestamp with time zone  NOT NULL DEFAULT now(),
+	wireguard_port    port                     CHECK ((wireguard_ip IS NOT NULL AND wireguard_port    IS NOT NULL) OR (wireguard_ip IS NULL AND wireguard_port    IS NULL)),
+	wireguard_privkey wireguard_key            CHECK ((wireguard_ip IS NOT NULL AND wireguard_privkey IS NOT NULL) OR (wireguard_ip IS NULL AND wireguard_privkey IS NULL)),
+	wireguard_pubkey  wireguard_key            CHECK ((wireguard_ip IS NOT NULL AND wireguard_pubkey  IS NOT NULL) OR (wireguard_ip IS NULL AND wireguard_pubkey  IS NULL)),
+	wireguard_expose  netname                  REFERENCES networks(name) CHECK (wireguard_expose IS NULL OR wireguard_ip IS NOT NULL),
+	ssh_port          port                     NOT NULL,
+	ssh_user          username                 NOT NULL,
+	ssh_expose        netname                  REFERENCES networks(name),
+	country           character(2)             NOT NULL CHECK (country ~ '\A[a-z]{2}\Z'),
+	release           varchar(10)              NOT NULL CHECK (release ~ '\A[a-z]{2,10}\Z'),
+	boot              varchar(14)              NOT NULL CHECK (boot ~ '\A[a-z]{3,14}\Z'),
+	added_time        timestamp with time zone NOT NULL DEFAULT now(),
 
 	-- Probed information
 	ram_mb            int4                      CHECK (ram_mb > 0),
@@ -51,11 +58,6 @@ CREATE TABLE machine_pending_upgrades (
 	old_version varchar  NOT NULL,
 	new_version varchar  NOT NULL,
 	PRIMARY KEY (hostname, package)
-);
-
-CREATE TABLE networks (
-	name   netname NOT NULL PRIMARY KEY,
-	parent netname REFERENCES networks(name) CHECK (parent != name)
 );
 
 CREATE TABLE machine_addresses (

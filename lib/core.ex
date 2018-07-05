@@ -67,30 +67,32 @@ defmodule MachineManager.Core do
 
 		queryable
 		|> select([m, t, u, a], %{
-				hostname:          m.hostname,
-				type:              m.type,
-				wireguard_ip:      m.wireguard_ip,
-				wireguard_port:    m.wireguard_port,
-				wireguard_pubkey:  m.wireguard_pubkey,
-				wireguard_privkey: m.wireguard_privkey,
-				ssh_port:          m.ssh_port,
-				ssh_user:          m.ssh_user,
-				country:           m.country,
-				release:           m.release,
-				boot:              m.boot,
-				tags:              coalesce(t.tags,             fragment("'{}'::varchar[]")),
-				pending_upgrades:  coalesce(u.pending_upgrades, fragment("'{}'::json[]")),
-				addresses:         coalesce(a.addresses,        fragment("'{}'::json[]")),
-				last_probe_time:   type(m.last_probe_time, :utc_datetime),
-				boot_time:         type(m.boot_time,       :utc_datetime),
-				cpu_model_name:    m.cpu_model_name,
-				cpu_architecture:  m.cpu_architecture,
-				ram_mb:            m.ram_mb,
-				core_count:        m.core_count,
-				thread_count:      m.thread_count,
-				time_offset:       m.time_offset,
-				kernel:            m.kernel,
-			})
+			hostname:          m.hostname,
+			type:              m.type,
+			wireguard_ip:      m.wireguard_ip,
+			wireguard_port:    m.wireguard_port,
+			wireguard_pubkey:  m.wireguard_pubkey,
+			wireguard_privkey: m.wireguard_privkey,
+			wireguard_expose:  m.wireguard_expose,
+			ssh_port:          m.ssh_port,
+			ssh_user:          m.ssh_user,
+			ssh_expose:        m.ssh_expose,
+			country:           m.country,
+			release:           m.release,
+			boot:              m.boot,
+			tags:              coalesce(t.tags,             fragment("'{}'::varchar[]")),
+			pending_upgrades:  coalesce(u.pending_upgrades, fragment("'{}'::json[]")),
+			addresses:         coalesce(a.addresses,        fragment("'{}'::json[]")),
+			last_probe_time:   type(m.last_probe_time, :utc_datetime),
+			boot_time:         type(m.boot_time,       :utc_datetime),
+			cpu_model_name:    m.cpu_model_name,
+			cpu_architecture:  m.cpu_architecture,
+			ram_mb:            m.ram_mb,
+			core_count:        m.core_count,
+			thread_count:      m.thread_count,
+			time_offset:       m.time_offset,
+			kernel:            m.kernel,
+		})
 		|> join(:left, [m], t in subquery(tags_aggregate),             on: t.hostname == m.hostname)
 		|> join(:left, [m], u in subquery(pending_upgrades_aggregate), on: u.hostname == m.hostname)
 		|> join(:left, [m], a in subquery(addresses_aggregate),        on: a.hostname == m.hostname)
@@ -987,33 +989,34 @@ defmodule MachineManager.Core do
 	@doc """
 	Adds a machine from the database.
 	"""
-	@spec add(String.t, String.t, [{String.t, String.t}], integer, String.t, integer, String.t, String.t, String.t, [String.t]) :: nil
-	def add(hostname, type, network_addresses, ssh_port, ssh_user, wireguard_port, country, release, boot, tags) do
-		{wireguard_port, wireguard_ip, wireguard_privkey, wireguard_pubkey} = case type do
+	def add(hostname, options) do
+		{wireguard_port, wireguard_ip, wireguard_privkey, wireguard_pubkey} = case options.type do
 			"debian" ->
 				wireguard_ip      = to_ip_postgrex(get_unused_wireguard_ip())
 				wireguard_privkey = WireGuard.make_wireguard_privkey()
 				wireguard_pubkey  = WireGuard.get_wireguard_pubkey(wireguard_privkey)
-				{wireguard_port, wireguard_ip, wireguard_privkey, wireguard_pubkey}
+				{options.wireguard_port, wireguard_ip, wireguard_privkey, wireguard_pubkey}
 			"edgerouter" ->
 				{nil, nil, nil, nil}
 		end
 		{:ok, _} = Repo.transaction(fn ->
 			Repo.insert_all("machines", [[
 				hostname:          hostname,
-				type:              type,
-				ssh_port:          ssh_port,
-				ssh_user:          ssh_user,
+				type:              options.type,
+				ssh_port:          options.ssh_port,
+				ssh_user:          options.ssh_user,
+				ssh_expose:        options.ssh_expose,
 				wireguard_port:    wireguard_port,
 				wireguard_ip:      wireguard_ip,
 				wireguard_privkey: wireguard_privkey,
 				wireguard_pubkey:  wireguard_pubkey,
-				country:           country,
-				release:           release,
-				boot:              boot,
+				wireguard_expose:  options.wireguard_expose,
+				country:           options.country,
+				release:           options.release,
+				boot:              options.boot,
 			]])
-			tag(hostname, tags)
-			for {network, address} <- network_addresses do
+			tag(hostname, options.tags)
+			for {network, address} <- options.addresses do
 				set_ip(hostname, network, address)
 			end
 		end)
@@ -1023,6 +1026,7 @@ defmodule MachineManager.Core do
 		existing_ips =
 			from("machines")
 			|> select([m], m.wireguard_ip)
+			|> where([m], not is_nil(m.wireguard_ip))
 			|> Repo.all
 			|> Enum.map(&to_ip_tuple/1)
 			|> MapSet.new
