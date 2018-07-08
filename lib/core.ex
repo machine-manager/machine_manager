@@ -1453,20 +1453,21 @@ defmodule MachineManager.Core do
 		|> Map.new
 	end
 
+	# Return a map of network -> [all of network's parents]
+	defp network_parents() do
+		Enum.map(net_list(), fn %{name: name, parent: parent} ->
+			case parent do
+				nil -> nil
+				_   -> {name, parent}
+			end
+		end)
+		|> Enum.reject(&is_nil/1)
+		|> into_map_with_multiple_values
+	end
+
 	defp into_map_with_multiple_values(enumerable) do
 		Enum.reduce(enumerable, %{}, fn {k, v}, acc ->
 			Map.update(acc, k, [v], fn existing -> [v | existing] end)
-		end)
-	end
-
-	# Return a map of network -> [all of network's parents]
-	defp network_parents() do
-		Enum.reduce(net_list(), %{}, fn network, acc ->
-			%{name: name, parent: parent} = network
-			case parent do
-				nil -> acc
-				_   -> Map.update(acc, name, [parent], fn existing -> [parent | existing] end)
-			end
 		end)
 	end
 
