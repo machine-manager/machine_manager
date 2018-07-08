@@ -1201,9 +1201,9 @@ defmodule MachineManager.Core do
 			"wireguard" -> final_dest_row.wireguard_expose
 			"ssh"       -> final_dest_row.ssh_expose
 		end
-		to_network        = uppermost_network(tree, machine_networks(dest_row))
-		from_network      = inverted_tree[to_network]
-		forwarder_row     = pick_forwarding_machine(network_to_machine, from_network, to_network)
+		to_network    = uppermost_network(tree, machine_networks(dest_row))
+		from_network  = inverted_tree[to_network]
+		forwarder_row = pick_forwarding_machine(network_to_machine, from_network, to_network)
 		Repo.insert_all("machine_forwards", [[
 			hostname:          forwarder_row.hostname,
 			port:              get_unused_host_port(forwarder_row.hostname, type),
