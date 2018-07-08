@@ -1194,26 +1194,32 @@ defmodule MachineManager.Core do
 			clear_forwards()
 			for row <- rows do
 				if row.wireguard_expose != nil do
-					create_wireguard_forward(row, row, tree, inverted_tree, network_to_machine)
+					create_forward("wireguard", row, row, tree, inverted_tree, network_to_machine)
+				end
+				if row.ssh_expose != nil do
+					create_forward("ssh", row, row, tree, inverted_tree, network_to_machine)
 				end
 			end
 		end)
 	end
 
-	defp create_wireguard_forward(dest_row, final_dest_row, tree, inverted_tree, network_to_machine) do
-		expose_to_network = final_dest_row.wireguard_expose
+	defp create_forward(type, dest_row, final_dest_row, tree, inverted_tree, network_to_machine) do
+		expose_to_network = case type do
+			"wireguard" -> final_dest_row.wireguard_expose
+			"ssh"       -> final_dest_row.ssh_expose
+		end
 		to_network        = uppermost_network(tree, machine_networks(dest_row))
 		from_network      = inverted_tree[to_network]
 		forwarder_row     = pick_forwarding_machine(network_to_machine, from_network, to_network)
 		Repo.insert_all("machine_forwards", [[
 			hostname:          forwarder_row.hostname,
-			port:              get_unused_host_port(forwarder_row.hostname, "wireguard"),
-			type:              "wireguard",
+			port:              get_unused_host_port(forwarder_row.hostname, type),
+			type:              type,
 			next_destination:  dest_row.hostname,
 			final_destination: final_dest_row.hostname
 		]])
 		if from_network != expose_to_network do
-			create_wireguard_forward(forwarder_row, final_dest_row, tree, inverted_tree, network_to_machine)
+			create_forward(type, forwarder_row, final_dest_row, tree, inverted_tree, network_to_machine)
 		end
 	end
 
