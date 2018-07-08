@@ -1201,11 +1201,10 @@ defmodule MachineManager.Core do
 	end
 
 	defp create_wireguard_forward(dest_row, final_dest_row, tree, inverted_tree, network_to_machine) do
-		expose_to_network    = final_dest_row.wireguard_expose
-		# A machine may be on multiple networks, but we want to forward to its "uppermost" network
-		forward_to_network   = uppermost_network(tree, machine_networks(dest_row))
-		forward_from_network = inverted_tree[forward_to_network]
-		forwarder_row        = pick_forwarding_machine(network_to_machine, forward_from_network, forward_to_network)
+		expose_to_network = final_dest_row.wireguard_expose
+		to_network        = uppermost_network(tree, machine_networks(dest_row))
+		from_network      = inverted_tree[to_network]
+		forwarder_row     = pick_forwarding_machine(network_to_machine, from_network, to_network)
 		Repo.insert_all("machine_forwards", [[
 			hostname:          forwarder_row.hostname,
 			port:              get_unused_host_port(forwarder_row.hostname, "wireguard"),
@@ -1213,27 +1212,26 @@ defmodule MachineManager.Core do
 			next_destination:  dest_row.hostname,
 			final_destination: final_dest_row.hostname
 		]])
-		if forward_from_network != expose_to_network do
-			dest_row = forwarder_row
-			create_wireguard_forward(dest_row, final_dest_row, tree, inverted_tree, network_to_machine)
+		if from_network != expose_to_network do
+			create_wireguard_forward(forwarder_row, final_dest_row, tree, inverted_tree, network_to_machine)
 		end
 	end
 
-	defp pick_forwarding_machine(network_to_machine, forward_from_network, forward_to_network) do
-		case forwarding_machines(network_to_machine, forward_from_network, forward_to_network) do
-			# We expect to have only one forwarding machine right now
+	defp pick_forwarding_machine(network_to_machine, from_network, to_network) do
+		case forwarding_machines(network_to_machine, from_network, to_network) do
+			# We expect only one forwarding machine
 			[row] -> row
 			[]    -> raise(
 				"""
 				Could not find a machine to serve as forwarder on networks \
-				#{inspect({forward_from_network, forward_to_network})}
+				#{inspect({from_network, to_network})}
 				""")
 		end
 	end
 
-	defp forwarding_machines(network_to_machine, forward_from_network, forward_to_network) do
-		network_to_machine[forward_to_network]
-		|> Enum.filter(fn row -> forward_from_network in machine_networks(row) end)
+	defp forwarding_machines(network_to_machine, from_network, to_network) do
+		network_to_machine[to_network]
+		|> Enum.filter(fn row -> from_network in machine_networks(row) end)
 	end
 
 	defp clear_forwards() do
