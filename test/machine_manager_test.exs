@@ -66,7 +66,7 @@ defmodule MachineManager.CoreTest do
 	end
 
 	test "make_hosts_json_file" do
-		self_row         = %{hostname: "me", public_ip: "1.1.1.1", wireguard_ip: "10.10.0.1"}
+		self_row         = %{hostname: "me", addresses: [%{network: "public", address: "1.1.1.1"}], wireguard_ip: "10.10.0.1"}
 		graphs           = %{wireguard: %{}, public: %{}}
 		subdomains       = %{wireguard: %{}, public: %{}}
 		all_machines_map = %{"me" => self_row}
@@ -78,8 +78,8 @@ defmodule MachineManager.CoreTest do
 	end
 
 	test "make_hosts_file with a public connection" do
-		self_row         = %{hostname: "me",   public_ip: "1.1.1.1", wireguard_ip: "10.10.0.1"}
-		peer_row         = %{hostname: "peer", public_ip: "1.1.1.2", wireguard_ip: "10.10.0.2"}
+		self_row         = %{hostname: "me",   addresses: [%{network: "public", address: "1.1.1.1"}], wireguard_ip: "10.10.0.1"}
+		peer_row         = %{hostname: "peer", addresses: [%{network: "public", address: "1.1.1.2"}], wireguard_ip: "10.10.0.2"}
 		graphs           = %{wireguard: %{}, public: %{"me" => ["peer"]}}
 		subdomains       = %{wireguard: %{},                 public: %{}}
 		all_machines_map = %{"me" => self_row, "peer" => peer_row}
@@ -92,8 +92,8 @@ defmodule MachineManager.CoreTest do
 	end
 
 	test "make_hosts_file with a WireGuard connection" do
-		self_row         = %{hostname: "me",   public_ip: "1.1.1.1", wireguard_ip: "10.10.0.1"}
-		peer_row         = %{hostname: "peer", public_ip: "1.1.1.2", wireguard_ip: "10.10.0.2"}
+		self_row         = %{hostname: "me",   addresses: [%{network: "public", address: "1.1.1.1"}], wireguard_ip: "10.10.0.1"}
+		peer_row         = %{hostname: "peer", addresses: [%{network: "public", address: "1.1.1.2"}], wireguard_ip: "10.10.0.2"}
 		graphs           = %{wireguard: %{"me" => ["peer"]}, public: %{}}
 		subdomains       = %{wireguard: %{},                 public: %{}}
 		all_machines_map = %{"me" => self_row, "peer" => peer_row}
@@ -106,8 +106,8 @@ defmodule MachineManager.CoreTest do
 	end
 
 	test "make_hosts_file with subdomains" do
-		self_row         = %{hostname: "me",   public_ip: "1.1.1.1", wireguard_ip: "10.10.0.1"}
-		peer_row         = %{hostname: "peer", public_ip: "1.1.1.2", wireguard_ip: "10.10.0.2"}
+		self_row         = %{hostname: "me",   addresses: [%{network: "public", address: "1.1.1.1"}], wireguard_ip: "10.10.0.1"}
+		peer_row         = %{hostname: "peer", addresses: [%{network: "public", address: "1.1.1.2"}], wireguard_ip: "10.10.0.2"}
 		graphs           = %{wireguard: %{"me" => ["peer"]},         public: %{}}
 		subdomains       = %{wireguard: %{"me" => ["chat", "mail"]}, public: %{"me" => ["public"]}}
 		all_machines_map = %{"me" => self_row, "peer" => peer_row}
