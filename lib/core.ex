@@ -1063,6 +1063,7 @@ defmodule MachineManager.Core do
 			from("machine_forwards")         |> where([f], f.hostname in ^hostnames) |> Repo.delete_all
 			from("machines")                 |> where([m], m.hostname in ^hostnames) |> Repo.delete_all
 		end)
+		nil
 	end
 
 	@doc """
@@ -1076,6 +1077,7 @@ defmodule MachineManager.Core do
 			end),
 			on_conflict: :nothing
 		)
+		nil
 	end
 
 	@doc """
@@ -1113,8 +1115,8 @@ defmodule MachineManager.Core do
 			|> where([t], t.hostname in ^hostnames)
 			|> where([t], t.tag      in ^remove_tags)
 			|> Repo.delete_all
-			nil
 		end)
+		nil
 	end
 
 	@spec set_ip(String.t, String.t, String.t) :: nil
@@ -1126,6 +1128,8 @@ defmodule MachineManager.Core do
 			network:  network,
 			address:  to_ip_postgrex(address),
 		]])
+		update_forwards()
+		nil
 	end
 
 	@spec unset_ip(String.t, String.t, String.t) :: nil
@@ -1134,6 +1138,7 @@ defmodule MachineManager.Core do
 		from("machine_addresses")
 		|> where([a], a.hostname == ^hostname and a.network == ^network and a.address == ^address)
 		|> Repo.delete_all
+		update_forwards()
 		nil
 	end
 
@@ -1141,6 +1146,7 @@ defmodule MachineManager.Core do
 	def set_ssh_port_many(queryable, ssh_port) do
 		queryable
 		|> Repo.update_all(set: [ssh_port: ssh_port])
+		update_forwards()
 		nil
 	end
 
@@ -1155,6 +1161,7 @@ defmodule MachineManager.Core do
 	def set_ssh_expose_many(queryable, ssh_expose) do
 		queryable
 		|> Repo.update_all(set: [ssh_expose: ssh_expose])
+		update_forwards()
 		nil
 	end
 
@@ -1162,6 +1169,7 @@ defmodule MachineManager.Core do
 	def set_wireguard_port_many(queryable, wireguard_port) do
 		queryable
 		|> Repo.update_all(set: [wireguard_port: wireguard_port])
+		update_forwards()
 		nil
 	end
 
