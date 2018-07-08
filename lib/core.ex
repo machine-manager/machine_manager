@@ -1454,6 +1454,7 @@ defmodule MachineManager.Core do
 	end
 
 	# Return a map of network -> [all of network's parents]
+	# TODO replace or delete - this doesn't actually do that
 	defp network_parents() do
 		Enum.map(net_list(), fn %{name: name, parent: parent} ->
 			case parent do
