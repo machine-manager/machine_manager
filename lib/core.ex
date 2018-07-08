@@ -1169,22 +1169,96 @@ defmodule MachineManager.Core do
 	def set_wireguard_expose_many(queryable, wireguard_expose) do
 		queryable
 		|> Repo.update_all(set: [wireguard_expose: wireguard_expose])
+		update_forwards()
 		nil
+	end
+
+	defp update_forwards() do
+		# get the network graph
+		# in transaction:
+		#   clear forwards table
+		#   for each machine with an "expose",
+		#     make sure the network referenced is actually a parent of the network
+		#     find a machine that sits on [parent network of current network, network]
+		#       add a forward on that machine
+		tree               = network_tree()
+		inverted_tree      = invert_network_tree(tree)
+		rows               = from("machines") |> list
+		network_to_machine = Enum.flat_map(rows, fn row ->
+			for network <- machine_networks(row) do
+				{network, row}
+			end
+		end)
+		|> into_map_with_multiple_values
+		{:ok, _} = Repo.transaction(fn ->
+			clear_forwards()
+			for row <- rows do
+				if row.wireguard_expose != nil do
+					create_wireguard_forward(row, row, tree, inverted_tree, network_to_machine)
+				end
+			end
+		end)
+	end
+
+	defp create_wireguard_forward(dest_row, final_dest_row, tree, inverted_tree, network_to_machine) do
+		expose_to_network    = final_dest_row.wireguard_expose
+		# A machine may be on multiple networks, but we want to forward to its "uppermost" network
+		forward_to_network   = uppermost_network(tree, machine_networks(dest_row))
+		forward_from_network = inverted_tree[forward_to_network]
+		forwarder_row        = pick_forwarding_machine(network_to_machine, forward_from_network, forward_to_network)
+		Repo.insert_all("machine_forwards", [[
+			hostname:          forwarder_row.hostname,
+			port:              get_unused_host_port(forwarder_row.hostname, "wireguard"),
+			type:              "wireguard",
+			next_destination:  dest_row.hostname,
+			final_destination: final_dest_row.hostname
+		]])
+		if forward_from_network != expose_to_network do
+			dest_row = forwarder_row
+			create_wireguard_forward(dest_row, final_dest_row, tree, inverted_tree, network_to_machine)
+		end
+	end
+
+	defp pick_forwarding_machine(network_to_machine, forward_from_network, forward_to_network) do
+		case forwarding_machines(network_to_machine, forward_from_network, forward_to_network) do
+			# We expect to have only one forwarding machine right now
+			[row] -> row
+			[]    -> raise(
+				"""
+				Could not find a machine to serve as forwarder on networks \
+				#{inspect({forward_from_network, forward_to_network})}
+				""")
+		end
+	end
+
+	defp forwarding_machines(network_to_machine, forward_from_network, forward_to_network) do
+		network_to_machine[forward_to_network]
+		|> Enum.filter(fn row -> forward_from_network in machine_networks(row) end)
+	end
+
+	defp clear_forwards() do
+		from("machine_forwards")
+		|> Repo.delete_all
+	end
+
+	defp machine_networks(row) do
+		Enum.map(row.addresses, fn address -> address.network end)
+	end
+
+	defp uppermost_network(tree, networks) do
+		depths = network_depth(tree)
+		Enum.sort_by(networks, fn network -> depths[network] end) |> hd
 	end
 
 	@first_port 904 + 1
 	@last_port  1023
 	@skip_ports [989, 990, 991, 992, 993, 995]
 
-	defp get_unused_host_port(host_machine, type) do
-		column = case type do
-			:ssh       -> :ssh_port_on_host_machine
-			:wireguard -> :wireguard_port_on_host_machine
-		end
+	defp get_unused_host_port(hostname, type) do
 		existing_ports =
-			from("machines")
-			|> where([m], m.host_machine == ^host_machine)
-			|> select([m], field(m, ^column))
+			from("machine_forwards")
+			|> where([m], m.hostname == ^hostname and m.type == ^type)
+			|> select([m], m.port)
 			|> Repo.all
 			|> MapSet.new
 		port_candidates = Stream.iterate(@first_port, &increment_host_port/1)
@@ -1349,6 +1423,44 @@ defmodule MachineManager.Core do
 	# parents should be the result of network_parents()
 	defp network_can_reach_network?(_parents, source_network, dest_network) when source_network == dest_network, do: true
 	defp network_can_reach_network?(parents, source_network, dest_network), do: dest_network in (parents[source_network] || [])
+
+	@doc """
+	Return a map of network -> network depth
+
+	tree is the result of network_tree()
+	"""
+	def network_depth(tree) do
+		network_traverser(tree, nil, 0)
+		|> Map.new
+	end
+
+	defp network_traverser(tree, key, depth) do
+		Enum.flat_map((tree[key] || []), fn name ->
+			[{name, depth} | network_traverser(tree, name, depth + 1)]
+		end)
+	end
+
+	# Return a map of network -> child networks
+	def network_tree() do
+		net_list()
+		|> Enum.map(fn %{name: name, parent: parent} -> {parent, name} end)
+		|> into_map_with_multiple_values
+	end
+
+	defp invert_network_tree(tree) do
+		Enum.flat_map(tree, fn {parent, children} ->
+			for child <- children do
+				{child, parent}
+			end
+		end)
+		|> Map.new
+	end
+
+	defp into_map_with_multiple_values(enumerable) do
+		Enum.reduce(enumerable, %{}, fn {k, v}, acc ->
+			Map.update(acc, k, [v], fn existing -> [v | existing] end)
+		end)
+	end
 
 	# Return a map of network -> [all of network's parents]
 	defp network_parents() do

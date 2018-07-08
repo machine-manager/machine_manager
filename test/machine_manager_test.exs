@@ -121,6 +121,11 @@ defmodule MachineManager.CoreTest do
 			["1.1.1.1",   "public.me.pi"],
 		]
 	end
+
+	test "network_depth" do
+		tree = %{nil => ["internet"], "internet" => ["lan1", "lan2"], "lan2" => ["lxc"]}
+		assert Core.network_depth(tree) == %{"internet" => 0, "lan1" => 1, "lan2" => 1, "lxc" => 2}
+	end
 end
 
 
