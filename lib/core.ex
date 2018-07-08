@@ -1174,13 +1174,6 @@ defmodule MachineManager.Core do
 	end
 
 	defp update_forwards() do
-		# get the network graph
-		# in transaction:
-		#   clear forwards table
-		#   for each machine with an "expose",
-		#     make sure the network referenced is actually a parent of the network
-		#     find a machine that sits on [parent network of current network, network]
-		#       add a forward on that machine
 		tree               = network_tree()
 		inverted_tree      = invert_network_tree(tree)
 		rows               = from("machines") |> list
