@@ -523,9 +523,9 @@ defmodule MachineManager.CLI do
 		%{
 			"hostname"          => {"HOSTNAME",   fn row -> row.hostname end},
 			"protocol"          => {"PROTO",      fn row -> row.protocol |> colorize end},
-			"source_port"       => {"SRC PORT",   fn row -> "#{row.source_port}" end},
+			"source_port"       => {"PORT",       fn row -> "#{row.source_port}" end},
 			"next_destination"  => {"DEST",       fn row -> row.next_destination end},
-			"destination_port"  => {"DEST PORT",  fn row -> "#{row.destination_port}" end},
+			"destination_port"  => {"PORT",       fn row -> "#{row.destination_port}" end},
 			"type"              => {"TYPE",       fn row -> row.type |> colorize end},
 			"final_destination" => {"FINAL DEST", fn row -> row.final_destination end},
 		}
