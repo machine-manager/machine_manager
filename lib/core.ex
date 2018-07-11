@@ -1146,7 +1146,6 @@ defmodule MachineManager.Core do
 	def set_ssh_port_many(queryable, ssh_port) do
 		queryable
 		|> Repo.update_all(set: [ssh_port: ssh_port])
-		update_forwards()
 		nil
 	end
 
@@ -1169,7 +1168,6 @@ defmodule MachineManager.Core do
 	def set_wireguard_port_many(queryable, wireguard_port) do
 		queryable
 		|> Repo.update_all(set: [wireguard_port: wireguard_port])
-		update_forwards()
 		nil
 	end
 
