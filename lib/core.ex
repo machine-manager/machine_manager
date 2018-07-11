@@ -133,20 +133,11 @@ defmodule MachineManager.Core do
 	def forward_list(hostname_regexp) do
 		machines =
 			from("machines")
-			|> select([m], %{
-					hostname:       m.hostname,
-					wireguard_port: m.wireguard_port,
-					ssh_port:       m.ssh_port
-				})
+			|> select([:hostname, :wireguard_port, :ssh_port])
 
 		forwards =
 			from("machine_forwards")
-			|> select([i], %{
-				hostname:          i.hostname,
-				type:              i.type,
-				final_destination: i.final_destination,
-				port:              i.port,
-			})
+			|> select([:hostname, :type, :final_destination, :port])
 
 		from("machine_forwards")
 		|> hostname_matching_regexp(hostname_regexp)
