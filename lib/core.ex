@@ -153,6 +153,7 @@ defmodule MachineManager.Core do
 			})
 		|> join(:left, [f], m in subquery(machines), on: f.final_destination == m.hostname)
 		|> join(:left, [f], i in subquery(forwards), on: f.next_destination  == i.hostname and f.type == i.type and f.final_destination == i.final_destination)
+		|> order_by([f], [f.hostname, f.type, f.port])
 		|> Repo.all
 		|> fix_forward_rows
 	end
