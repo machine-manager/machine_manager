@@ -98,10 +98,10 @@ defmodule MachineManager.Core do
 		|> join(:left, [m], a in subquery(addresses_aggregate),        on: a.hostname == m.hostname)
 		|> order_by(asc: :hostname)
 		|> Repo.all
-		|> fix_rows
+		|> fix_machine_rows
 	end
 
-	defp fix_rows(rows) do
+	defp fix_machine_rows(rows) do
 		for row <- rows do
 			%{row | addresses: Enum.map(row.addresses, &fix_address/1)}
 		end
@@ -131,10 +131,71 @@ defmodule MachineManager.Core do
 	end
 
 	def forward_list(hostname_regexp) do
+		machines =
+			from("machines")
+			|> select([m], %{
+					hostname:       m.hostname,
+					wireguard_port: m.wireguard_port,
+					ssh_port:       m.ssh_port
+				})
+
+		forwards =
+			from("machine_forwards")
+			|> select([i], %{
+				hostname:          i.hostname,
+				type:              i.type,
+				final_destination: i.final_destination,
+				port:              i.port,
+			})
+
 		from("machine_forwards")
 		|> hostname_matching_regexp(hostname_regexp)
-		|> select([:hostname, :port, :type, :next_destination, :final_destination])
+		|> select([f, m, i], %{
+				hostname:                         f.hostname,
+				source_port:                      f.port,
+				type:                             f.type,
+				next_destination:                 f.next_destination,
+				final_destination:                f.final_destination,
+				final_destination_wireguard_port: m.wireguard_port,
+				final_destination_ssh_port:       m.ssh_port,
+				next_destination_port:            i.port,
+			})
+		|> join(:left, [f], m in subquery(machines), on: f.final_destination == m.hostname)
+		|> join(:left, [f], i in subquery(forwards), on: f.next_destination  == i.hostname and f.type == i.type and f.final_destination == i.final_destination)
 		|> Repo.all
+		|> fix_forward_rows
+	end
+
+	defp fix_forward_rows(rows) do
+		for row <- rows do
+			%{
+				hostname:          row.hostname,
+				source_port:       row.source_port,
+				destination_port:  destination_port_for_forward(row),
+				type:              row.type,
+				protocol:          protocol_for_forward(row),
+				next_destination:  row.next_destination,
+				final_destination: row.final_destination,
+			}
+		end
+	end
+
+	defp destination_port_for_forward(row) do
+		if row.next_destination == row.final_destination do
+			case row.type do
+				"wireguard" -> row.final_destination_wireguard_port
+				"ssh"       -> row.final_destination_ssh_port
+			end
+		else
+			row.next_destination_port
+		end
+	end
+
+	defp protocol_for_forward(row) do
+		case row.type do
+			"wireguard" -> "udp"
+			"ssh"       -> "tcp"
+		end
 	end
 
 	def ssh_config() do

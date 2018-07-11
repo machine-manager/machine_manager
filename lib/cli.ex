@@ -516,16 +516,18 @@ defmodule MachineManager.CLI do
 	end
 
 	defp default_forward_columns() do
-		["hostname", "port", "type", "next_destination", "final_destination"]
+		["hostname", "source_port", "destination_port", "protocol", "next_destination", "final_destination"]
 	end
 
 	defp get_forward_column_spec() do
 		%{
-			"hostname"          => {"HOSTNAME", fn row -> row.hostname end},
-			"port"              => {"PORT",     fn row -> "#{row.port}" end},
-			"type"              => {"TYPE",     fn row -> row.type |> colorize end},
-			"next_destination"  => {"NEXT",     fn row -> row.next_destination end},
-			"final_destination" => {"FINAL",    fn row -> row.final_destination end},
+			"hostname"          => {"HOSTNAME",  fn row -> row.hostname end},
+			"source_port"       => {"SRC PORT",  fn row -> "#{row.source_port}" end},
+			"destination_port"  => {"DEST PORT", fn row -> "#{row.destination_port}" end},
+			"type"              => {"TYPE",      fn row -> row.type |> colorize end},
+			"protocol"          => {"PROTO",     fn row -> row.protocol |> colorize end},
+			"next_destination"  => {"NEXT",      fn row -> row.next_destination end},
+			"final_destination" => {"FINAL",     fn row -> row.final_destination end},
 		}
 	end
 

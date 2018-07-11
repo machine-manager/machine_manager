@@ -87,7 +87,7 @@ ra    908  wireguard  elk    elk
 ubnt->ra->elk
 
 How do we know dest port of (ubnt 907 wireguard ra elk)?
-Look for (ra DEST wireguard _ elk)
+Look for (ra DEST_PORT wireguard _ elk)
 
 How do we know dest port of (ra 908 wireguard elk elk)?
 Look up wireguard_port in machines table for elk
