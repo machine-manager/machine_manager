@@ -522,7 +522,7 @@ defmodule MachineManager.CLI do
 	defp get_forward_column_spec() do
 		%{
 			"hostname"          => {"HOSTNAME",   fn row -> row.hostname end},
-			"protocol"          => {"PROTO",      fn row -> row.protocol |> colorize end},
+			"protocol"          => {"PROTO",      fn row -> row.protocol |> colorize(if row.protocol == "tcp", do: 6, else: 3) end},
 			"source_port"       => {"PORT",       fn row -> "#{row.source_port}" end},
 			"next_destination"  => {"DEST",       fn row -> row.next_destination end},
 			"destination_port"  => {"PORT",       fn row -> "#{row.destination_port}" end},
