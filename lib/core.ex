@@ -1179,6 +1179,10 @@ defmodule MachineManager.Core do
 		nil
 	end
 
+	# We need to keep the port numbers in the machine_forwards table stable,
+	# so the strategy here is to get a list of forwards we want (without
+	# describing the port yet) and then adjust the machine_forwards table
+	# by adding and removing rows, preserving any existing rows.
 	defp update_forwards() do
 		tree               = network_tree()
 		inverted_tree      = invert_network_tree(tree)
@@ -1189,20 +1193,53 @@ defmodule MachineManager.Core do
 			end
 		end)
 		|> into_map_with_multiple_values
+
+		existing_forwards =
+			from("machine_forwards")
+			|> select([m], {m.hostname, m.type, m.final_destination, m.next_destination})
+			|> Repo.all
+			|> MapSet.new
+
+		desired_forwards = Enum.flat_map(rows, fn row ->
+			cond do
+				row.wireguard_expose != nil -> describe_forward("wireguard", row, row, tree, inverted_tree, network_to_machine)
+				row.ssh_expose       != nil -> describe_forward("ssh",       row, row, tree, inverted_tree, network_to_machine)
+				true                        -> []
+			end
+		end)
+		|> MapSet.new
+
+		create_forwards = MapSet.difference(desired_forwards, existing_forwards)
+		delete_forwards = MapSet.difference(existing_forwards, desired_forwards)
+
+		new_rows = for {hostname, type, final_destination, next_destination} <- create_forwards do
+			[
+				hostname:          hostname,
+				port:              get_unused_host_port(hostname, type),
+				type:              type,
+				next_destination:  next_destination,
+				final_destination: final_destination
+			]
+		end
+
 		{:ok, _} = Repo.transaction(fn ->
-			clear_forwards()
-			for row <- rows do
-				if row.wireguard_expose != nil do
-					create_forward("wireguard", row, row, tree, inverted_tree, network_to_machine)
-				end
-				if row.ssh_expose != nil do
-					create_forward("ssh", row, row, tree, inverted_tree, network_to_machine)
-				end
+			Repo.insert_all("machine_forwards", new_rows)
+
+			for {hostname, type, final_destination, next_destination} <- delete_forwards do
+				from("machine_forwards") |> where([t],
+					t.hostname          == ^hostname and
+					t.type              == ^type and
+					t.final_destination == ^final_destination and
+					t.next_destination  == ^next_destination
+				) |> Repo.delete_all
 			end
 		end)
 	end
 
-	defp create_forward(type, dest_row, final_dest_row, tree, inverted_tree, network_to_machine) do
+	# Return a a list of {hostname, type, final_destination, next_destination}
+	# describing forwards that need to exist for `final_dest_row` to be reachable
+	# on its exposed network.
+	defp describe_forward(type, dest_row, final_dest_row, tree, inverted_tree, network_to_machine) do
 		expose_to_network = case type do
 			"wireguard" -> final_dest_row.wireguard_expose
 			"ssh"       -> final_dest_row.ssh_expose
@@ -1210,16 +1247,13 @@ defmodule MachineManager.Core do
 		to_network    = uppermost_network(tree, machine_networks(dest_row))
 		from_network  = inverted_tree[to_network]
 		forwarder_row = pick_forwarding_machine(network_to_machine, from_network, to_network)
-		Repo.insert_all("machine_forwards", [[
-			hostname:          forwarder_row.hostname,
-			port:              get_unused_host_port(forwarder_row.hostname, type),
-			type:              type,
-			next_destination:  dest_row.hostname,
-			final_destination: final_dest_row.hostname
-		]])
-		if from_network != expose_to_network do
-			create_forward(type, forwarder_row, final_dest_row, tree, inverted_tree, network_to_machine)
+		this_forward  = {forwarder_row.hostname, type, final_dest_row.hostname, dest_row.hostname}
+		more_forwards = if from_network != expose_to_network do
+			describe_forward(type, forwarder_row, final_dest_row, tree, inverted_tree, network_to_machine)
+		else
+			[]
 		end
+		[this_forward | more_forwards]
 	end
 
 	defp pick_forwarding_machine(network_to_machine, from_network, to_network) do
@@ -1237,11 +1271,6 @@ defmodule MachineManager.Core do
 	defp forwarding_machines(network_to_machine, from_network, to_network) do
 		network_to_machine[to_network]
 		|> Enum.filter(fn row -> from_network in machine_networks(row) end)
-	end
-
-	defp clear_forwards() do
-		from("machine_forwards")
-		|> Repo.delete_all
 	end
 
 	defp machine_networks(row) do
