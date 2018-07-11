@@ -60,6 +60,33 @@ defmodule MachineManager.CLI do
 						],
 					],
 				],
+				forward: [
+					name:  "forward",
+					about: "Port forward commands",
+					subcommands: [
+						ls: [
+							name:  "ls",
+							about: "List forwards",
+							flags:   [
+								no_header: [long: "--no-header", help: "Don't print the column header"],
+							],
+							options: [
+								color: color_option(),
+								columns: [short: "-c", long: "--column", multiple: true, help:
+									"""
+									Column to include in the output.  Can be specified multiple times.  One of: \
+									#{get_forward_column_spec() |> Map.keys |> Enum.join(" ")}.                                           \
+									If no columns given, uses the default of: \
+									#{default_forward_columns() |> Enum.join(" ")}
+									"""
+								],
+							],
+							args:  [
+								hostname_regexp: [required: false, help: hostname_regexp_help <> "  If not given, forwards for all machines will be listed."],
+							],
+						],
+					],
+				],
 				ls: [
 					name:    "ls",
 					about:   "List machines",
@@ -71,9 +98,9 @@ defmodule MachineManager.CLI do
 						columns: [short: "-c", long: "--column", multiple: true, help:
 							"""
 							Column to include in the output.  Can be specified multiple times.  One of: \
-							#{get_column_spec() |> Map.keys |> Enum.join(" ")}.                                           \
+							#{get_machine_column_spec() |> Map.keys |> Enum.join(" ")}.                                           \
 							If no columns given, uses the default of: \
-							#{default_columns() |> Enum.join(" ")}
+							#{default_machine_columns() |> Enum.join(" ")}
 							"""
 						],
 					],
@@ -327,14 +354,18 @@ defmodule MachineManager.CLI do
 
 		# Rewrite argv to optimus' expectations
 		argv = case argv do
-			[]                 -> ["--help"]
-			["-h"]             -> ["--help"]
-			["help"]           -> ["--help"]
-			["net", "help"]    -> ["help", "net"]
-			["net", "help", c] -> ["help", "net", c]
-			["net", "--help"]  -> ["help", "net"]
-			["net", "-h"]      -> ["help", "net"]
-			other              -> other
+			[]                     -> ["--help"]
+			["-h"]                 -> ["--help"]
+			["help"]               -> ["--help"]
+			["net", "help"]        -> ["help", "net"]
+			["net", "help", c]     -> ["help", "net", c]
+			["net", "--help"]      -> ["help", "net"]
+			["net", "-h"]          -> ["help", "net"]
+			["forward", "help"]    -> ["help", "forward"]
+			["forward", "help", c] -> ["help", "forward", c]
+			["forward", "--help"]  -> ["help", "forward"]
+			["forward", "-h"]      -> ["help", "forward"]
+			other                  -> other
 		end
 
 		{subcommands, %{args: args, options: options, flags: flags, unknown: unknown}} =
@@ -354,7 +385,8 @@ defmodule MachineManager.CLI do
 		Application.put_env(:elixir, :ansi_enabled, ansi_enabled)
 
 		case subcommands do
-			[:net | rest] -> net(rest, args, options, flags, unknown)
+			[:net     | rest] -> net(rest, args, options, flags, unknown)
+			[:forward | rest] -> forward(rest, args, options, flags, unknown)
 			[subcommand]  -> case subcommand do
 				:ls                   -> list(args.hostname_regexp, options.columns, (if flags.no_header, do: false, else: true))
 				:script               -> Core.write_script_for_machine(args.hostname, args.output_file, allow_warnings: flags.allow_warnings)
@@ -445,6 +477,56 @@ defmodule MachineManager.CLI do
 			IO.puts("#{indent}#{name}")
 			print_tree(tree, name, depth + 1)
 		end
+	end
+
+	defp forward(subcommands, args, options, flags, _unknown) do
+		subcommand = case subcommands do
+			[subcommand] -> subcommand
+			_            -> raise("Subcommand required; see: mm help forwards")
+		end
+		case subcommand do
+			:ls  -> forward_list(args.hostname_regexp, options.columns, (if flags.no_header, do: false, else: true))
+		end
+	end
+
+	defp forward_list(hostname_regexp, columns, print_header) do
+		hostname_regexp = case hostname_regexp do
+			nil -> ".*"
+			_   -> hostname_regexp
+		end
+		rows          = Core.forward_list(hostname_regexp)
+		columns       = case columns do
+			[] -> default_forward_columns()
+			_  -> columns
+		end
+		column_spec   = get_forward_column_spec()
+		header_row    = get_column_header_row(column_spec, columns)
+		table         = Enum.map(rows, fn row ->
+			Enum.map(columns, fn column ->
+				{_, func} = column_spec[column]
+				func.(row)
+			end)
+		end)
+		table         = case print_header do
+			true  -> [header_row | table]
+			false -> table
+		end
+		out = TableFormatter.format(table, padding: 2, width_fn: &width_fn/1)
+		:ok = IO.write(out)
+	end
+
+	defp default_forward_columns() do
+		["hostname", "port", "type", "next_destination", "final_destination"]
+	end
+
+	defp get_forward_column_spec() do
+		%{
+			"hostname"          => {"HOSTNAME", fn row -> row.hostname end},
+			"port"              => {"PORT",     fn row -> "#{row.port}" end},
+			"type"              => {"TYPE",     fn row -> row.type |> colorize end},
+			"next_destination"  => {"NEXT",     fn row -> row.next_destination end},
+			"final_destination" => {"FINAL",    fn row -> row.final_destination end},
+		}
 	end
 
 	defp ssh_config() do
@@ -635,11 +717,11 @@ defmodule MachineManager.CLI do
 			_   -> hostname_regexp
 		end
 		columns = case columns do
-			[] -> default_columns()
+			[] -> default_machine_columns()
 			_  -> columns
 		end
 		rows          = Core.list(Core.machines_matching_regexp(hostname_regexp))
-		column_spec   = get_column_spec()
+		column_spec   = get_machine_column_spec()
 		header_row    = get_column_header_row(column_spec, columns)
 		tag_frequency = make_tag_frequency(rows)
 		table         = Enum.map(rows, fn row -> sql_row_to_table_row(column_spec, columns, row, tag_frequency) end)
@@ -660,7 +742,7 @@ defmodule MachineManager.CLI do
 		end)
 	end
 
-	defp default_columns() do
+	defp default_machine_columns() do
 		[
 			"hostname", "type", "addresses", "wireguard_ip", "wireguard_port",
 			"ssh_port", "wireguard_expose", "ssh_expose",
@@ -670,7 +752,7 @@ defmodule MachineManager.CLI do
 		]
 	end
 
-	defp get_column_spec() do
+	defp get_machine_column_spec() do
 		%{
 			"hostname"         => {"HOSTNAME",         fn row, _ -> row.hostname end},
 			"type"             => {"TYPE",             fn row, _ -> row.type |> colorize end},

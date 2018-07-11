@@ -130,6 +130,13 @@ defmodule MachineManager.Core do
 		|> Repo.delete_all
 	end
 
+	def forward_list(hostname_regexp) do
+		from("machine_forwards")
+		|> hostname_matching_regexp(hostname_regexp)
+		|> select([:hostname, :port, :type, :next_destination, :final_destination])
+		|> Repo.all
+	end
+
 	def ssh_config() do
 		rows    = from("machines") |> list
 		parents = network_parents()
