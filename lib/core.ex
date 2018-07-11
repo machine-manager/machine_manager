@@ -1261,11 +1261,8 @@ defmodule MachineManager.Core do
 				|> MapSet.new
 
 			desired_forwards = Enum.flat_map(rows, fn row ->
-				cond do
-					row.wireguard_expose != nil -> describe_forward("wireguard", row, row, tree, inverted_tree, network_to_machine)
-					row.ssh_expose       != nil -> describe_forward("ssh",       row, row, tree, inverted_tree, network_to_machine)
-					true                        -> []
-				end
+				(if row.wireguard_expose != nil, do: describe_forward("wireguard", row, row, tree, inverted_tree, network_to_machine), else: []) ++
+				(if row.ssh_expose       != nil, do: describe_forward("ssh",       row, row, tree, inverted_tree, network_to_machine), else: [])
 			end)
 			|> MapSet.new
 
