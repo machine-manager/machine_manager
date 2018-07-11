@@ -1243,45 +1243,45 @@ defmodule MachineManager.Core do
 	# describing the port yet) and then adjust the machine_forwards table
 	# by adding and removing rows, preserving any existing rows.
 	defp update_forwards() do
-		tree               = network_tree()
-		inverted_tree      = invert_network_tree(tree)
-		rows               = from("machines") |> list
-		network_to_machine = Enum.flat_map(rows, fn row ->
-			for network <- machine_networks(row) do
-				{network, row}
-			end
-		end)
-		|> into_map_with_multiple_values
+		{:ok, _} = Repo.transaction(fn ->
+			tree               = network_tree()
+			inverted_tree      = invert_network_tree(tree)
+			rows               = from("machines") |> list
+			network_to_machine = Enum.flat_map(rows, fn row ->
+				for network <- machine_networks(row) do
+					{network, row}
+				end
+			end)
+			|> into_map_with_multiple_values
 
-		existing_forwards =
-			from("machine_forwards")
-			|> select([m], {m.hostname, m.type, m.final_destination, m.next_destination})
-			|> Repo.all
+			existing_forwards =
+				from("machine_forwards")
+				|> select([m], {m.hostname, m.type, m.final_destination, m.next_destination})
+				|> Repo.all
+				|> MapSet.new
+
+			desired_forwards = Enum.flat_map(rows, fn row ->
+				cond do
+					row.wireguard_expose != nil -> describe_forward("wireguard", row, row, tree, inverted_tree, network_to_machine)
+					row.ssh_expose       != nil -> describe_forward("ssh",       row, row, tree, inverted_tree, network_to_machine)
+					true                        -> []
+				end
+			end)
 			|> MapSet.new
 
-		desired_forwards = Enum.flat_map(rows, fn row ->
-			cond do
-				row.wireguard_expose != nil -> describe_forward("wireguard", row, row, tree, inverted_tree, network_to_machine)
-				row.ssh_expose       != nil -> describe_forward("ssh",       row, row, tree, inverted_tree, network_to_machine)
-				true                        -> []
+			create_forwards = MapSet.difference(desired_forwards, existing_forwards)
+			delete_forwards = MapSet.difference(existing_forwards, desired_forwards)
+
+			new_rows = for {hostname, type, final_destination, next_destination} <- create_forwards do
+				[
+					hostname:          hostname,
+					port:              get_unused_host_port(hostname, type),
+					type:              type,
+					next_destination:  next_destination,
+					final_destination: final_destination
+				]
 			end
-		end)
-		|> MapSet.new
 
-		create_forwards = MapSet.difference(desired_forwards, existing_forwards)
-		delete_forwards = MapSet.difference(existing_forwards, desired_forwards)
-
-		new_rows = for {hostname, type, final_destination, next_destination} <- create_forwards do
-			[
-				hostname:          hostname,
-				port:              get_unused_host_port(hostname, type),
-				type:              type,
-				next_destination:  next_destination,
-				final_destination: final_destination
-			]
-		end
-
-		{:ok, _} = Repo.transaction(fn ->
 			Repo.insert_all("machine_forwards", new_rows)
 
 			for {hostname, type, final_destination, next_destination} <- delete_forwards do
