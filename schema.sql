@@ -68,6 +68,9 @@ CREATE TABLE machine_addresses (
 	UNIQUE (network, address)
 );
 
+-- This table tracks only the source port; the destination port is grabbed
+-- from the machines table (if next_destination == final_destination) or a
+-- self-join with this table.
 CREATE TABLE machine_forwards (
 	hostname          hostname NOT NULL REFERENCES machines,
 	port              port     NOT NULL,
@@ -77,19 +80,3 @@ CREATE TABLE machine_forwards (
 	PRIMARY KEY (hostname, port, type),
 	UNIQUE (hostname, type, final_destination)
 );
-
-/*
-ubnt  905  wireguard  ra     ra
-ubnt  906  wireguard  plato  plato
-ubnt  907  wireguard  ra     elk
-ra    908  wireguard  elk    elk
-
-ubnt->ra->elk
-
-How do we know dest port of (ubnt 907 wireguard ra elk)?
-Look for (ra DEST_PORT wireguard _ elk)
-
-How do we know dest port of (ra 908 wireguard elk elk)?
-Look up wireguard_port in machines table for elk
-
-*/
