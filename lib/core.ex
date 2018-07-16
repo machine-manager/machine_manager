@@ -348,16 +348,17 @@ defmodule MachineManager.Core do
 			|> Enum.map(fn row -> ScriptWriter.roles_for_tags(row.tags) end)
 			|> MapSet.new
 		File.mkdir_p!(@script_cache)
-		pmap(unique_role_combinations, fn roles ->
-			script_file = script_filename_for_roles(roles)
-			ScriptWriter.write_script_for_roles(roles, script_file, allow_warnings: allow_warnings)
-		end, 2 * 60 * 1000)
-	end
-
-	def pmap(collection, func, timeout) do
-		collection
-		|> Enum.map(&(Task.async(fn -> func.(&1) end)))
-		|> Enum.map(fn task -> Task.await(task, timeout) end)
+		Task.async_stream(
+			unique_role_combinations,
+			fn roles ->
+				script_file = script_filename_for_roles(roles)
+				ScriptWriter.write_script_for_roles(roles, script_file, allow_warnings: allow_warnings)
+			end,
+			ordered: false,
+			timeout: 2 * 60 * 1000
+		)
+		|> Enum.map(fn {:ok, result} -> result end)
+		|> Enum.count
 	end
 
 	@doc """
