@@ -5,6 +5,7 @@ config :machine_manager, MachineManager.Repo,
 	username: "machine_manager",
 	password: "xphxLTUX1o4zuAVnHTYj1Q",
 	hostname: "localhost",
+	pool: DBConnection.ConnectionPool,
 	pool_size: 3
 
 config :machine_manager, ecto_repos: [MachineManager.Repo]
