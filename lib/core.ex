@@ -23,6 +23,38 @@ defmodule MachineManager.Core do
 	import Converge.Util, only: [architecture_for_tags: 1]
 	use Memoize
 
+	def new_context() do
+		cc = ChronoCache.new(&compute_key/2, &now/0)
+		%{
+			cc: cc,
+			minimum_times: %{
+				portable_erlang: now()
+			}
+		}
+	end
+
+	defp get(ctx, key, minimum_time) do
+		ChronoCache.get(ctx.cc, key, minimum_time)
+	end
+
+	defp now() do
+		:erlang.unique_integer([:monotonic])
+	end
+
+	defp compute_key(key, _minimum_time) do
+		case key do
+			{:portable_erlang, arch} -> temp_portable_erlang(arch)
+		end
+	end
+
+	defp temp_portable_erlang(arch) do
+		temp_dir        = FileUtil.temp_dir("machine_manager_portable_erlang")
+		portable_erlang = Path.join(temp_dir, "erlang")
+		File.mkdir!(portable_erlang)
+		PortableErlang.make_portable_erlang(portable_erlang, arch)
+		portable_erlang
+	end
+
 	def list(queryable) do
 		tags_aggregate =
 			from("machine_tags")
@@ -242,37 +274,35 @@ defmodule MachineManager.Core do
 		make_hosts_json_file(row, graphs, subdomains, all_machines_map)
 	end
 
-	def configure_many(queryable, retry_on_port, handle_configure_result, handle_waiting, show_progress, allow_warnings) do
+	def configure_many(ctx, queryable, retry_on_port, handle_configure_result, handle_waiting, show_progress, allow_warnings) do
 		rows = list(queryable)
 		if show_progress and length(rows) > 1 do
 			raise(ConfigureError, "Can't show progress when configuring more than one machine")
 		end
-		act_many(:configure, rows, retry_on_port, handle_configure_result, handle_waiting, show_progress: show_progress, allow_warnings: allow_warnings)
+		act_many(ctx, :configure, rows, retry_on_port, handle_configure_result, handle_waiting, show_progress: show_progress, allow_warnings: allow_warnings)
 	end
 
-	def upgrade_many(queryable, retry_on_port, handle_upgrade_result, handle_waiting) do
+	def upgrade_many(ctx, queryable, retry_on_port, handle_upgrade_result, handle_waiting) do
 		rows = list(queryable)
-		act_many(:upgrade, rows, retry_on_port, handle_upgrade_result, handle_waiting)
+		act_many(ctx, :upgrade, rows, retry_on_port, handle_upgrade_result, handle_waiting)
 	end
 
-	def setup_many(queryable, retry_on_port, handle_setup_result, handle_waiting) do
+	def setup_many(ctx, queryable, retry_on_port, handle_setup_result, handle_waiting) do
 		rows = list(queryable)
-		act_many(:setup, rows, retry_on_port, handle_setup_result, handle_waiting)
+		act_many(ctx, :setup, rows, retry_on_port, handle_setup_result, handle_waiting)
 	end
 
-	def probe_many(queryable, retry_on_port, handle_probe_result, handle_waiting) do
+	def probe_many(ctx, queryable, retry_on_port, handle_probe_result, handle_waiting) do
 		queryable =
 			queryable
 			|> where([m], m.type == "debian")
 		rows = list(queryable)
-		act_many(:probe, rows, retry_on_port, handle_probe_result, handle_waiting)
+		act_many(ctx, :probe, rows, retry_on_port, handle_probe_result, handle_waiting)
 	end
 
 	@machine_probe_content File.read!(Path.join(__DIR__, "../../machine_probe/machine_probe"))
 
-	defp act_many(command, rows, retry_on_port, handle_result, handle_waiting, opts \\ []) do
-		architectures    = get_machine_architectures(rows)
-		portable_erlangs = temp_portable_erlangs(architectures)
+	defp act_many(ctx, command, rows, retry_on_port, handle_result, handle_waiting, opts \\ []) do
 		case command do
 			# Even through we're building a connectivity graph that includes all
 			# machines, we don't actually need to do compile scripts for *all*
@@ -294,17 +324,16 @@ defmodule MachineManager.Core do
 		all_machines_map = all_machines |> Enum.map(fn row -> {row.hostname, row} end) |> Map.new
 		graphs           = connectivity_graphs(all_machines)
 		wrapped = fn row ->
-			portable_erlang = portable_erlangs[architecture_for_tags(row.tags)]
-			temp_dir        = FileUtil.temp_dir("machine_manager_act_many")
-			machine_probe   = if command in [:setup, :upgrade, :probe] do
+			temp_dir      = FileUtil.temp_dir("machine_manager_act_many")
+			machine_probe = if command in [:setup, :upgrade, :probe] do
 				write_temp_file(temp_dir, "machine_probe", @machine_probe_content, executable: true)
 			end
 			try do
 				case command do
-					:configure -> configure(row, graphs, all_machines_map, portable_erlang, retry_on_port, opts[:show_progress])
-					:setup     -> setup(row, graphs, all_machines_map, portable_erlang, retry_on_port, machine_probe)
-					:upgrade   -> upgrade(row, graphs, all_machines_map, portable_erlang, retry_on_port, machine_probe)
-					:probe     -> probe(row, portable_erlang, machine_probe, retry_on_port)
+					:configure -> configure(ctx, row, graphs, all_machines_map, retry_on_port, opts[:show_progress])
+					:setup     -> setup(ctx, row, graphs, all_machines_map, retry_on_port, machine_probe)
+					:upgrade   -> upgrade(ctx, row, graphs, all_machines_map, retry_on_port, machine_probe)
+					:probe     -> probe(ctx, row, machine_probe, retry_on_port)
 				end
 			rescue
 				e in UpgradeError   -> {:upgrade_error,   e.message}
@@ -323,23 +352,6 @@ defmodule MachineManager.Core do
 	end
 
 	@script_cache Path.expand("~/.cache/machine_manager/script_cache")
-
-	defp get_machine_architectures(rows) do
-		rows
-		|> Enum.map(fn row -> architecture_for_tags(row.tags) end)
-		|> MapSet.new
-	end
-
-	defp temp_portable_erlangs(architectures) do
-		for arch <- architectures do
-			temp_dir        = FileUtil.temp_dir("machine_manager_portable_erlang")
-			portable_erlang = Path.join(temp_dir, "erlang")
-			File.mkdir!(portable_erlang)
-			PortableErlang.make_portable_erlang(portable_erlang, arch)
-			{arch, portable_erlang}
-		end
-		|> Map.new
-	end
 
 	# We use this to avoid compiling a script N times for N machines with the same roles.
 	defp write_scripts_for_machines(rows, allow_warnings \\ false) do
@@ -514,8 +526,8 @@ defmodule MachineManager.Core do
 	@doc """
 	Probe a machine and write the probe data to the database.
 	"""
-	def probe(row, portable_erlang, machine_probe, retry_on_port) do
-		data = get_probe_data(row, portable_erlang, machine_probe, retry_on_port)
+	def probe(ctx, row, machine_probe, retry_on_port) do
+		data = get_probe_data(ctx, row, machine_probe, retry_on_port)
 		# TODO: don't assume that it's the same machine; make sure some unique ID is the same
 		write_probe_data_to_db(row.hostname, data)
 		:probed
@@ -524,13 +536,9 @@ defmodule MachineManager.Core do
 	@doc """
 	Get probe data from a machine.
 	"""
-	def get_probe_data(row, portable_erlang, machine_probe, retry_on_port) do
-		# portable_erlang can be nil in this function, in case the caller is
-		# certain the machine already has it.
-		files = case portable_erlang do
-			nil -> [machine_probe]
-			_   -> [portable_erlang, machine_probe]
-		end
+	def get_probe_data(ctx, row, machine_probe, retry_on_port) do
+		portable_erlang = get(ctx, {:portable_erlang, architecture_for_tags(row.tags)}, ctx.minimum_times.portable_erlang)
+		files           = [portable_erlang, machine_probe]
 		case transfer_paths(files, row, ".cache/machine_manager/",
 			                 before_rsync: "mkdir -p .cache/machine_manager", compress: true) do
 			{"", 0}          -> nil
@@ -581,15 +589,15 @@ defmodule MachineManager.Core do
 	# in @script_cache (call write_scripts_for_machines first).
 	#
 	# Can raise ConfigureError, ProbeError, UpgradeError, or WaitError
-	def setup(row, graphs, all_machines_map, portable_erlang, retry_on_port, machine_probe) do
-		:configured = configure(row, graphs, all_machines_map, portable_erlang, retry_on_port)
-		:probed     = probe(row, nil, machine_probe, retry_on_port)
+	def setup(ctx, row, graphs, all_machines_map, retry_on_port, machine_probe) do
+		:configured = configure(ctx, row, graphs, all_machines_map, retry_on_port)
+		:probed     = probe(ctx, row, machine_probe, retry_on_port)
 		# Get updated row with package upgrades
 		[row]       = list(machine(row.hostname))
-		:upgraded   = upgrade(row, graphs, all_machines_map, portable_erlang, retry_on_port, machine_probe)
+		:upgraded   = upgrade(ctx, row, graphs, all_machines_map, retry_on_port, machine_probe)
 		reboot(row)
 		wait(row)
-		:probed     = probe(row, nil, machine_probe, retry_on_port)
+		:probed     = probe(ctx, row, machine_probe, retry_on_port)
 		:setup
 	end
 
@@ -597,7 +605,7 @@ defmodule MachineManager.Core do
 	# in @script_cache (call write_scripts_for_machines first).
 	#
 	# Can raise ConfigureError
-	def configure(row, graphs, all_machines_map, portable_erlang, retry_on_port, show_progress \\ false) do
+	def configure(ctx, row, graphs, all_machines_map, retry_on_port, show_progress \\ false) do
 		roles            = ScriptWriter.roles_for_tags(row.tags)
 		script_file      = script_filename_for_roles(roles)
 		wireguard_config = wireguard_config_for_machine(row, graphs, all_machines_map)
@@ -605,11 +613,12 @@ defmodule MachineManager.Core do
 		hosts_file       = make_hosts_json_file(row, graphs, subdomains, all_machines_map)
 		temp_dir         = FileUtil.temp_dir("machine_manager_configure")
 		try do
-			script     = Path.join(temp_dir, "script")
+			script          = Path.join(temp_dir, "script")
 			File.ln!(script_file, script)
-			wg0_conf   = write_temp_file(temp_dir, "wg0.conf",   wireguard_config)
-			hosts_json = write_temp_file(temp_dir, "hosts.json", hosts_file)
-			files      = [portable_erlang, script, wg0_conf, hosts_json]
+			wg0_conf        = write_temp_file(temp_dir, "wg0.conf",   wireguard_config)
+			hosts_json      = write_temp_file(temp_dir, "hosts.json", hosts_file)
+			portable_erlang = get(ctx, {:portable_erlang, architecture_for_tags(row.tags)}, ctx.minimum_times.portable_erlang)
+			files           = [portable_erlang, script, wg0_conf, hosts_json]
 			case transfer_paths(files, row, ".cache/machine_manager/",
 				                 before_rsync: "mkdir -p .cache/machine_manager", compress: true, retry_on_port: retry_on_port) do
 				{"", 0}          -> nil
@@ -833,7 +842,7 @@ defmodule MachineManager.Core do
 	end
 
 	# Can raise UpgradeError or ConfigureError
-	def upgrade(row, graphs, all_machines_map, portable_erlang, retry_on_port, machine_probe) do
+	def upgrade(ctx, row, graphs, all_machines_map, retry_on_port, machine_probe) do
 		case row.pending_upgrades do
 			[]       -> :no_pending_upgrades
 			upgrades ->
@@ -869,9 +878,9 @@ defmodule MachineManager.Core do
 				end
 				# Because packages upgrades can do things we don't like (e.g. install
 				# files in /etc/cron.d), configure immediately after upgrading.
-				configure(row, graphs, all_machines_map, portable_erlang, retry_on_port)
+				configure(ctx, row, graphs, all_machines_map, retry_on_port)
 				# Probe the machine so that we don't have obsolete 'pending upgrade' list
-				probe(row, nil, machine_probe, retry_on_port)
+				probe(ctx, row, machine_probe, retry_on_port)
 				:upgraded
 		end
 	end

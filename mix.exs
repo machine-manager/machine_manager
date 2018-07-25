@@ -22,16 +22,17 @@ defmodule MachineManager.Mixfile do
 
 	defp deps do
 		[
-			{:gears,     ">= 0.10.0"},
-			{:converge,  ">= 0.1.0"},
-			{:mixmaker,  ">= 0.1.0"},
-			{:porcelain, ">= 2.0.3"},
-			{:ecto,      ">= 2.1"},
-			{:postgrex,  ">= 0.13.0"},
-			{:optimus,   ">= 0.1.0"},
-			{:jason,     ">= 1.0.0"},
-			{:decimal,   ">= 1.3.1"},
-			{:memoize,   ">= 1.2.6"},
+			{:gears,       ">= 0.10.0"},
+			{:converge,    ">= 0.1.0"},
+			{:mixmaker,    ">= 0.1.0"},
+			{:porcelain,   ">= 2.0.3"},
+			{:ecto,        ">= 2.1"},
+			{:postgrex,    ">= 0.13.0"},
+			{:optimus,     ">= 0.1.0"},
+			{:jason,       ">= 1.0.0"},
+			{:decimal,     ">= 1.3.1"},
+			{:memoize,     ">= 1.2.6"},
+			{:chronocache, ">= 1.0.0"},
 		]
 	end
 end

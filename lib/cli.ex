@@ -384,22 +384,24 @@ defmodule MachineManager.CLI do
 		end
 		Application.put_env(:elixir, :ansi_enabled, ansi_enabled)
 
+		ctx = Core.new_context()
+
 		case subcommands do
 			[:net     | rest] -> net(rest, args, options, flags, unknown)
 			[:forward | rest] -> forward(rest, args, options, flags, unknown)
 			[subcommand]  -> case subcommand do
 				:ls                   -> list(args.hostname_regexp, options.columns, (if flags.no_header, do: false, else: true))
 				:script               -> Core.write_script_for_machine(args.hostname, args.output_file, allow_warnings: flags.allow_warnings)
-				:configure            -> configure_many(args.hostname_regexp, options.backup_ssh_port, flags.show_progress, flags.allow_warnings)
-				:setup                -> setup_many(args.hostname_regexp, options.backup_ssh_port)
+				:configure            -> configure_many(ctx, args.hostname_regexp, options.backup_ssh_port, flags.show_progress, flags.allow_warnings)
+				:setup                -> setup_many(ctx, args.hostname_regexp, options.backup_ssh_port)
 				:ssh_config           -> ssh_config()
 				:connectivity         -> Core.connectivity(args.type)
 				:wireguard_config     -> wireguard_config(args.hostname)
 				:hosts_json_file      -> hosts_json_file(args.hostname)
 				:portable_erlang      -> portable_erlang(args.hostname, args.directory)
-				:probe                -> probe_many(args.hostname_regexp, options.backup_ssh_port)
+				:probe                -> probe_many(ctx, args.hostname_regexp, options.backup_ssh_port)
 				:exec                 -> exec_many(args.hostname_regexp, flags.shell, all_arguments(args.command, unknown))
-				:upgrade              -> upgrade_many(args.hostname_regexp, options.backup_ssh_port)
+				:upgrade              -> upgrade_many(ctx, args.hostname_regexp, options.backup_ssh_port)
 				:reboot               -> reboot_many(args.hostname_regexp)
 				:shutdown             -> shutdown_many(args.hostname_regexp)
 				:wait                 -> wait_many(args.hostname_regexp)
@@ -550,7 +552,7 @@ defmodule MachineManager.CLI do
 		PortableErlang.make_portable_erlang(dest, arch)
 	end
 
-	defp configure_many(hostname_regexp, retry_on_port, show_progress, allow_warnings) do
+	defp configure_many(ctx, hostname_regexp, retry_on_port, show_progress, allow_warnings) do
 		error_counter = Counter.new()
 		# If Core.configure is printing converge output to the terminal, we don't
 		# want to overlap it with "# Waiting on host" output.
@@ -559,6 +561,7 @@ defmodule MachineManager.CLI do
 			false -> &handle_waiting/1
 		end
 		Core.configure_many(
+			ctx,
 			Core.machines_matching_regexp(hostname_regexp),
 			retry_on_port,
 			fn hostname, task_result -> handle_message_result(:configured, hostname, task_result, error_counter) end,
@@ -569,9 +572,10 @@ defmodule MachineManager.CLI do
 		nonzero_exit_if_errors(error_counter)
 	end
 
-	defp setup_many(hostname_regexp, retry_on_port) do
+	defp setup_many(ctx, hostname_regexp, retry_on_port) do
 		error_counter = Counter.new()
 		Core.setup_many(
+			ctx,
 			Core.machines_matching_regexp(hostname_regexp),
 			retry_on_port,
 			fn hostname, task_result -> handle_message_result(:setup, hostname, task_result, error_counter) end,
@@ -580,9 +584,10 @@ defmodule MachineManager.CLI do
 		nonzero_exit_if_errors(error_counter)
 	end
 
-	defp upgrade_many(hostname_regexp, backup_ssh_port) do
+	defp upgrade_many(ctx, hostname_regexp, backup_ssh_port) do
 		error_counter = Counter.new()
 		Core.upgrade_many(
+			ctx,
 			Core.machines_matching_regexp(hostname_regexp),
 			backup_ssh_port,
 			fn hostname, task_result -> handle_message_result(:upgraded, hostname, task_result, error_counter) end,
@@ -685,9 +690,10 @@ defmodule MachineManager.CLI do
 		end
 	end
 
-	defp probe_many(hostname_regexp, retry_on_port) do
+	defp probe_many(ctx, hostname_regexp, retry_on_port) do
 		error_counter = Counter.new()
 		Core.probe_many(
+			ctx,
 			Core.machines_matching_regexp(hostname_regexp),
 			retry_on_port,
 			fn hostname, task_result -> handle_message_result(:probed, hostname, task_result, error_counter) end,
