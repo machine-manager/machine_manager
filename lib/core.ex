@@ -21,14 +21,14 @@ defmodule MachineManager.Core do
 	alias Gears.{StringUtil, FileUtil}
 	import Ecto.Query
 	import Converge.Util, only: [architecture_for_tags: 1]
-	use Memoize
 
 	def new_context() do
 		cc = ChronoCache.new(&compute_key/2, &now/0)
 		%{
 			cc: cc,
 			minimum_times: %{
-				portable_erlang: now()
+				portable_erlang: now(),
+				mm_row: now(),
 			}
 		}
 	end
@@ -43,6 +43,7 @@ defmodule MachineManager.Core do
 
 	defp compute_key(key, _minimum_time) do
 		case key do
+			:mm_row -> mm_row()
 			{:portable_erlang, arch} -> temp_portable_erlang(arch)
 		end
 	end
@@ -222,11 +223,11 @@ defmodule MachineManager.Core do
 		end
 	end
 
-	def ssh_config() do
+	def ssh_config(ctx) do
 		rows    = from("machines") |> list
 		parents = network_parents()
 		for row <- rows do
-			address = mm_reachable_address(row, parents)
+			address = mm_reachable_address(ctx, row, parents)
 			case address do
 				nil -> nil
 				_   -> ssh_config_entry(row.hostname, address, row.ssh_port)
@@ -539,12 +540,12 @@ defmodule MachineManager.Core do
 	def get_probe_data(ctx, row, machine_probe, retry_on_port) do
 		portable_erlang = get(ctx, {:portable_erlang, architecture_for_tags(row.tags)}, ctx.minimum_times.portable_erlang)
 		files           = [portable_erlang, machine_probe]
-		case transfer_paths(files, row, ".cache/machine_manager/",
+		case transfer_paths(ctx, files, row, ".cache/machine_manager/",
 			                 before_rsync: "mkdir -p .cache/machine_manager", compress: true) do
 			{"", 0}          -> nil
 			{out, exit_code} -> raise_upload_error(ProbeError, row.hostname, out, exit_code, inspect(files))
 		end
-		{output, exit_code} = run_on_machine(row, ".cache/machine_manager/erlang/bin/escript .cache/machine_manager/machine_probe", shell: true, retry_on_port: retry_on_port)
+		{output, exit_code} = run_on_machine(ctx, row, ".cache/machine_manager/erlang/bin/escript .cache/machine_manager/machine_probe", shell: true, retry_on_port: retry_on_port)
 		case exit_code do
 			0 ->
 				json = get_json_from_probe_output(output)
@@ -595,8 +596,8 @@ defmodule MachineManager.Core do
 		# Get updated row with package upgrades
 		[row]       = list(machine(row.hostname))
 		:upgraded   = upgrade(ctx, row, graphs, all_machines_map, retry_on_port, machine_probe)
-		reboot(row)
-		wait(row)
+		reboot(ctx, row)
+		wait(ctx, row)
 		:probed     = probe(ctx, row, machine_probe, retry_on_port)
 		:setup
 	end
@@ -619,7 +620,7 @@ defmodule MachineManager.Core do
 			hosts_json      = write_temp_file(temp_dir, "hosts.json", hosts_file)
 			portable_erlang = get(ctx, {:portable_erlang, architecture_for_tags(row.tags)}, ctx.minimum_times.portable_erlang)
 			files           = [portable_erlang, script, wg0_conf, hosts_json]
-			case transfer_paths(files, row, ".cache/machine_manager/",
+			case transfer_paths(ctx, files, row, ".cache/machine_manager/",
 				                 before_rsync: "mkdir -p .cache/machine_manager", compress: true, retry_on_port: retry_on_port) do
 				{"", 0}          -> nil
 				{out, exit_code} -> raise_upload_error(ConfigureError, row.hostname, out, exit_code, inspect(files))
@@ -631,13 +632,13 @@ defmodule MachineManager.Core do
 		arguments = [".cache/machine_manager/erlang/bin/escript", ".cache/machine_manager/script"] ++ all_tags(row)
 		case show_progress do
 			true ->
-				{"", exit_code} = run_on_machine(row, arguments, retry_on_port: retry_on_port, capture: false)
+				{"", exit_code} = run_on_machine(ctx, row, arguments, retry_on_port: retry_on_port, capture: false)
 				case exit_code do
 					0 -> :configured
 					_ -> raise(ConfigureError, "Configuring machine #{inspect row.hostname} failed with exit code #{exit_code}")
 				end
 			false ->
-				{out, exit_code} = run_on_machine(row, arguments, retry_on_port: retry_on_port)
+				{out, exit_code} = run_on_machine(ctx, row, arguments, retry_on_port: retry_on_port)
 				case exit_code do
 					0 -> :configured
 					_ -> raise_configure_error(row.hostname, out, exit_code)
@@ -753,7 +754,7 @@ defmodule MachineManager.Core do
 	# and try again.
 	#
 	# Returns {rsync_stdout_and_stderr, rsync_exit_code}
-	defp transfer_paths(source_paths, row, dest, opts) do
+	defp transfer_paths(ctx, source_paths, row, dest, opts) do
 		before_rsync  = opts[:before_rsync]
 		retry_on_port = opts[:retry_on_port]
 		port          = case opts[:port_override] do
@@ -765,17 +766,17 @@ defmodule MachineManager.Core do
 			(if opts[:compress],     do: ["--compress"], else: []) ++
 			["--protect-args", "--recursive", "--delete", "--executability", "--links"] ++
 			source_paths ++
-			["#{row.ssh_user}@#{to_ip_string(mm_reachable_address!(row))}:#{dest}"]
+			["#{row.ssh_user}@#{to_ip_string(mm_reachable_address!(ctx, row))}:#{dest}"]
 		case System.cmd("rsync", rsync_ssh_args(port) ++ rsync_args, env: env_for_ssh(), stderr_to_stdout: true) do
 			{out, 0} ->
 				{out, 0}
 			{_, 255} when retry_on_port != nil ->
 				opts = [retry_on_port: nil, port_override: retry_on_port] ++ opts
-				transfer_paths(source_paths, row, dest, opts)
+				transfer_paths(ctx, source_paths, row, dest, opts)
 			{out, exit_code} ->
 				cond do
 					String.contains?(out, "command not found") ->
-						case install_rsync_on_machine(row, retry_on_port: port) do
+						case install_rsync_on_machine(ctx, row, retry_on_port: port) do
 							{_, 0}           -> System.cmd("rsync", rsync_args, stderr_to_stdout: true)
 							{out, exit_code} -> {out, exit_code}
 						end
@@ -790,8 +791,8 @@ defmodule MachineManager.Core do
 
 	defp ssh_connect_timeout(), do: 10
 
-	defp install_rsync_on_machine(row, opts) do
-		run_on_machine(row,
+	defp install_rsync_on_machine(ctx, row, opts) do
+		run_on_machine(ctx, row,
 			"""
 			(apt-get update -q || apt-get update -q || echo "apt-get update failed twice but continuing anyway") &&
 			env DEBIAN_FRONTEND=noninteractive apt-get --quiet --assume-yes --no-install-recommends install rsync
@@ -799,14 +800,14 @@ defmodule MachineManager.Core do
 			[shell: true] ++ opts)
 	end
 
-	def exec_many(queryable, shell, command, handle_exec_result, handle_waiting) do
+	def exec_many(ctx, queryable, shell, command, handle_exec_result, handle_waiting) do
 		rows = list(queryable)
 		# When calling run_on_machine, don't allow retry because the command may
 		# return exit code 255 (the same as ssh's connection failure exit code)
 		# and yet not be safe to run again.
 		task_map =
 			rows
-			|> Enum.map(fn row -> {row.hostname, Task.async(fn -> run_on_machine(row, command, shell: shell) end)} end)
+			|> Enum.map(fn row -> {row.hostname, Task.async(fn -> run_on_machine(ctx, row, command, shell: shell) end)} end)
 			|> Map.new
 		Parallel.block_on_tasks(task_map, handle_exec_result, handle_waiting, 2000)
 	end
@@ -867,7 +868,7 @@ defmodule MachineManager.Core do
 							#{upgrade_args |> Enum.map(&inspect/1) |> Enum.join(" ")} &&
 					apt-get autoremove --quiet --assume-yes
 					"""
-				{output, exit_code} = run_on_machine(row, command, shell: true)
+				{output, exit_code} = run_on_machine(ctx, row, command, shell: true)
 				if exit_code != 0 do
 					raise(UpgradeError,
 						"""
@@ -885,16 +886,16 @@ defmodule MachineManager.Core do
 		end
 	end
 
-	defp reboot(row) do
-		{_, 0} = run_on_machine(row, reboot_command(), shell: true)
+	defp reboot(ctx, row) do
+		{_, 0} = run_on_machine(ctx, row, reboot_command(), shell: true)
 	end
 
-	def reboot_many(queryable, handle_exec_result, handle_waiting) do
-		exec_many(queryable, true, reboot_command(), handle_exec_result, handle_waiting)
+	def reboot_many(ctx, queryable, handle_exec_result, handle_waiting) do
+		exec_many(ctx, queryable, true, reboot_command(), handle_exec_result, handle_waiting)
 	end
 
-	def shutdown_many(queryable, handle_exec_result, handle_waiting) do
-		exec_many(queryable, true, shutdown_command(), handle_exec_result, handle_waiting)
+	def shutdown_many(ctx, queryable, handle_exec_result, handle_waiting) do
+		exec_many(ctx, queryable, true, shutdown_command(), handle_exec_result, handle_waiting)
 	end
 
 	defp reboot_command(),   do: "nohup sh -c 'sleep #{delay_before_shutdown()}; systemctl reboot'   > /dev/null 2>&1 < /dev/null &"
@@ -902,18 +903,18 @@ defmodule MachineManager.Core do
 
 	@max_reboot_wait_time 1200
 
-	defp wait(row) do
+	defp wait(ctx, row) do
 		# Wait for an existing reboot/shutdown command to start
 		Process.sleep(1000 * (delay_before_shutdown() + 1))
 
 		attempts = @max_reboot_wait_time / ssh_connect_timeout()
-		case wait_for_machine(row, attempts) do
+		case wait_for_machine(ctx, row, attempts) do
 			{_, 0}       -> nil
 			{message, 1} -> raise(WaitError, message)
 		end
 	end
 
-	def wait_many(queryable, handle_exec_result, handle_waiting) do
+	def wait_many(ctx, queryable, handle_exec_result, handle_waiting) do
 		rows = list(queryable)
 		task_map =
 			rows
@@ -922,7 +923,7 @@ defmodule MachineManager.Core do
 					Task.async(fn ->
 						wait_for_existing_shutdown_to_start()
 						attempts = @max_reboot_wait_time / ssh_connect_timeout()
-						wait_for_machine(row, attempts)
+						wait_for_machine(ctx, row, attempts)
 					end)
 				} end)
 			|> Map.new
@@ -935,19 +936,19 @@ defmodule MachineManager.Core do
 
 	defp delay_before_shutdown(), do: 2
 
-	defp wait_for_machine(row, attempt) do
-		case run_on_machine(row, "true", shell: true) do
+	defp wait_for_machine(ctx, row, attempt) do
+		case run_on_machine(ctx, row, "true", shell: true) do
 			{_, 0} -> {"", 0}
 			{_, _} ->
 				# Maybe try again
 				case attempt do
 					0 -> {"Gave up waiting", 1}
-					_ -> wait_for_machine(row, attempt - 1)
+					_ -> wait_for_machine(ctx, row, attempt - 1)
 				end
 		end
 	end
 
-	defp run_on_machine(row, command, options) do
+	defp run_on_machine(ctx, row, command, options) do
 		retry_on_port = options[:retry_on_port]
 		shell         = options[:shell] || false
 		capture       = case options[:capture] do
@@ -955,9 +956,9 @@ defmodule MachineManager.Core do
 			true  -> true
 			false -> false
 		end
-		case ssh(row.ssh_user, to_ip_string(mm_reachable_address!(row)), row.ssh_port, shell, command, capture) do
+		case ssh(row.ssh_user, to_ip_string(mm_reachable_address!(ctx, row)), row.ssh_port, shell, command, capture) do
 			{"", 255} when retry_on_port != nil ->
-				ssh(row.ssh_user, to_ip_string(mm_reachable_address!(row)), retry_on_port, shell, command, capture)
+				ssh(row.ssh_user, to_ip_string(mm_reachable_address!(ctx, row)), retry_on_port, shell, command, capture)
 			{out, code} ->
 				{out, code}
 		end
@@ -1470,8 +1471,8 @@ defmodule MachineManager.Core do
 	defp validated_ip_tuple(tuple), do: raise(ArgumentError, "Invalid IP tuple: #{inspect tuple}")
 
 	# Get an IP address we can use to reach machine `row` from machine_manager
-	defp mm_reachable_address!(row, parents \\ network_parents()) do
-		case mm_reachable_address(row, parents) do
+	defp mm_reachable_address!(ctx, row, parents \\ network_parents()) do
+		case mm_reachable_address(ctx, row, parents) do
 			nil ->
 				networks = Enum.map(row.addresses, fn a -> a.network end)
 				raise("Cannot reach #{row.hostname} from machine_manager; machine is on networks #{inspect networks}")
@@ -1480,14 +1481,15 @@ defmodule MachineManager.Core do
 		end
 	end
 
-	defp mm_reachable_address(row, parents) do
-		case reachable_addresses(parents, mm_row(), row) do
+	defp mm_reachable_address(ctx, row, parents) do
+		mm_row = get(ctx, :mm_row, ctx.minimum_times.mm_row)
+		case reachable_addresses(parents, mm_row, row) do
 			[address | _] -> address
 			_             -> nil
 		end
 	end
 
-	defmemop mm_row() do
+	defp mm_row() do
 		[row] = list(machine(mm_hostname()))
 		row
 	end

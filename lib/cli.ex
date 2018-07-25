@@ -394,17 +394,17 @@ defmodule MachineManager.CLI do
 				:script               -> Core.write_script_for_machine(args.hostname, args.output_file, allow_warnings: flags.allow_warnings)
 				:configure            -> configure_many(ctx, args.hostname_regexp, options.backup_ssh_port, flags.show_progress, flags.allow_warnings)
 				:setup                -> setup_many(ctx, args.hostname_regexp, options.backup_ssh_port)
-				:ssh_config           -> ssh_config()
+				:ssh_config           -> ssh_config(ctx)
 				:connectivity         -> Core.connectivity(args.type)
 				:wireguard_config     -> wireguard_config(args.hostname)
 				:hosts_json_file      -> hosts_json_file(args.hostname)
 				:portable_erlang      -> portable_erlang(args.hostname, args.directory)
 				:probe                -> probe_many(ctx, args.hostname_regexp, options.backup_ssh_port)
-				:exec                 -> exec_many(args.hostname_regexp, flags.shell, all_arguments(args.command, unknown))
+				:exec                 -> exec_many(ctx, args.hostname_regexp, flags.shell, all_arguments(args.command, unknown))
 				:upgrade              -> upgrade_many(ctx, args.hostname_regexp, options.backup_ssh_port)
-				:reboot               -> reboot_many(args.hostname_regexp)
-				:shutdown             -> shutdown_many(args.hostname_regexp)
-				:wait                 -> wait_many(args.hostname_regexp)
+				:reboot               -> reboot_many(ctx, args.hostname_regexp)
+				:shutdown             -> shutdown_many(ctx, args.hostname_regexp)
+				:wait                 -> wait_many(ctx, args.hostname_regexp)
 				:add                  -> Core.add(args.hostname, options)
 				:rm                   -> Core.rm_many(Core.machines_matching_regexp(args.hostname_regexp))
 				:tag                  -> Core.tag_many(Core.machines_matching_regexp(args.hostname_regexp),   all_arguments(args.tag, unknown))
@@ -533,8 +533,8 @@ defmodule MachineManager.CLI do
 		}
 	end
 
-	defp ssh_config() do
-		:ok = IO.write(Core.ssh_config())
+	defp ssh_config(ctx) do
+		:ok = IO.write(Core.ssh_config(ctx))
 	end
 
 	defp wireguard_config(hostname) do
@@ -621,9 +621,10 @@ defmodule MachineManager.CLI do
 		end
 	end
 
-	defp reboot_many(hostname_regexp) do
+	defp reboot_many(ctx, hostname_regexp) do
 		error_counter = Counter.new()
 		Core.reboot_many(
+			ctx,
 			Core.machines_matching_regexp(hostname_regexp),
 			fn hostname, task_result -> handle_exec_result(hostname, task_result, error_counter) end,
 			&handle_waiting/1
@@ -631,9 +632,10 @@ defmodule MachineManager.CLI do
 		nonzero_exit_if_errors(error_counter)
 	end
 
-	defp shutdown_many(hostname_regexp) do
+	defp shutdown_many(ctx, hostname_regexp) do
 		error_counter = Counter.new()
 		Core.shutdown_many(
+			ctx,
 			Core.machines_matching_regexp(hostname_regexp),
 			fn hostname, task_result -> handle_exec_result(hostname, task_result, error_counter) end,
 			&handle_waiting/1
@@ -641,9 +643,10 @@ defmodule MachineManager.CLI do
 		nonzero_exit_if_errors(error_counter)
 	end
 
-	defp wait_many(hostname_regexp) do
+	defp wait_many(ctx, hostname_regexp) do
 		error_counter = Counter.new()
 		Core.wait_many(
+			ctx,
 			Core.machines_matching_regexp(hostname_regexp),
 			fn hostname, task_result -> handle_exec_result(hostname, task_result, error_counter) end,
 			&handle_waiting/1
@@ -651,7 +654,7 @@ defmodule MachineManager.CLI do
 		nonzero_exit_if_errors(error_counter)
 	end
 
-	defp exec_many(hostname_regexp, shell, command) do
+	defp exec_many(ctx, hostname_regexp, shell, command) do
 		error_counter = Counter.new()
 		command = case shell do
 			true ->
@@ -662,6 +665,7 @@ defmodule MachineManager.CLI do
 			_ -> command
 		end
 		Core.exec_many(
+			ctx,
 			Core.machines_matching_regexp(hostname_regexp),
 			shell,
 			command,
