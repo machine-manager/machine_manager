@@ -10,6 +10,6 @@ config :machine_manager, MachineManager.Repo,
 
 config :machine_manager, ecto_repos: [MachineManager.Repo]
 
-config :logger,
-	level: :warn,
-	truncate: 4096
+# Import environment specific config. This must remain at the bottom
+# of this file so it overrides the configuration defined above.
+import_config "#{Mix.env}.exs"

@@ -385,6 +385,7 @@ defmodule MachineManager.CLI do
 		Application.put_env(:elixir, :ansi_enabled, ansi_enabled)
 
 		# debug, info, warn, or error
+		# For debug, must be compiled with MIX_ENV=dev
 		level = System.get_env("MACHINE_MANAGER_LOG_LEVEL") || "warn"
 		Logger.configure(level: String.to_atom(level))
 		Logger.configure_backend(:console,
