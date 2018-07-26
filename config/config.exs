@@ -1,5 +1,7 @@
 use Mix.Config
 
+config :porcelain, goon_warn_if_missing: false
+
 config :machine_manager, MachineManager.Repo,
 	database: "machine_manager",
 	username: "machine_manager",
