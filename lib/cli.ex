@@ -384,6 +384,15 @@ defmodule MachineManager.CLI do
 		end
 		Application.put_env(:elixir, :ansi_enabled, ansi_enabled)
 
+		# debug, info, warn, or error
+		level = System.get_env("MACHINE_MANAGER_LOG_LEVEL") || "warn"
+		Logger.configure(level: String.to_atom(level))
+		Logger.configure_backend(:console,
+			colors:   [enabled: ansi_enabled],
+			metadata: [:module, :line, :pid],
+			format:   "$time $metadata[$level] $levelpad$message\n"
+		)
+
 		ctx = Core.new_context()
 
 		case subcommands do
