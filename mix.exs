@@ -32,6 +32,7 @@ defmodule MachineManager.Mixfile do
 			{:jason,       ">= 1.0.0"},
 			{:decimal,     ">= 1.3.1"},
 			{:chronocache, ">= 1.0.0"},
+			{:dialyxir,    "~> 1.0.0-rc.3", only: [:dev], runtime: false},
 		]
 	end
 end
