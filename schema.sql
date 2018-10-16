@@ -2,7 +2,7 @@ SET ROLE machine_manager;
 
 CREATE DOMAIN hostname         AS varchar(32)  CHECK (VALUE ~ '\A[-_a-z0-9]+\Z');
 CREATE DOMAIN netname          AS varchar(32)  CHECK (VALUE ~ '\A[-_a-z0-9]+\Z');
-CREATE DOMAIN machine_type     AS varchar(10)  CHECK (VALUE = 'debian' OR VALUE = 'edgerouter');
+CREATE DOMAIN machine_type     AS varchar(10)  CHECK (VALUE = 'debian' OR VALUE = 'edgerouter' OR VALUE = 'nixos');
 CREATE DOMAIN port             AS integer      CHECK (VALUE > 0 AND VALUE <= 65536);
 CREATE DOMAIN wireguard_key    AS bytea        CHECK (length(VALUE) = 44);
  -- Match default /etc/adduser.conf NAME_REGEX

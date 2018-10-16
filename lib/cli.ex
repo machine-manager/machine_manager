@@ -236,7 +236,7 @@ defmodule MachineManager.CLI do
 						hostname: [required: true, help: hostname_help],
 					],
 					options: [
-						type:             [short: "-y", long: "--type",             required: false, default: "debian", help: ~s[Type ("debian" or "edgerouter")]],
+						type:             [short: "-y", long: "--type",             required: false, default: "debian", help: ~s[Type ("debian" or "nixos" or "edgerouter")]],
 						release:          [short: "-r", long: "--release",          required: true,                     help: ~s[Debian release (e.g. "sid") or "unmanaged"]],
 						addresses:        [short: "-a", long: "--address",          required: true, multiple: true,     help: "Network and IPv4 address specified as NETWORK=ADDRESS", parser: &parse_address/1],
 						ssh_user:         [short: "-u", long: "--ssh-user",         required: false, default: "root",   help: "SSH user"],

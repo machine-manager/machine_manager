@@ -1062,7 +1062,7 @@ defmodule MachineManager.Core do
 	"""
 	def add(hostname, options) do
 		{wireguard_port, wireguard_ip, wireguard_privkey, wireguard_pubkey} = case options.type do
-			"debian" ->
+			t when t in ["debian", "nixos"] ->
 				wireguard_ip      = to_ip_postgrex(get_unused_wireguard_ip())
 				wireguard_privkey = WireGuard.make_wireguard_privkey()
 				wireguard_pubkey  = WireGuard.get_wireguard_pubkey(wireguard_privkey)
