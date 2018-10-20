@@ -494,7 +494,7 @@ defmodule MachineManager.CLI do
 	defp forward(subcommands, args, options, flags, _unknown) do
 		subcommand = case subcommands do
 			[subcommand] -> subcommand
-			_            -> raise("Subcommand required; see: mm help forwards")
+			_            -> raise("Subcommand required; see: mm help forward")
 		end
 		case subcommand do
 			:ls  -> forward_list(args.hostname_regexp, options.columns, (if flags.no_header, do: false, else: true))
