@@ -47,7 +47,7 @@ make_backup() {
 	ssh "$ssh_user_host" "pg_dump --data-only $pg_dump_table_args machine_manager" > "$backup_file"
 	# Fix the backup to restore into the correct tables
 	for table in ${tables[@]}; do
-		sed -i -r "s,^COPY ${table}__backup ,COPY $table ," "$backup_file"
+		sed -i -r "s,^COPY public\.${table}__backup ,COPY public.$table ," "$backup_file"
 	done
 }
 
