@@ -238,7 +238,7 @@ defmodule MachineManager.CLI do
 					options: [
 						type:             [short: "-y", long: "--type",             required: false, default: "debian", help: ~s[Type ("debian" or "nixos" or "edgerouter")]],
 						release:          [short: "-r", long: "--release",          required: true,                     help: ~s[Debian release (e.g. "sid") or "unmanaged"]],
-						addresses:        [short: "-a", long: "--address",          required: true, multiple: true,     help: "Network and IPv4 address specified as NETWORK=ADDRESS", parser: &parse_address/1],
+						addresses:        [short: "-a", long: "--address",          required: false, multiple: true,    help: "Network and IPv4 address specified as NETWORK=ADDRESS", parser: &parse_address/1],
 						ssh_user:         [short: "-u", long: "--ssh-user",         required: false, default: "root",   help: "SSH user"],
 						ssh_port:         [short: "-s", long: "--ssh-port",         parser: :integer, default: 904,     help: "SSH port"],
 						ssh_expose:       [short: "-S", long: "--ssh-expose",       required: false,                    help: ssh_expose_help],
